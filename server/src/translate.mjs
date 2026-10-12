@@ -1,7 +1,11 @@
-// Reference translation of pi-durable 1.1.0 watchEvents() output into protocol v1 frames (docs/protocol.md sections 4,
-// 6.1 and 7). The mock server replays fixtures through it. It mirrors the Swift test mapper
-// (AmyrlinCore/Tests/AmyrlinCoreTests/Support/DurableMapper.swift); `pnpm run export-wire` writes its output to
-// fixtures/wire-v1/, and a Swift test checks that the two agree frame by frame.
+// Translation of pi-durable 1.1.0 watchEvents() output into protocol v1 frames (docs/protocol.md sections 4, 6.1 and 7).
+// The server uses it for live conversations and the mock server for fixture replays. It mirrors the Swift test mapper
+// (AmyrlinCore/Tests/AmyrlinCoreTests/Support/DurableMapper.swift); `pnpm run export-wire` in tools/mock-server writes
+// its output for every fixture to fixtures/wire-v1/, and a Swift test checks that the two agree frame by frame.
+//
+// The server passes hooks for what watchEvents() does not carry: the conversation's title, inbox text, resolved
+// settings and pending approvals. Without hooks, the translator derives approvals from recorder notes (fixtures 12,
+// 15, 16), which is what the fixture replays need.
 
 const has = (object, key) => object !== null && typeof object === "object" && key in object;
 const setIf = (target, key, value) => {
@@ -13,9 +17,19 @@ export class DurableTranslator {
 	#toolCalls = new Map(); // callId → { name, args }
 	#pendingApprovals = new Map(); // approvalId → approval (section 8)
 
-	constructor({ conversationId = 1, title = "Fixture" } = {}) {
+	/**
+	 * @param {object} [options]
+	 * @param {number} [options.conversationId]
+	 * @param {string} [options.title]
+	 * @param {() => object} [options.conversation] the snapshot's `conversation` field
+	 * @param {(submissionId: number) => object | undefined} [options.inboxExtra] `text` and `kind` of a queued item
+	 * @param {(agent: object) => object} [options.settings] stored and effective settings for a `pi.agent` value
+	 * @param {() => object[]} [options.approvals] pending approvals, replacing the note-derived ones
+	 */
+	constructor({ conversationId = 1, title = "Fixture", conversation, inboxExtra, settings: settingsHook, approvals } = {}) {
 		this.conversationId = conversationId;
 		this.title = title;
+		this.hooks = { conversation, inboxExtra, settings: settingsHook ?? settings, approvals };
 	}
 
 	/** The wire frames for one fixture line, each an array of events. */
@@ -54,7 +68,7 @@ export class DurableTranslator {
 				: null;
 		return {
 			type: "snapshot",
-			conversation: { id: this.conversationId, title: this.title, archived: false, parent: null },
+			conversation: this.hooks.conversation?.() ?? { id: this.conversationId, title: this.title, archived: false, parent: null },
 			items: entries.map((entry) => entryItem(entry)).filter((item) => item !== undefined),
 			hasEarlier: false,
 			contextStart: entries[0]?.head ?? null,
@@ -63,7 +77,7 @@ export class DurableTranslator {
 			retry,
 			tools,
 			inbox: (s.inbox ?? []).map((item) => this.#inboxItem(item)),
-			approvals: [...this.#pendingApprovals.keys()].sort().map((id) => this.#pendingApprovals.get(id)),
+			approvals: this.hooks.approvals?.() ?? [...this.#pendingApprovals.keys()].sort().map((id) => this.#pendingApprovals.get(id)),
 			compactions: (s.compactions ?? []).map((c) => ({
 				taskId: c.taskId ?? null,
 				reason: c.reason ?? "",
@@ -71,7 +85,7 @@ export class DurableTranslator {
 				attempt: c.attempt ?? null,
 				retry: c.retry ?? null,
 			})),
-			settings: settings(s.agent ?? {}),
+			settings: this.hooks.settings(s.agent ?? {}),
 			spend: usageState(s.usage),
 		};
 	}
@@ -92,6 +106,9 @@ export class DurableTranslator {
 	#inboxItem(item) {
 		const out = { submissionId: item.id ?? null, mode: item.mode ?? "" };
 		setIf(out, "requestId", this.#requestIds.get(item.id));
+		const extra = this.hooks.inboxExtra?.(item.id);
+		setIf(out, "text", extra?.text);
+		setIf(out, "kind", extra?.kind);
 		return out;
 	}
 
@@ -148,7 +165,7 @@ export class DurableTranslator {
 				return [{ type: "submission", submission: s }];
 			}
 			case "agent_changed":
-				return [{ type: "settings.changed", settings: settings(e.agent ?? {}) }];
+				return [{ type: "settings.changed", settings: this.hooks.settings(e.agent ?? {}) }];
 			case "usage_changed":
 				return [{ type: "spend.changed", spend: usageState(e.usage) }];
 			case "compaction_start":
@@ -169,6 +186,7 @@ export class DurableTranslator {
 	// Approvals (section 8), from recorder notes. A real server raises these from its beforeTool hook.
 
 	#note(note, data) {
+		if (this.hooks.approvals !== undefined) return undefined;
 		if (note.startsWith("beforeTool hook entered") && typeof data?.toolCallId === "string") {
 			const callId = data.toolCallId;
 			const approvalId = `${this.conversationId}:${callId}`;
@@ -307,7 +325,7 @@ function block(b) {
 	}
 }
 
-function text(value) {
+export function text(value) {
 	if (typeof value === "string") return value;
 	if (Array.isArray(value)) return value.filter((b) => b?.type === "text").map((b) => b.text ?? "").join("");
 	return "";
@@ -317,7 +335,7 @@ function modelRef(message) {
 	return { provider: message.provider ?? "", modelId: message.model ?? "" };
 }
 
-function settings(agent) {
+export function settings(agent) {
 	const stored = {};
 	for (const key of ["model", "thinkingLevel", "cwd", "tools", "instructions"]) setIf(stored, key, agent[key]);
 	const { instructions: _instructions, ...effective } = stored;

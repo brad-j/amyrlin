@@ -3,7 +3,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { translateFixture } from "./translate.mjs";
+import { translateFixture } from "../../server/src/translate.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const source = join(root, "fixtures/durable-1.1.0");

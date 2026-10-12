@@ -48,6 +48,20 @@ export class WebSocket extends EventEmitter {
 		if (!this.#closed) this.#frame(0x1, Buffer.from(text, "utf8"));
 	}
 
+	/** Resolves once the socket's send buffer is below `limit` bytes, or the socket closed. */
+	writable(limit = 8 * 1024 * 1024) {
+		if (this.#closed || this.#socket.writableLength < limit) return Promise.resolve();
+		return new Promise((resolve) => {
+			const done = () => {
+				this.#socket.off("drain", done);
+				this.off("close", done);
+				resolve();
+			};
+			this.#socket.on("drain", done);
+			this.on("close", done);
+		});
+	}
+
 	close(code = 1000, reason = "") {
 		if (this.#closed) return;
 		const payload = Buffer.alloc(2 + Buffer.byteLength(reason));

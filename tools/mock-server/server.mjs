@@ -9,8 +9,8 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LiveConversation, longTranscript, MODELS, TOOLS } from "./live.mjs";
-import { translateFixture } from "./translate.mjs";
-import { acceptUpgrade } from "./ws.mjs";
+import { translateFixture } from "../../server/src/translate.mjs";
+import { acceptUpgrade } from "../../server/src/ws.mjs";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const REPLAY_SPEED = Number(process.env.REPLAY_SPEED ?? 1);
