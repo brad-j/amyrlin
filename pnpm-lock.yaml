@@ -38,8 +38,6 @@ importers:
         specifier: 1.1.0
         version: 1.1.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.22.0)
 
-  tools/mock-server: {}
-
 packages:
 
   '@anthropic-ai/sdk@0.129.0':

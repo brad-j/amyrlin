@@ -1,4 +1,4 @@
-// A minimal RFC 6455 WebSocket server endpoint on node:http, enough for the mock: text frames, ping/pong, close.
+// A minimal RFC 6455 WebSocket server endpoint on node:http, enough for the server: text frames, ping/pong, close.
 // No extensions (no permessage-deflate), no binary messages.
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";

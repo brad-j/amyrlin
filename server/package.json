@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node --no-warnings src/main.mjs",
     "dev": "AMYRLIN_CONFIG=test/dev-config.json node --no-warnings src/main.mjs",
-    "test": "node --no-warnings --test test/*.test.mjs"
+    "export-wire": "node test/export-wire.mjs"
   },
   "dependencies": {
     "@earendil-works/chord": "1.1.0",

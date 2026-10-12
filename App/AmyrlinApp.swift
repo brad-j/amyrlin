@@ -40,6 +40,15 @@ struct MainView: View {
 					showInspector: $model.showInspector
 				)
 				.id(model.selection)
+			} else if model.machines.isEmpty {
+				VStack(spacing: 10) {
+					Text("No machines yet")
+						.font(Typography.reading)
+						.foregroundStyle(Palette.secondaryText)
+					Button("Add Machine…") { model.isAddingMachine = true }
+				}
+				.frame(maxWidth: .infinity, maxHeight: .infinity)
+				.background(Palette.background)
 			} else {
 				Text("Select a conversation")
 					.font(Typography.reading)
@@ -93,7 +102,7 @@ struct AddMachineSheet: View {
 				.font(Typography.code)
 				.frame(width: 380)
 				.onSubmit(add)
-			Text("The server's tailscale serve address. The mock server is ws://127.0.0.1:8787/amyrlin.")
+			Text("The server's tailscale serve address, for example wss://egwene.example.ts.net/amyrlin.")
 				.font(Typography.readingSmall)
 				.foregroundStyle(Palette.secondaryText)
 			HStack {

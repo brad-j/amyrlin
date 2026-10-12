@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import AmyrlinCore
 
-/// `tools/mock-server/translate.mjs` is the JavaScript reference translation the server can follow. Its output, written
-/// to `fixtures/wire-v1/` by `pnpm run export-wire`, must equal the Swift test mapper's output frame by frame.
+/// `server/src/translate.mjs` is the server's translation. Its output for every fixture, written to `fixtures/wire-v1/`
+/// by `pnpm run export-wire` in `server/`, must equal the Swift test mapper's output frame by frame.
 @Suite struct ReferenceTranslationTests {
 	static let wireDirectory = Fixtures.directory.deletingLastPathComponent().appending(path: "wire-v1")
 

@@ -24,7 +24,6 @@ final class AppModel {
 	/// A failed app-level action, shown once in the window.
 	var error: String?
 
-	static let mockURL = URL(string: "ws://127.0.0.1:8787/amyrlin")!
 	private static let defaultsKey = "machines"
 	private let client = ClientInfo(
 		name: "amyrlin",
@@ -37,7 +36,7 @@ final class AppModel {
 			guard let id = entry["id"].flatMap(UUID.init(uuidString:)), let url = entry["url"].flatMap(URL.init(string:)) else { return nil }
 			return (id, url)
 		}
-		for (id, url) in entries.isEmpty ? [(UUID(), Self.mockURL)] : entries {
+		for (id, url) in entries {
 			machines.append(makeMachine(id: id, url: url))
 		}
 		save()

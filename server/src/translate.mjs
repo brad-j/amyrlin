@@ -1,11 +1,11 @@
 // Translation of pi-durable 1.1.0 watchEvents() output into protocol v1 frames (docs/protocol.md sections 4, 6.1 and 7).
-// The server uses it for live conversations and the mock server for fixture replays. It mirrors the Swift test mapper
-// (AmyrlinCore/Tests/AmyrlinCoreTests/Support/DurableMapper.swift); `pnpm run export-wire` in tools/mock-server writes
-// its output for every fixture to fixtures/wire-v1/, and a Swift test checks that the two agree frame by frame.
+// It mirrors the Swift test mapper (AmyrlinCore/Tests/AmyrlinCoreTests/Support/DurableMapper.swift): `pnpm run
+// export-wire` in server/ writes its output for every fixture to fixtures/wire-v1/, and a Swift test checks that the two
+// agree frame by frame.
 //
 // The server passes hooks for what watchEvents() does not carry: the conversation's title, inbox text, resolved
 // settings and pending approvals. Without hooks, the translator derives approvals from recorder notes (fixtures 12,
-// 15, 16), which is what the fixture replays need.
+// 15, 16), which is what export-wire needs.
 
 const has = (object, key) => object !== null && typeof object === "object" && key in object;
 const setIf = (target, key, value) => {
