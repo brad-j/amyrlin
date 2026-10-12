@@ -1,0 +1,11 @@
+# Build output
+build/
+AmyrlinCore/.build/
+*.xcuserstate
+xcuserdata/
+
+# Dependencies
+node_modules/
+
+# macOS
+.DS_Store

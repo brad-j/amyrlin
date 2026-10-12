@@ -1,0 +1,407 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		07A9818150EB8F9E60EC74B8 /* TranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400DB9A82C252E1F657E8D41 /* TranscriptView.swift */; };
+		0AF29ACA7E4336A3605A59CB /* FiraSans-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = D70B61B30786730F0662C132 /* FiraSans-OFL.txt */; };
+		2C96991DCF40CF1BD5BD099E /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C93A86000CFBD344D169CBB4 /* SidebarView.swift */; };
+		31FF2497DE77034C28DE0134 /* FiraSans-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 4B97F64742240A2953238961 /* FiraSans-Italic.ttf */; };
+		34AD9ED4998FC83EAF830C0B /* FiraSans-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = BD50DB835BDA875A4F313BC5 /* FiraSans-Bold.ttf */; };
+		3E246E97702392C8017B1D82 /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6FF507E96091DF46C73B8C0 /* ConversationView.swift */; };
+		48E044A265FB2D830DCA8EF0 /* FiraSans-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = DBEBFA8291A65B4E3C4A85A3 /* FiraSans-Regular.ttf */; };
+		64AF8D8A16667DA8AC293491 /* AmyrlinCore in Frameworks */ = {isa = PBXBuildFile; productRef = D81DEB64327AF2DB380257AB /* AmyrlinCore */; };
+		6FD7B6F00D092D1B819C3E02 /* FiraSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E137121E79B763E9188AE347 /* FiraSans-SemiBold.ttf */; };
+		7354179E4A053ECEE88FACC4 /* FiraSans-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D499D81ACB8A90277BB94F00 /* FiraSans-Medium.ttf */; };
+		C6C2B99C10C1E17992E316B2 /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F46883B3C2B7443F8A34EB5 /* InspectorView.swift */; };
+		EF49776FA13371AF809A8701 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0987027DBAEEDC51353D4ADB /* Theme.swift */; };
+		F6D4E2824150EEE404DCACB5 /* AmyrlinApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA8EA64CEF1CD5AC382E123B /* AmyrlinApp.swift */; };
+		FED63C9D31BD47D6F5D4A3BE /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E43E677CA5F20DE603B53B9F /* AppModel.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0987027DBAEEDC51353D4ADB /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		3F46883B3C2B7443F8A34EB5 /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
+		400DB9A82C252E1F657E8D41 /* TranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptView.swift; sourceTree = "<group>"; };
+		46CC484C10EE38B5F76742D7 /* AmyrlinCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = AmyrlinCore; path = AmyrlinCore; sourceTree = SOURCE_ROOT; };
+		4B97F64742240A2953238961 /* FiraSans-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FiraSans-Italic.ttf"; sourceTree = "<group>"; };
+		7D357F171DCC5EF0B185509D /* Amyrlin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Amyrlin.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9919763F27220BA381156823 /* Amyrlin.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Amyrlin.entitlements; sourceTree = "<group>"; };
+		A6FF507E96091DF46C73B8C0 /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
+		BA8EA64CEF1CD5AC382E123B /* AmyrlinApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmyrlinApp.swift; sourceTree = "<group>"; };
+		BD50DB835BDA875A4F313BC5 /* FiraSans-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FiraSans-Bold.ttf"; sourceTree = "<group>"; };
+		C93A86000CFBD344D169CBB4 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
+		D499D81ACB8A90277BB94F00 /* FiraSans-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FiraSans-Medium.ttf"; sourceTree = "<group>"; };
+		D70B61B30786730F0662C132 /* FiraSans-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "FiraSans-OFL.txt"; sourceTree = "<group>"; };
+		D8613CB42BCC02047555BA2C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		DBEBFA8291A65B4E3C4A85A3 /* FiraSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FiraSans-Regular.ttf"; sourceTree = "<group>"; };
+		E137121E79B763E9188AE347 /* FiraSans-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FiraSans-SemiBold.ttf"; sourceTree = "<group>"; };
+		E43E677CA5F20DE603B53B9F /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		6E5728A9210728A011226600 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				64AF8D8A16667DA8AC293491 /* AmyrlinCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0FD1DBA68D43BBAD2B2AC0F1 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7D357F171DCC5EF0B185509D /* Amyrlin.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		285CFBAFCE756F67F194B958 = {
+			isa = PBXGroup;
+			children = (
+				6AC3EC665AACF4914BBAC3F3 /* App */,
+				C76447D0D3D134A4F7156A5B /* Packages */,
+				0FD1DBA68D43BBAD2B2AC0F1 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		4E922853EB57DE092B86E7BB /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				BD50DB835BDA875A4F313BC5 /* FiraSans-Bold.ttf */,
+				4B97F64742240A2953238961 /* FiraSans-Italic.ttf */,
+				D499D81ACB8A90277BB94F00 /* FiraSans-Medium.ttf */,
+				D70B61B30786730F0662C132 /* FiraSans-OFL.txt */,
+				DBEBFA8291A65B4E3C4A85A3 /* FiraSans-Regular.ttf */,
+				E137121E79B763E9188AE347 /* FiraSans-SemiBold.ttf */,
+			);
+			path = Fonts;
+			sourceTree = "<group>";
+		};
+		6AC3EC665AACF4914BBAC3F3 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				9919763F27220BA381156823 /* Amyrlin.entitlements */,
+				BA8EA64CEF1CD5AC382E123B /* AmyrlinApp.swift */,
+				E43E677CA5F20DE603B53B9F /* AppModel.swift */,
+				A6FF507E96091DF46C73B8C0 /* ConversationView.swift */,
+				D8613CB42BCC02047555BA2C /* Info.plist */,
+				3F46883B3C2B7443F8A34EB5 /* InspectorView.swift */,
+				C93A86000CFBD344D169CBB4 /* SidebarView.swift */,
+				0987027DBAEEDC51353D4ADB /* Theme.swift */,
+				400DB9A82C252E1F657E8D41 /* TranscriptView.swift */,
+				4E922853EB57DE092B86E7BB /* Fonts */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		C76447D0D3D134A4F7156A5B /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				46CC484C10EE38B5F76742D7 /* AmyrlinCore */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		C76F97C9B54EC233E0435E5B /* Amyrlin */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F95622E97485123F42881EB2 /* Build configuration list for PBXNativeTarget "Amyrlin" */;
+			buildPhases = (
+				E90AF119218A2832B2FF3FA0 /* Sources */,
+				4BD0CBDBB329BF46695D90FB /* Resources */,
+				6E5728A9210728A011226600 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Amyrlin;
+			packageProductDependencies = (
+				D81DEB64327AF2DB380257AB /* AmyrlinCore */,
+			);
+			productName = Amyrlin;
+			productReference = 7D357F171DCC5EF0B185509D /* Amyrlin.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AFB9427ACF46C930C084F02E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					C76F97C9B54EC233E0435E5B = {
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = 0C50DB10366AEE27E7E5D798 /* Build configuration list for PBXProject "Amyrlin" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 285CFBAFCE756F67F194B958;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				5871904AE03F9EB559EF8AA5 /* XCLocalSwiftPackageReference "AmyrlinCore" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 0FD1DBA68D43BBAD2B2AC0F1 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C76F97C9B54EC233E0435E5B /* Amyrlin */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4BD0CBDBB329BF46695D90FB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				34AD9ED4998FC83EAF830C0B /* FiraSans-Bold.ttf in Resources */,
+				31FF2497DE77034C28DE0134 /* FiraSans-Italic.ttf in Resources */,
+				7354179E4A053ECEE88FACC4 /* FiraSans-Medium.ttf in Resources */,
+				0AF29ACA7E4336A3605A59CB /* FiraSans-OFL.txt in Resources */,
+				48E044A265FB2D830DCA8EF0 /* FiraSans-Regular.ttf in Resources */,
+				6FD7B6F00D092D1B819C3E02 /* FiraSans-SemiBold.ttf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		E90AF119218A2832B2FF3FA0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F6D4E2824150EEE404DCACB5 /* AmyrlinApp.swift in Sources */,
+				FED63C9D31BD47D6F5D4A3BE /* AppModel.swift in Sources */,
+				3E246E97702392C8017B1D82 /* ConversationView.swift in Sources */,
+				C6C2B99C10C1E17992E316B2 /* InspectorView.swift in Sources */,
+				2C96991DCF40CF1BD5BD099E /* SidebarView.swift in Sources */,
+				EF49776FA13371AF809A8701 /* Theme.swift in Sources */,
+				07A9818150EB8F9E60EC74B8 /* TranscriptView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0CCE003944DE08C52DE24B79 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		7DB7F596865BC35E557D7D37 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/Amyrlin.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.bradjohnson.amyrlin;
+				PRODUCT_NAME = Amyrlin;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		BA50B0A098B1325CBE743C4A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/Amyrlin.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.bradjohnson.amyrlin;
+				PRODUCT_NAME = Amyrlin;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		F0D95C96630C438EEB19766C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0C50DB10366AEE27E7E5D798 /* Build configuration list for PBXProject "Amyrlin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F0D95C96630C438EEB19766C /* Debug */,
+				0CCE003944DE08C52DE24B79 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F95622E97485123F42881EB2 /* Build configuration list for PBXNativeTarget "Amyrlin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BA50B0A098B1325CBE743C4A /* Debug */,
+				7DB7F596865BC35E557D7D37 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		5871904AE03F9EB559EF8AA5 /* XCLocalSwiftPackageReference "AmyrlinCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = AmyrlinCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D81DEB64327AF2DB380257AB /* AmyrlinCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AmyrlinCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = AFB9427ACF46C930C084F02E /* Project object */;
+}

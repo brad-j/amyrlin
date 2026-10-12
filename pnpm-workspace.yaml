@@ -1,0 +1,16 @@
+packages:
+  - scratch/*
+  - tools/*
+
+# Pin every @earendil-works package, including transitive ones, to 1.1.0.
+overrides:
+  "@earendil-works/pi-durable": 1.1.0
+  "@earendil-works/pi-ai": 1.1.0
+  "@earendil-works/chord": 1.1.0
+  "@earendil-works/pi-telemetry": 1.1.0
+
+# No dependency install scripts run in this project.
+allowBuilds:
+  esbuild: false
+  protobufjs: false
+  "@google/genai": false

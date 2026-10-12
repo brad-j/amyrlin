@@ -1,0 +1,49 @@
+# XcodeGen spec for the app. Generate the project with `xcodegen generate`; do not edit Amyrlin.xcodeproj by hand.
+name: Amyrlin
+options:
+  bundleIdPrefix: io.bradjohnson
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+packages:
+  AmyrlinCore:
+    path: AmyrlinCore
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+targets:
+  Amyrlin:
+    type: application
+    platform: macOS
+    sources:
+      - App
+    dependencies:
+      - package: AmyrlinCore
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Amyrlin
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSApplicationCategoryType: public.app-category.developer-tools
+        # Fira Sans (SIL OFL 1.1, App/Fonts) is copied flat into Resources and registered from there.
+        ATSApplicationFontsPath: "."
+        NSHumanReadableCopyright: ""
+        # Plain ws:// is allowed only to localhost, for the mock server. Real hosts use wss:// through tailscale serve.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    entitlements:
+      path: App/Amyrlin.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.bradjohnson.amyrlin
+        PRODUCT_NAME: Amyrlin
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: YES
+        GENERATE_INFOPLIST_FILE: NO
