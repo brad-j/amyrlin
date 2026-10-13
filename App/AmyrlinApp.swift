@@ -34,21 +34,34 @@ struct MainView: View {
 	@Bindable var model: AppModel
 
 	var body: some View {
-		// A plain row instead of NavigationSplitView, whose sidebar floats as a separate panel on macOS 26. This one
-		// is flush, like the inspector, runs under the title bar, and resizes from its edge.
-		HStack(spacing: 0) {
-			if model.showSidebar {
-				SidebarView(model: model)
-					.frame(width: model.sidebarWidth)
-					.overlay(alignment: .trailing) { SidebarEdge(width: $model.sidebarWidth) }
-					.ignoresSafeArea(.container, edges: .top)
-					.transition(.move(edge: .leading))
+		// Plain columns instead of NavigationSplitView and .inspector: the system sidebar floats as a separate panel on
+		// macOS 26, and the system inspector starts its content at its own height. These are flush, run under the title
+		// bar, start with header bands of one height, and sit on one status line, so their rules line up.
+		VStack(spacing: 0) {
+			HStack(spacing: 0) {
+				if model.showSidebar {
+					SidebarView(model: model)
+						.frame(width: model.sidebarWidth)
+						.overlay(alignment: .trailing) { ColumnEdge(width: $model.sidebarWidth, range: 220...420, side: .trailing).ignoresSafeArea(.container, edges: .top) }
+						.transition(.move(edge: .leading))
+				}
+				detail
+					.frame(maxWidth: .infinity, maxHeight: .infinity)
+				if model.showInspector, let selected = model.selected {
+					InspectorView(store: selected.conversation, host: selected.machine.store) { model.showInspector = false }
+						.id(model.selection)
+						.frame(width: model.inspectorWidth)
+						.overlay(alignment: .leading) { ColumnEdge(width: $model.inspectorWidth, range: 240...380, side: .leading).ignoresSafeArea(.container, edges: .top) }
+						.transition(.move(edge: .trailing))
+				}
 			}
-			detail
-				.frame(maxWidth: .infinity, maxHeight: .infinity)
+			StatusLine(model: model)
 		}
 		.background(Palette.paper)
+		.animation(.easeInOut(duration: 0.2), value: model.showInspector)
 		.toolbar(removing: .title)
+		// Each column's colour runs up under the title bar, as before the header bands; the bar draws nothing of its own.
+		.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
 		.toolbar {
 			ToolbarItem(placement: .navigation) {
 				Button {
@@ -58,22 +71,6 @@ struct MainView: View {
 				}
 				.help("Show or hide the sidebar (⌃⌘S)")
 			}
-		}
-		// On the row, not the detail: the detail is rebuilt per selection, which dropped the inspector.
-		.inspector(isPresented: $model.showInspector) {
-			Group {
-				if let selected = model.selected {
-					InspectorView(store: selected.conversation, host: selected.machine.store) { model.showInspector = false }
-						.id(model.selection)
-				} else {
-					Text("No conversation selected")
-						.font(Typography.ui)
-						.foregroundStyle(Palette.tertiaryText)
-						.frame(maxWidth: .infinity, maxHeight: .infinity)
-						.background(Palette.panel)
-				}
-			}
-			.inspectorColumnWidth(min: 240, ideal: 280, max: 380)
 		}
 		.sheet(isPresented: $model.isAddingMachine) {
 			AddMachineSheet(model: model)
@@ -92,32 +89,95 @@ struct MainView: View {
 	}
 
 	@ViewBuilder private var detail: some View {
-			if let selected = model.selected {
-				ConversationView(
-					store: selected.conversation,
-					host: selected.machine.store,
-					showInspector: $model.showInspector,
-					rename: { model.renaming = model.selection }
-				)
-				.id(model.selection)
-			} else if let draft = model.draft, let machine = model.machine(draft.machine) {
-				DraftView(model: model, machine: machine, project: draft.project)
-					.id(draft.project?.dir ?? "no project")
-			} else if model.machines.isEmpty {
+		if let selected = model.selected {
+			ConversationView(
+				store: selected.conversation,
+				host: selected.machine.store,
+				showInspector: $model.showInspector,
+				rename: { model.renaming = model.selection }
+			)
+			.id(model.selection)
+		} else if let draft = model.draft, let machine = model.machine(draft.machine) {
+			DraftView(model: model, machine: machine, project: draft.project)
+				.id(draft.project?.dir ?? "no project")
+		} else if model.machines.isEmpty {
+			VStack(spacing: 0) {
+				HeaderBar()
 				SetupGuide { model.isAddingMachine = true }
-			} else {
-				Text("Select a conversation")
-					.font(Typography.ui)
-					.foregroundStyle(Palette.tertiaryText)
-					.frame(maxWidth: .infinity, maxHeight: .infinity)
-					.background(Palette.background)
 			}
+		} else {
+			VStack(spacing: 0) {
+				HeaderBar()
+				Text("Select a session, or ⌘N for a new one")
+					.font(Typography.ui)
+					.foregroundStyle(Palette.ink3)
+					.frame(maxWidth: .infinity, maxHeight: .infinity)
+			}
+			.background(Palette.paper)
+		}
 	}
 }
 
-/// The sidebar's right edge: a hairline that resizes the sidebar when dragged.
-private struct SidebarEdge: View {
+/// The window's foot, as in tmux or vim, across every column: the session's host, model, thinking, context and run
+/// state; a draft's host; or with nothing open, each machine and whether it's connected.
+private struct StatusLine: View {
+	let model: AppModel
+
+	var body: some View {
+		HStack(spacing: 0) {
+			if let selected = model.selected {
+				let store = selected.conversation
+				host(selected.machine.store)
+				segment(ComposerView.modelLine(store: store, host: selected.machine.store))
+				Spacer(minLength: 8)
+				if !store.state.inbox.isEmpty { segment("\(store.state.inbox.count) queued", trailing: true) }
+				if !store.state.approvals.isEmpty {
+					Text("needs you").foregroundStyle(Palette.wait).padding(.trailing, 14)
+				}
+				Text(store.state.isBusy ? "running" : "idle")
+					.foregroundStyle(store.state.isBusy ? Palette.accent : Palette.ink3)
+			} else if let draft = model.draft, let machine = model.machine(draft.machine) {
+				host(machine.store)
+				segment("new session")
+				Spacer(minLength: 8)
+			} else {
+				ForEach(Array(model.machines.enumerated()), id: \.element.id) { index, machine in
+					if index > 0 { Text("  │  ").foregroundStyle(Palette.rule2) }
+					host(machine.store)
+				}
+				Spacer(minLength: 8)
+			}
+		}
+		.font(Typography.uiSmall)
+		.lineLimit(1)
+		.padding(.horizontal, 16)
+		.frame(height: Metrics.statusBar)
+		.background(Palette.panel)
+		.overlay(alignment: .top) { Rectangle().fill(Palette.rule).frame(height: 1) }
+	}
+
+	private func host(_ store: HostStore) -> some View {
+		HStack(spacing: 7) {
+			StatusDot(color: Palette.color(for: store.status), pulsing: !store.isConnected)
+			Text(store.state.host?.name ?? store.url.host() ?? "host").foregroundStyle(Palette.ink2)
+		}
+	}
+
+	private func segment(_ text: String, trailing: Bool = false) -> some View {
+		HStack(spacing: 0) {
+			if !trailing { Text("  │  ").foregroundStyle(Palette.rule2) }
+			Text(text).foregroundStyle(Palette.ink3)
+			if trailing { Text("  │  ").foregroundStyle(Palette.rule2) }
+		}
+	}
+}
+
+/// A side column's inner edge: a hairline that resizes the column when dragged. `side` is where the edge is on the
+/// column, so dragging away from the column widens it either way.
+private struct ColumnEdge: View {
 	@Binding var width: CGFloat
+	let range: ClosedRange<CGFloat>
+	let side: HorizontalEdge
 	@State private var start: CGFloat?
 	@State private var hovering = false
 
@@ -139,7 +199,8 @@ private struct SidebarEdge: View {
 							.onChanged { value in
 								let origin = start ?? width
 								start = origin
-								width = min(max(origin + value.translation.width, 220), 420)
+								let delta = side == .trailing ? value.translation.width : -value.translation.width
+								width = min(max(origin + delta, range.lowerBound), range.upperBound)
 							}
 							.onEnded { _ in start = nil }
 					)

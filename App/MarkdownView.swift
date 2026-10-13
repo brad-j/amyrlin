@@ -24,7 +24,7 @@ private struct BlockView: View {
 		case .paragraph(let text):
 			Inline(text)
 		case .heading(let level, let text):
-			Text(Inline.attributed(text))
+			Text(Inline.attributed(text, strong: Typography.heading(level)))
 				.font(Typography.heading(level))
 				.foregroundStyle(Palette.ink)
 				.padding(.top, level <= 2 ? 6 : 2)
@@ -88,9 +88,13 @@ private struct Inline: View {
 			.tint(Palette.accent)
 	}
 
-	static func attributed(_ text: String) -> AttributedString {
+	/// `strong` is the font for **bold**; left to SwiftUI it would be Plex Bold, three steps above light text.
+	static func attributed(_ text: String, strong: Font = Typography.readingStrong) -> AttributedString {
 		let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
 		var attributed = (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+		for run in attributed.runs where run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true {
+			attributed[run.range].font = strong
+		}
 		for run in attributed.runs where run.inlinePresentationIntent?.contains(.code) == true {
 			attributed[run.range].font = Typography.inlineCode
 			attributed[run.range].foregroundColor = Palette.ink
@@ -152,14 +156,14 @@ private struct TableBlock: View {
 		Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 7) {
 			GridRow {
 				ForEach(Array(header.enumerated()), id: \.offset) { _, cell in
-					Text(Inline.attributed(cell)).font(Typography.readingSmall.weight(.semibold)).foregroundStyle(Palette.ink2)
+					Text(Inline.attributed(cell, strong: Typography.readingSmallStrong)).font(Typography.readingSmallStrong).foregroundStyle(Palette.ink2)
 				}
 			}
 			Rectangle().fill(Palette.rule).frame(height: 1).gridCellUnsizedAxes(.horizontal)
 			ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
 				GridRow {
 					ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
-						Text(Inline.attributed(cell)).font(Typography.readingSmall).foregroundStyle(Palette.ink)
+						Text(Inline.attributed(cell, strong: Typography.readingSmallStrong)).font(Typography.readingSmall).foregroundStyle(Palette.ink)
 					}
 				}
 			}

@@ -13,17 +13,23 @@ import SwiftUI
 /// Every typeface the app uses, both bundled in App/Fonts under the SIL OFL. The transcript reads in IBM Plex Sans;
 /// every other surface, from the sidebar to the status line, is IBM Plex Mono, its monospaced sibling.
 /// Every size goes through `scale`, so all text grows or shrinks together (a font-size setting can set it later).
+/// Text is light and emphasis is regular; light text on the dark paper reads as heavy as regular does on white.
 enum Typography {
 	static let scale: CGFloat = 1.15
-	private static func sans(_ size: CGFloat) -> Font { .custom("IBM Plex Sans", size: size * scale) }
-	/// Both families ship one file per weight; `.weight(_:)` picks among the bundled ones.
-	private static func mono(_ size: CGFloat) -> Font { .custom("IBM Plex Mono", size: size * scale) }
+	/// Both families ship one file per weight; `.weight(_:)` picks among the bundled ones, light to bold.
+	private static func sans(_ size: CGFloat, _ weight: Font.Weight = .light) -> Font {
+		.custom("IBM Plex Sans", size: size * scale).weight(weight)
+	}
+	private static func mono(_ size: CGFloat, _ weight: Font.Weight = .light) -> Font {
+		.custom("IBM Plex Mono", size: size * scale).weight(weight)
+	}
 
 	static let reading = sans(15)
 	static let readingSmall = sans(13)
-	static let readingStrong = sans(15).weight(.semibold)
+	static let readingStrong = sans(15, .medium)
+	static let readingSmallStrong = sans(13, .medium)
 	static func heading(_ level: Int) -> Font {
-		sans([20, 17.5, 16, 15][min(max(level, 1), 4) - 1]).weight(.medium)
+		sans([20, 17.5, 16, 15][min(max(level, 1), 4) - 1], .regular)
 	}
 	static let code = mono(12.5)
 	static let codeSmall = mono(11.5)
@@ -31,10 +37,11 @@ enum Typography {
 	/// Chrome: sidebar rows, the inspector, the picker, the composer, the header.
 	static let ui = mono(12.5)
 	static let uiSmall = mono(11.5)
-	static let uiStrong = mono(12.5).weight(.semibold)
-	static let label = mono(10.5).weight(.medium)
-	static let projectHeader = mono(12.5).weight(.medium)
-	static let machineHeader = mono(14.5).weight(.medium)
+	static let uiStrong = mono(12.5, .regular)
+	static let label = mono(10.5, .regular)
+	static let projectHeader = mono(12.5, .regular)
+	/// A machine's name is a row's size; the computer icon and full ink set it apart.
+	static let machineHeader = mono(12.5, .regular)
 	/// Line height of `codeSmall`, for blocks that keep a fixed number of lines.
 	static let codeSmallLine: CGFloat = 15.5 * scale
 }
@@ -124,6 +131,54 @@ enum Metrics {
 	static let radiusRow: CGFloat = 6 * rounding
 	static let radius: CGFloat = 8 * rounding
 	static let radiusLarge: CGFloat = 14 * rounding
+	/// The header band every column starts with, under the title bar: one height, so their rules make one line.
+	static let bar: CGFloat = 36
+	/// The status line across the foot of the window.
+	static let statusBar: CGFloat = 28
+}
+
+/// A column's header band (`Metrics.bar` tall, a rule under it). The sidebar, the conversation and the inspector each
+/// start with one, so the window reads as one grid.
+struct HeaderBar<Content: View>: View {
+	@ViewBuilder let content: Content
+
+	init(@ViewBuilder content: () -> Content = { EmptyView() }) {
+		self.content = content()
+	}
+
+	var body: some View {
+		HStack(spacing: 0) { content }
+			.font(Typography.ui)
+			.lineLimit(1)
+			.padding(.horizontal, 16)
+			.frame(maxWidth: .infinity, minHeight: Metrics.bar, maxHeight: Metrics.bar, alignment: .leading)
+			.overlay(alignment: .bottom) { Rectangle().fill(Palette.rule).frame(height: 1) }
+	}
+}
+
+/// A quiet bracketed command for header bands and the status line: `[hide]`, `[+ add]`.
+struct BracketButton: View {
+	let title: String
+	var color: Color = Palette.ink3
+	let action: () -> Void
+	@State private var hovering = false
+
+	init(_ title: String, color: Color = Palette.ink3, action: @escaping () -> Void) {
+		self.title = title
+		self.color = color
+		self.action = action
+	}
+
+	var body: some View {
+		Button(action: action) {
+			Text("[\(title)]")
+				.font(Typography.uiSmall)
+				.foregroundStyle(hovering ? Palette.ink : color)
+				.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.onHover { hovering = $0 }
+	}
 }
 
 /// A state mark: shape and colour together, as in aludra (spinner, amber diamond, red cross, check, square).
@@ -216,7 +271,7 @@ extension Date {
 	}
 }
 
-/// A group in a side panel (sidebar and inspector): a small-caps label, its content, a hairline under it.
+/// A group in a side panel: a small-caps label and its content, set off from the next by space.
 /// Given `collapsed`, the label becomes a button with a chevron that folds the content away; `trailing` shows
 /// beside the label (a count while folded).
 struct PanelSection<Content: View>: View {
@@ -266,8 +321,9 @@ struct PanelSection<Content: View>: View {
 			if !isCollapsed { content }
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.padding(.vertical, 14)
-		.overlay(alignment: .bottom) { Rectangle().fill(Palette.rule).frame(height: 1) }
+		// Space between sections, no rule, as between the sidebar's machines.
+		.padding(.top, 18)
+		.padding(.bottom, 4)
 	}
 
 	private var label: some View {

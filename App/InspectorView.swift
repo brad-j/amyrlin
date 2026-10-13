@@ -15,101 +15,100 @@ struct InspectorView: View {
 	private var thinking: ThinkingLevel? { settings?.stored.thinkingLevel ?? settings?.effective.thinkingLevel }
 
 	var body: some View {
-		ScrollView {
-			VStack(alignment: .leading, spacing: 0) {
-				HStack {
-					Spacer()
-					Button("[hide]", action: hide)
-						.buttonStyle(.plain)
-						.font(Typography.ui)
-						.foregroundStyle(Palette.ink3)
-						.help("Hide the inspector (⌥⌘I)")
-				}
-				.padding(.top, 6)
-				PanelSection("Agent") {
-					Row("Model") {
-					Menu {
-						ForEach(models) { model in
-							Button(model.name ?? model.modelId) {
-								Task { await store.configure(SettingsChange(model: .set(model.ref))) }
-							}
-						}
-					} label: {
-						Value(currentInfo?.name ?? currentModel?.modelId ?? "—", chevron: true)
-					}
-					.menuStyle(.button)
-					.buttonStyle(.plain)
-					.fixedSize()
-					.disabled(models.isEmpty)
-					}
-					Row("Thinking") {
-						Menu {
-							ForEach(currentInfo?.thinkingLevels ?? ThinkingLevel.known, id: \.self) { level in
-								Button(level.rawValue) {
-									Task { await store.configure(SettingsChange(thinkingLevel: .set(level))) }
-								}
-							}
-						} label: {
-							Value(thinking?.rawValue ?? "—", chevron: true)
-						}
-						.menuStyle(.button)
-						.buttonStyle(.plain)
-						.fixedSize()
-					}
-				}
-				if let dir = settings?.effective.cwd ?? settings?.stored.cwd {
-					PanelSection(store.state.conversation?.project ?? "no project · scratch", titleColor: store.state.conversation?.project.map { Palette.project($0, in: host.state.projectColors) } ?? Palette.ink3) {
-						Text(ConversationView.shortPath(dir))
-							.font(Typography.codeSmall)
-							.foregroundStyle(Palette.ink2)
-							.textSelection(.enabled)
-							.lineLimit(3)
-					}
-				}
-				PanelSection("Context") {
-					if let used = contextUsed, let window = currentInfo?.contextWindow, window > 0 {
-						let fraction = min(1, Double(used) / Double(window))
-						VStack(alignment: .leading, spacing: 6) {
-							HStack {
-								Text("\(ComposerView.tokens(used)) of \(ComposerView.tokens(window))")
-								Spacer()
-								Text(fraction.formatted(.percent.precision(.fractionLength(0))))
-									.foregroundStyle(Palette.ink3)
-							}
-							.font(Typography.ui)
-							.foregroundStyle(Palette.ink)
-							.monospacedDigit()
-							Capsule().fill(Palette.rule2).frame(height: 3)
-								.overlay(alignment: .leading) {
-									GeometryReader { proxy in
-										Capsule().fill(fraction > 0.8 ? Palette.wait : Palette.ink2).frame(width: proxy.size.width * fraction)
+		VStack(spacing: 0) {
+			HeaderBar {
+				Text("session").font(Typography.label).foregroundStyle(Palette.ink3).textCase(.uppercase)
+				Spacer()
+				BracketButton("hide", action: hide)
+					.help("Hide the inspector (⌥⌘I)")
+			}
+			ScrollView {
+				VStack(alignment: .leading, spacing: 0) {
+					PanelSection("Agent") {
+						Row("Model") {
+							Menu {
+								ForEach(models) { model in
+									Button(model.name ?? model.modelId) {
+										Task { await store.configure(SettingsChange(model: .set(model.ref))) }
 									}
 								}
+							} label: {
+								Value(currentInfo?.name ?? currentModel?.modelId ?? "—", chevron: true)
+							}
+							.menuStyle(.button)
+							.buttonStyle(.plain)
+							.fixedSize()
+							.disabled(models.isEmpty)
 						}
-					} else {
-						Text("Nothing sent yet").font(Typography.ui).foregroundStyle(Palette.ink3)
+						Row("Thinking") {
+							Menu {
+								ForEach(currentInfo?.thinkingLevels ?? ThinkingLevel.known, id: \.self) { level in
+									Button(level.rawValue) {
+										Task { await store.configure(SettingsChange(thinkingLevel: .set(level))) }
+									}
+								}
+							} label: {
+								Value(thinking?.rawValue ?? "—", chevron: true)
+							}
+							.menuStyle(.button)
+							.buttonStyle(.plain)
+							.fixedSize()
+						}
+					}
+					if let dir = settings?.effective.cwd ?? settings?.stored.cwd {
+						PanelSection(store.state.conversation?.project ?? "no project · scratch", titleColor: store.state.conversation?.project.map { Palette.project($0, in: host.state.projectColors) } ?? Palette.ink3) {
+							Text(ConversationView.shortPath(dir))
+								.font(Typography.codeSmall)
+								.foregroundStyle(Palette.ink2)
+								.textSelection(.enabled)
+								.lineLimit(3)
+						}
+					}
+					PanelSection("Context") {
+						if let used = contextUsed, let window = currentInfo?.contextWindow, window > 0 {
+							let fraction = min(1, Double(used) / Double(window))
+							VStack(alignment: .leading, spacing: 6) {
+								HStack {
+									Text("\(ComposerView.tokens(used)) of \(ComposerView.tokens(window))")
+									Spacer()
+									Text(fraction.formatted(.percent.precision(.fractionLength(0))))
+										.foregroundStyle(Palette.ink3)
+								}
+								.font(Typography.ui)
+								.foregroundStyle(Palette.ink)
+								.monospacedDigit()
+								Capsule().fill(Palette.rule2).frame(height: 3)
+									.overlay(alignment: .leading) {
+										GeometryReader { proxy in
+											Capsule().fill(fraction > 0.8 ? Palette.wait : Palette.ink2).frame(width: proxy.size.width * fraction)
+										}
+									}
+							}
+						} else {
+							Text("Nothing sent yet").font(Typography.ui).foregroundStyle(Palette.ink3)
+						}
+					}
+					PanelSection("Usage") {
+						let spend = store.state.spend
+						Row("Tokens") { Value(spend.total.formatted()) }
+						Row("Output") { Value(spend.output.formatted()) }
+						Row("Cached") { Value(spend.cacheRead.formatted()) }
+						if spend.cost > 0 { Row("Cost") { Value(spend.costText) } }
+					}
+					PanelSection("Context actions") {
+						HStack(spacing: 8) {
+							Button("compact") { Task { await store.compact() } }
+								.buttonStyle(QuietButton())
+								.help("Summarize older messages so the model sees less")
+							Button("new context") { Task { await store.reset() } }
+								.buttonStyle(QuietButton())
+								.help("Start the model from nothing; the transcript stays")
+						}
 					}
 				}
-				PanelSection("Usage") {
-					let spend = store.state.spend
-					Row("Tokens") { Value(spend.total.formatted()) }
-					Row("Output") { Value(spend.output.formatted()) }
-					Row("Cached") { Value(spend.cacheRead.formatted()) }
-					if spend.cost > 0 { Row("Cost") { Value(spend.costText) } }
-				}
-				PanelSection("Context actions") {
-					HStack(spacing: 8) {
-						Button("compact") { Task { await store.compact() } }
-							.buttonStyle(QuietButton())
-							.help("Summarize older messages so the model sees less")
-						Button("new context") { Task { await store.reset() } }
-							.buttonStyle(QuietButton())
-							.help("Start the model from nothing; the transcript stays")
-					}
-				}
+				.padding(.horizontal, 16)
+				.padding(.bottom, 8)
 			}
-			.padding(.horizontal, 16)
-			.padding(.vertical, 8)
 		}
 		.background(Palette.panel)
 	}

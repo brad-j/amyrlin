@@ -57,10 +57,14 @@ final class AppModel {
 	func isCollapsed(machine: UUID, project: String) -> Bool {
 		collapsedProjects.contains("\(machine.uuidString)/\(project)")
 	}
-	var showInspector = true
+	/// Closed at launch; ⌥⌘I or the header's [inspector] opens it.
+	var showInspector = false
 	var showSidebar = true
 	var sidebarWidth: CGFloat = CGFloat(UserDefaults.standard.object(forKey: "sidebarWidth") as? Double ?? 280) {
 		didSet { UserDefaults.standard.set(Double(sidebarWidth), forKey: "sidebarWidth") }
+	}
+	var inspectorWidth: CGFloat = CGFloat(UserDefaults.standard.object(forKey: "inspectorWidth") as? Double ?? 280) {
+		didSet { UserDefaults.standard.set(Double(inspectorWidth), forKey: "inspectorWidth") }
 	}
 	var isAddingMachine = false
 	/// The conversation whose title is being changed.
@@ -126,6 +130,12 @@ final class AppModel {
 				try? await Task.sleep(for: .seconds(2))
 				newConversationMachine = first.id
 			}
+		}
+		// `--args -showInspector` opens the inspector, which starts closed, and `-openDraft` a no-project draft on the
+		// first machine, for screenshots.
+		if ProcessInfo.processInfo.arguments.contains("-showInspector") { showInspector = true }
+		if ProcessInfo.processInfo.arguments.contains("-openDraft"), let first = machines.first {
+			openDraft(on: first.id, project: nil)
 		}
 		#endif
 	}

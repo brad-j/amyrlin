@@ -254,53 +254,67 @@ struct DraftView: View {
 	@State private var sending = false
 	@FocusState private var focused: Bool
 
+	private var canSend: Bool {
+		(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty) && !sending
+	}
+
 	var body: some View {
 		VStack(spacing: 0) {
+			HeaderBar {
+				PathLabel(project: project?.name, dir: project?.dir, colors: machine.store.state.projectColors)
+				Text("new session").foregroundStyle(Palette.ink2)
+				Spacer(minLength: 8)
+			}
 			VStack(spacing: 6) {
 				Text(project?.name ?? "no project")
 					.font(Typography.uiStrong)
 					.foregroundStyle(project.map { Palette.project($0.name, in: machine.store.state.projectColors) } ?? Palette.ink2)
 				Text(project.map { ConversationView.shortPath($0.dir) } ?? "a scratch directory of its own, on \(machine.store.state.host?.name ?? "the host")")
 					.font(Typography.code)
-					.foregroundStyle(Palette.tertiaryText)
+					.foregroundStyle(Palette.ink3)
+				Text(sending ? "starting…" : "↵ starts the session · ⌥↵ new line")
+					.font(Typography.uiSmall)
+					.foregroundStyle(Palette.ink3)
+					.padding(.top, 10)
 			}
 			.frame(maxWidth: .infinity, maxHeight: .infinity)
-			VStack(alignment: .leading, spacing: 4) {
+			VStack(alignment: .leading, spacing: 8) {
 				AttachmentStrip(attachments: attachments)
-				TextField("Message", text: $text, axis: .vertical)
-					.textFieldStyle(.plain)
-					.font(Typography.ui)
-					.lineLimit(1...10)
-					.focused($focused)
-					.disabled(sending)
-					.onKeyPress(.return, phases: .down) { press in
-						if press.modifiers.contains(.option) || press.modifiers.contains(.shift) { return .ignored }
-						send()
-						return .handled
-					}
-					.padding(10)
-					.background(Palette.surface, in: RoundedRectangle(cornerRadius: Metrics.radius))
-					.overlay(RoundedRectangle(cornerRadius: Metrics.radius).stroke(focused ? Palette.accent.opacity(0.5) : Palette.hairline))
-					.acceptsImages(attachments, focused: focused)
-				HStack {
-					Text(sending ? "Starting…" : "Return starts the conversation · ⌥Return new line")
-						.font(Typography.label)
-						.foregroundStyle(Palette.tertiaryText)
-					Spacer()
+				HStack(alignment: .firstTextBaseline, spacing: 10) {
+					Text("❯")
+						.font(Typography.uiStrong)
+						.foregroundStyle(focused ? Palette.accent : Palette.ink3)
+					TextField("first message", text: $text, axis: .vertical)
+						.textFieldStyle(.plain)
+						.font(Typography.ui)
+						.foregroundStyle(Palette.ink)
+						.lineLimit(1...12)
+						.focused($focused)
+						.disabled(sending)
+						.onKeyPress(.return, phases: .down) { press in
+							if press.modifiers.contains(.option) || press.modifiers.contains(.shift) { return .ignored }
+							send()
+							return .handled
+						}
 					Button("[+ image]") { attachments.pick() }
 						.buttonStyle(.plain)
 						.font(Typography.uiSmall)
 						.foregroundStyle(attachments.isFull ? Palette.ink3 : Palette.ink2)
 						.disabled(attachments.isFull || sending)
-						.help("Attach images; you can also drop them on the message or paste them (⌘V)")
+						.help("Attach images; you can also drop them here or paste them (⌘V)")
+					SendButton(enabled: canSend, action: send)
+						.help("Start the session (Return)")
 				}
-				.padding(.horizontal, 2)
 			}
-			.padding(.horizontal, 16)
-			.padding(.top, 8)
-			.padding(.bottom, 10)
+			.promptBox(focused: focused)
+			.acceptsImages(attachments, focused: focused)
+			// The conversation's composer column, so nothing moves when the session opens.
+			.frame(maxWidth: Metrics.measure + 48)
+			.padding(.horizontal, 24)
+			.padding(.bottom, 12)
+			.frame(maxWidth: .infinity)
 		}
-		.background(Palette.background)
+		.background(Palette.paper)
 		.onAppear { focused = true }
 	}
 

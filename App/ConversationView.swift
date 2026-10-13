@@ -13,12 +13,13 @@ struct ConversationView: View {
 
 	var body: some View {
 		VStack(spacing: 0) {
+			ConversationHeader(title: summary?.title ?? store.state.conversation?.title ?? "Conversation", project: summary?.project, dir: summary?.dir, colors: host.state.projectColors, busy: store.state.isBusy, showInspector: $showInspector, rename: rename)
+			// Under the header, so the header stays in line with the side columns' bands.
 			if let problem = store.problem {
 				Banner(text: "Stopped watching: \(problem)", color: Palette.bad)
 			} else if store.isResyncing || !host.isConnected {
 				Banner(text: host.isConnected ? "Catching up" : "Reconnecting to \(host.url.host() ?? "the host")", color: Palette.wait)
 			}
-			ConversationHeader(title: summary?.title ?? store.state.conversation?.title ?? "Conversation", project: summary?.project, dir: summary?.dir, colors: host.state.projectColors, busy: store.state.isBusy, showInspector: $showInspector, rename: rename)
 			TranscriptView(store: store)
 			VStack(spacing: 8) {
 				ForEach(store.state.approvals) { approval in
@@ -28,9 +29,9 @@ struct ConversationView: View {
 			}
 			.frame(maxWidth: Metrics.measure + 48)
 			.padding(.horizontal, 24)
+			.padding(.top, 8)
 			.padding(.bottom, 12)
 			.frame(maxWidth: .infinity)
-			StatusLine(store: store, host: host)
 		}
 		.background(Palette.paper)
 		.alert("Command failed", isPresented: Binding(get: { store.lastError != nil }, set: { if !$0 { store.lastError = nil } })) {
@@ -58,72 +59,41 @@ private struct ConversationHeader: View {
 	let rename: () -> Void
 
 	var body: some View {
+		HeaderBar {
+			PathLabel(project: project, dir: dir, colors: colors)
+			if busy {
+				StateMark(.running, size: 10).padding(.trailing, 6)
+			}
+			Text(title).foregroundStyle(Palette.ink2).truncationMode(.tail)
+				.onTapGesture(count: 2, perform: rename)
+				.help("Double-click to rename")
+			Spacer(minLength: 8)
+			if !showInspector {
+				BracketButton("inspector") { showInspector = true }
+					.help("Show the inspector (⌥⌘I)")
+			}
+		}
+	}
+}
+
+/// Where a session runs, as a console path: `~/1-code/` dim, then the project in its colour, then a gap before what
+/// follows. A no-project session says so: its directory is a scratch one, which says less.
+struct PathLabel: View {
+	let project: String?
+	let dir: String?
+	let colors: [String: Int]
+
+	var body: some View {
 		HStack(spacing: 0) {
 			if project == nil {
-				// A no-project session: its dir is a scratch directory, which says less than this does.
 				Text("no project").foregroundStyle(Palette.ink3)
-				Text("  ").foregroundStyle(Palette.ink3)
 			} else if let dir {
 				let short = ConversationView.shortPath(dir)
 				let parent = project.map { short.hasSuffix($0) ? String(short.dropLast($0.count)) : short + "/" } ?? short
 				Text(parent).foregroundStyle(Palette.ink3)
 				if let project { Text(project).foregroundStyle(Palette.project(project, in: colors)) }
-				Text("  ").foregroundStyle(Palette.ink3)
 			}
-			if busy {
-				StateMark(.running, size: 10).padding(.trailing, 6)
-			}
-			Text(title).foregroundStyle(Palette.ink2).lineLimit(1).truncationMode(.tail)
-				.onTapGesture(count: 2, perform: rename)
-				.help("Double-click to rename")
-			Spacer(minLength: 8)
-			if !showInspector {
-				Button("[inspector]") { showInspector = true }
-					.buttonStyle(.plain)
-					.foregroundStyle(Palette.ink3)
-					.help("Show the inspector (⌥⌘I)")
-			}
-		}
-		.font(Typography.ui)
-		.lineLimit(1)
-		.padding(.horizontal, 16)
-		.padding(.vertical, 9)
-		.overlay(alignment: .bottom) { Rectangle().fill(Palette.rule).frame(height: 1) }
-	}
-}
-
-/// The bottom line, as in tmux or vim: host, model, thinking, context and the run's state.
-private struct StatusLine: View {
-	let store: ConversationStore
-	let host: HostStore
-
-	var body: some View {
-		HStack(spacing: 0) {
-			StatusDot(color: Palette.color(for: host.status), pulsing: !host.isConnected)
-				.padding(.trailing, 7)
-			Text(host.state.host?.name ?? host.url.host() ?? "host").foregroundStyle(Palette.ink2)
-			segment(ComposerView.modelLine(store: store, host: host))
-			Spacer(minLength: 8)
-			if !store.state.inbox.isEmpty { segment("\(store.state.inbox.count) queued", trailing: true) }
-			if !store.state.approvals.isEmpty {
-				Text("needs you").foregroundStyle(Palette.wait).padding(.trailing, 14)
-			}
-			Text(store.state.isBusy ? "running" : "idle")
-				.foregroundStyle(store.state.isBusy ? Palette.accent : Palette.ink3)
-		}
-		.font(Typography.uiSmall)
-		.lineLimit(1)
-		.padding(.horizontal, 16)
-		.padding(.vertical, 5)
-		.background(Palette.panel)
-		.overlay(alignment: .top) { Rectangle().fill(Palette.rule).frame(height: 1) }
-	}
-
-	private func segment(_ text: String, trailing: Bool = false) -> some View {
-		HStack(spacing: 0) {
-			if !trailing { Text("  │  ").foregroundStyle(Palette.rule2) }
-			Text(text).foregroundStyle(Palette.ink3)
-			if trailing { Text("  │  ").foregroundStyle(Palette.rule2) }
+			Text("  ")
 		}
 	}
 }
@@ -224,11 +194,7 @@ struct ComposerView: View {
 			AttachmentStrip(attachments: attachments)
 			line
 		}
-		.padding(.horizontal, 12)
-		.padding(.vertical, 10)
-		.background(Palette.paper2)
-		.overlay(Rectangle().stroke(focused ? Palette.rule2 : Palette.rule))
-		.overlay(alignment: .leading) { Rectangle().fill(focused ? Palette.accent : .clear).frame(width: 2) }
+		.promptBox(focused: focused)
 		.acceptsImages(attachments, focused: focused)
 		.onAppear { focused = true }
 		.onChange(of: busy) { _, now in if !now { steer = false } }
@@ -273,18 +239,8 @@ struct ComposerView: View {
 				.foregroundStyle(attachments.isFull ? Palette.ink3 : Palette.ink2)
 				.disabled(attachments.isFull)
 				.help("Attach images; you can also drop them here or paste them (⌘V)")
-			Button {
-				send(steer: steer)
-			} label: {
-				Text("↵")
-					.font(Typography.uiStrong)
-					.foregroundStyle(canSend ? Palette.accentInk : Palette.ink3)
-					.frame(width: 26, height: 22)
-					.background(canSend ? Palette.accent : Palette.paper3)
-			}
-			.buttonStyle(.plain)
-			.disabled(!canSend)
-			.help("Send (Return)")
+			SendButton(enabled: canSend) { send(steer: steer) }
+				.help("Send (Return)")
 		}
 	}
 
@@ -326,5 +282,34 @@ struct ComposerView: View {
 		guard canSend else { return }
 		text = ""
 		store.send(message, images: attachments.take(), whenBusy: steer ? .steer : .followUp)
+	}
+}
+
+extension View {
+	/// The composer's frame: a raised box with a rule, and the accent down its left edge while it has focus.
+	func promptBox(focused: Bool) -> some View {
+		padding(.horizontal, 12)
+			.padding(.vertical, 10)
+			.background(Palette.paper2)
+			.overlay(Rectangle().stroke(focused ? Palette.rule2 : Palette.rule))
+			.overlay(alignment: .leading) { Rectangle().fill(focused ? Palette.accent : .clear).frame(width: 2) }
+	}
+}
+
+/// The composer's ↵: accent when there's something to send.
+struct SendButton: View {
+	let enabled: Bool
+	let action: () -> Void
+
+	var body: some View {
+		Button(action: action) {
+			Text("↵")
+				.font(Typography.uiStrong)
+				.foregroundStyle(enabled ? Palette.accentInk : Palette.ink3)
+				.frame(width: 26, height: 22)
+				.background(enabled ? Palette.accent : Palette.paper3)
+		}
+		.buttonStyle(.plain)
+		.disabled(!enabled)
 	}
 }

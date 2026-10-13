@@ -9,39 +9,28 @@ struct SidebarView: View {
 	@FocusState private var focused: Bool
 
 	var body: some View {
-		ScrollView {
-			VStack(alignment: .leading, spacing: 0) {
-				ForEach(model.machines) { machine in
-					MachineSection(machine: machine, model: model)
-				}
+		VStack(spacing: 0) {
+			HeaderBar {
+				Text("machines").font(Typography.label).foregroundStyle(Palette.ink3).textCase(.uppercase)
+				Spacer()
+				BracketButton("+ add") { model.isAddingMachine = true }
+					.help("Add a machine (⇧⌘N)")
 			}
-			.padding(.horizontal, 16)
-			// Clear of the window's controls, which sit over the sidebar's top.
-			.padding(.top, 44)
+			ScrollView {
+				VStack(alignment: .leading, spacing: 0) {
+					ForEach(model.machines) { machine in
+						MachineSection(machine: machine, model: model)
+					}
+				}
+				.padding(.horizontal, 16)
+			}
+			.focusable()
+			.focusEffectDisabled()
+			.focused($focused)
+			.onKeyPress(.downArrow) { move(1) }
+			.onKeyPress(.upArrow) { move(-1) }
 		}
 		.background(Palette.panel)
-		.focusable()
-		.focusEffectDisabled()
-		.focused($focused)
-		.onKeyPress(.downArrow) { move(1) }
-		.onKeyPress(.upArrow) { move(-1) }
-		.safeAreaInset(edge: .bottom, spacing: 0) {
-			HStack {
-				Button {
-					model.isAddingMachine = true
-				} label: {
-					Text("+ add machine")
-						.font(Typography.uiSmall)
-				}
-				.buttonStyle(.borderless)
-				.foregroundStyle(Palette.ink3)
-				Spacer()
-			}
-			.padding(.horizontal, 16)
-			.padding(.vertical, 10)
-			.background(Palette.panel)
-			.overlay(alignment: .top) { Rectangle().fill(Palette.rule).frame(height: 1) }
-		}
 	}
 
 	/// Every session the sidebar shows, in order; folded projects are skipped.
@@ -87,7 +76,7 @@ private struct MachineSection: View {
 		VStack(alignment: .leading, spacing: 0) {
 			HStack(spacing: 9) {
 				Image(systemName: "desktopcomputer")
-					.font(.system(size: 15 * Typography.scale, weight: .medium))
+					.font(.system(size: 13 * Typography.scale, weight: .light))
 					.foregroundStyle(Palette.ink2)
 					.overlay(alignment: .bottomTrailing) {
 						StatusDot(color: Palette.color(for: store.status), pulsing: !store.isConnected)
@@ -100,20 +89,15 @@ private struct MachineSection: View {
 					.foregroundStyle(Palette.ink)
 					.lineLimit(1)
 				Spacer()
-				Button {
+				BracketButton("+ new", color: store.isConnected ? Palette.accent : Palette.ink3) {
 					model.newConversationMachine = machine.id
-				} label: {
-					Text("[+ new]")
-						.font(Typography.uiSmall)
-						.foregroundStyle(store.isConnected ? Palette.accent : Palette.ink3)
-						.contentShape(Rectangle())
 				}
-				.buttonStyle(.plain)
 				.help("New session (pick a project)")
 				.disabled(!store.isConnected)
 			}
-			.padding(.vertical, 12)
-			.overlay(alignment: .bottom) { Rectangle().fill(Palette.rule2).frame(height: 1) }
+			// No rule: the icon and full ink mark a machine, and space separates one from the next.
+			.padding(.top, 18)
+			.padding(.bottom, 8)
 			.help(statusHelp)
 			.contextMenu {
 				Button("Remove Machine", role: .destructive) { model.removeMachine(machine.id) }
@@ -154,12 +138,12 @@ private struct MachineSection: View {
 					}
 				}
 			}
-			.padding(.vertical, 12)
+			.padding(.bottom, 6)
 			if store.state.hasSnapshot, store.state.active.isEmpty {
 				Text("No sessions yet")
 					.font(Typography.ui)
 					.foregroundStyle(Palette.ink3)
-					.padding(.vertical, 14)
+					.padding(.vertical, 6)
 			}
 		}
 	}
