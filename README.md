@@ -1,6 +1,28 @@
 # amyrlin
 
-A native macOS client for pi-durable agents. The app connects to each host over one WebSocket on the tailnet and speaks protocol v1 (`docs/protocol.md`). The host it's built for is [aludra](https://github.com/brad-j/aludra), which serves v1 at `wss://aludra.<tailnet>.ts.net/amyrlin` next to its phone app, so the same sessions show on both.
+A native macOS client for coding agents running on your own machines. Each machine runs [aludra](https://github.com/brad-j/aludra), which serves protocol v1 (`docs/protocol.md`) at `wss://<machine>.<tailnet>.ts.net/amyrlin` next to its phone app, so the same sessions show on both. The app connects to every machine you add, over one WebSocket each on the tailnet.
+
+## Setup
+
+1. On each machine whose projects you want, install aludra and run it as a service (its README has the details):
+
+   ```sh
+   git clone git@github.com:brad-j/aludra.git && cd aludra
+   sh scripts/install.sh
+   aludra init
+   aludra service install
+   tailscale serve --bg 8724
+   ```
+
+   `aludra doctor` checks the machine and prints the address to add.
+2. Build and install the app on this Mac (needs Xcode and XcodeGen): `sh scripts/install.sh`.
+3. In the app, add each machine by its address, `wss://<machine>.<tailnet>.ts.net/amyrlin`, or just its tailnet name.
+   A machine that can't connect says why under its name in the sidebar.
+
+The app is signed for this Mac only (ad hoc, no Developer ID). To use it on another Mac, build it there, or copy
+`/Applications/Amyrlin.app` across. If it was copied in a way that marks it as downloaded (AirDrop, a browser), macOS
+refuses to open it the first time: open it once, then allow it in System Settings → Privacy & Security → Open Anyway,
+or run `xattr -dr com.apple.quarantine /Applications/Amyrlin.app`. Copies made with `scp` or `rsync` open directly.
 
 ## Layout
 

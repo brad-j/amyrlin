@@ -174,7 +174,7 @@ public actor HostConnection {
 				}
 				reason = String(describing: error)
 			} catch {
-				reason = String(describing: error)
+				reason = ConnectionTrouble.explain(error)
 			}
 			if Task.isCancelled { return }
 			dropConnection(reason: reason)

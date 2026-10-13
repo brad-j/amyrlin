@@ -100,14 +100,7 @@ struct MainView: View {
 				DraftView(model: model, machine: machine, project: draft.project)
 					.id(draft.project?.dir ?? "no project")
 			} else if model.machines.isEmpty {
-				VStack(spacing: 10) {
-					Text("No machines yet")
-						.font(Typography.ui)
-						.foregroundStyle(Palette.secondaryText)
-					Button("Add Machine…") { model.isAddingMachine = true }
-				}
-				.frame(maxWidth: .infinity, maxHeight: .infinity)
-				.background(Palette.background)
+				SetupGuide { model.isAddingMachine = true }
 			} else {
 				Text("Select a conversation")
 					.font(Typography.ui)
@@ -147,6 +140,57 @@ private struct SidebarEdge: View {
 							.onEnded { _ in start = nil }
 					)
 			}
+	}
+}
+
+/// The window with no machines: what a machine needs, the commands that set one up, and the way to add it.
+struct SetupGuide: View {
+	let add: () -> Void
+
+	private static let commands = [
+		"git clone git@github.com:brad-j/aludra.git && cd aludra",
+		"sh scripts/install.sh",
+		"aludra init",
+		"aludra service install",
+		"tailscale serve --bg 8724",
+	]
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 18) {
+			Text("connect a machine").font(Typography.label).foregroundStyle(Palette.ink3).textCase(.uppercase)
+			Text("Amyrlin runs your sessions on your own machines. Each machine whose projects you want runs aludra, with Claude Code and Tailscale, and Amyrlin connects to it over your tailnet.")
+				.font(Typography.reading)
+				.foregroundStyle(Palette.ink2)
+				.fixedSize(horizontal: false, vertical: true)
+			VStack(alignment: .leading, spacing: 6) {
+				Text("on the machine").font(Typography.label).foregroundStyle(Palette.ink3).textCase(.uppercase)
+				VStack(alignment: .leading, spacing: 4) {
+					ForEach(Self.commands, id: \.self) { command in
+						HStack(alignment: .firstTextBaseline, spacing: 8) {
+							Text("$").foregroundStyle(Palette.accent)
+							Text(command).foregroundStyle(Palette.ink)
+						}
+					}
+				}
+				.font(Typography.code)
+				.textSelection(.enabled)
+				.padding(14)
+				.frame(maxWidth: .infinity, alignment: .leading)
+				.background(Palette.panel)
+				.overlay(Rectangle().stroke(Palette.rule, lineWidth: 1))
+			}
+			Text("It needs Node 22.18 or later, pnpm, Claude Code logged in (claude auth login) and Tailscale. aludra doctor checks all of it and prints the address to add here.")
+				.font(Typography.uiSmall)
+				.foregroundStyle(Palette.ink3)
+				.fixedSize(horizontal: false, vertical: true)
+			Button("↵ add machine", action: add)
+				.buttonStyle(QuietButton(fill: Palette.accent, ink: Palette.accentInk))
+				.keyboardShortcut(.defaultAction)
+		}
+		.frame(maxWidth: 600 * Typography.scale, alignment: .leading)
+		.padding(40)
+		.frame(maxWidth: .infinity, maxHeight: .infinity)
+		.background(Palette.background)
 	}
 }
 
@@ -216,7 +260,7 @@ struct AddMachineSheet: View {
 						Text(problem.text).foregroundStyle(problem.isEmpty ? Palette.ink3 : Palette.bad)
 					}
 				}
-				Text("wss:// and the /amyrlin path are filled in when you leave them out. Tailscale says who you are, so there's nothing to sign in to.")
+				Text("On the machine, aludra doctor prints this address. wss:// and the /amyrlin path are filled in when you leave them out. Tailscale says who you are, so there's nothing to sign in to.")
 					.foregroundStyle(Palette.ink3)
 					.fixedSize(horizontal: false, vertical: true)
 			}

@@ -118,6 +118,14 @@ private struct MachineSection: View {
 			.contextMenu {
 				Button("Remove Machine", role: .destructive) { model.removeMachine(machine.id) }
 			}
+			if let trouble {
+				Text(trouble)
+					.font(Typography.uiSmall)
+					.foregroundStyle(Palette.wait)
+					.fixedSize(horizontal: false, vertical: true)
+					.textSelection(.enabled)
+					.padding(.top, 10)
+			}
 
 			VStack(alignment: .leading, spacing: 10) {
 				ForEach(Self.groups(store), id: \.project) { group in
@@ -155,6 +163,15 @@ private struct MachineSection: View {
 		if sessions.contains(where: { $0.status == .needsApproval }) { return "needs you" }
 		if sessions.contains(where: { $0.status == .busy }) { return "working" }
 		return "\(sessions.count)"
+	}
+
+	/// Why the machine isn't connected and what to do, once a try has failed.
+	private var trouble: String? {
+		switch store.status {
+		case .waiting(_, let error): error
+		case .failed(let reason): reason
+		default: nil
+		}
 	}
 
 	private var statusHelp: String {

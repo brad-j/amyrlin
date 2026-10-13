@@ -17,6 +17,13 @@ public protocol WebSocketConnection: Sendable {
 
 public struct TransportClosed: Error, Sendable {}
 
+/// The server answered the WebSocket upgrade with an HTTP status instead of switching protocols: 403 when tailscale
+/// serve's login isn't let in, 502 when nothing answers behind tailscale serve.
+public struct UpgradeRefused: Error, Sendable, Hashable {
+	public let status: Int
+	public init(status: Int) { self.status = status }
+}
+
 /// `URLSessionWebSocketTask` behind `WebSocketTransport`.
 public struct URLSessionTransport: WebSocketTransport {
 	public init() {}
@@ -34,15 +41,31 @@ private struct URLSessionConnection: WebSocketConnection {
 	let task: URLSessionWebSocketTask
 
 	func send(_ text: String) async throws {
-		try await task.send(.string(text))
+		do {
+			try await task.send(.string(text))
+		} catch {
+			throw refusal(error)
+		}
 	}
 
 	func receive() async throws -> String {
-		switch try await task.receive() {
+		let message: URLSessionWebSocketTask.Message
+		do {
+			message = try await task.receive()
+		} catch {
+			throw refusal(error)
+		}
+		switch message {
 		case .string(let text): return text
 		case .data(let data): return String(decoding: data, as: UTF8.self)
 		@unknown default: throw TransportClosed()
 		}
+	}
+
+	/// The upgrade's HTTP status when the server refused it, else the error as it came.
+	private func refusal(_ error: any Error) -> any Error {
+		if let http = task.response as? HTTPURLResponse, http.statusCode != 101 { return UpgradeRefused(status: http.statusCode) }
+		return error
 	}
 
 	func ping() async throws {

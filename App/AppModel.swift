@@ -75,12 +75,24 @@ final class AppModel {
 		version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
 	)
 
+	/// Machines given at launch for screenshots, which are never saved over the real list.
+	private var ephemeral = false
+
 	init() {
 		let saved = UserDefaults.standard.array(forKey: Self.defaultsKey) as? [[String: String]] ?? []
-		let entries = saved.compactMap { entry -> (UUID, URL)? in
+		var entries = saved.compactMap { entry -> (UUID, URL)? in
 			guard let id = entry["id"].flatMap(UUID.init(uuidString:)), let url = entry["url"].flatMap(URL.init(string:)) else { return nil }
 			return (id, url)
 		}
+		#if DEBUG
+		// `--args -ephemeralMachines "wss://a/amyrlin wss://b/amyrlin"` (or "" for none) replaces the machines for this
+		// launch only, for screenshots.
+		let arguments = ProcessInfo.processInfo.arguments
+		if let flag = arguments.firstIndex(of: "-ephemeralMachines"), flag + 1 < arguments.count {
+			ephemeral = true
+			entries = arguments[flag + 1].split(separator: " ").compactMap { URL(string: String($0)) }.map { (UUID(), $0) }
+		}
+		#endif
 		for (id, url) in entries {
 			machines.append(makeMachine(id: id, url: url))
 		}
@@ -168,6 +180,7 @@ final class AppModel {
 	}
 
 	private func save() {
+		guard !ephemeral else { return }
 		UserDefaults.standard.set(machines.map { ["id": $0.id.uuidString, "url": $0.url.absoluteString] }, forKey: Self.defaultsKey)
 	}
 }
