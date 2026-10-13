@@ -13,7 +13,7 @@ struct SidebarView: View {
 			HeaderBar {
 				Text("machines").font(Typography.label).foregroundStyle(Palette.ink3).textCase(.uppercase)
 				Spacer()
-				BracketButton("+ add") { model.isAddingMachine = true }
+				IconButton("plus") { model.isAddingMachine = true }
 					.help("Add a machine (⇧⌘N)")
 			}
 			ScrollView {
@@ -91,7 +91,7 @@ private struct MachineSection: View {
 					.foregroundStyle(Palette.ink)
 					.lineLimit(1)
 				Spacer()
-				BracketButton("+ new", color: store.isConnected ? Palette.accent : Palette.ink3) {
+				IconButton("square.and.pencil", color: store.isConnected ? Palette.accent : Palette.ink3) {
 					model.newConversationMachine = machine.id
 				}
 				.help("New session (pick a project)")

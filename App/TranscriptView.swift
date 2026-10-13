@@ -223,11 +223,6 @@ private struct ThinkingRow: View {
 					HStack(spacing: 8) {
 						Text(streaming ? "thinking" : "thought")
 						if streaming { StateMark(.running, size: 9) }
-						if !expanded {
-							Text(redacted ? "redacted" : preview)
-								.lineLimit(1)
-								.truncationMode(.tail)
-						}
 					}
 					.font(Typography.uiSmall)
 					.foregroundStyle(Palette.ink3)
@@ -244,10 +239,6 @@ private struct ThinkingRow: View {
 			}
 		}
 		.padding(.vertical, 4)
-	}
-
-	private var preview: String {
-		text.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
 	}
 }
 

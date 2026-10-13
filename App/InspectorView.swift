@@ -19,7 +19,7 @@ struct InspectorView: View {
 			HeaderBar {
 				Text("session").font(Typography.label).foregroundStyle(Palette.ink3).textCase(.uppercase)
 				Spacer()
-				BracketButton("hide", action: hide)
+				IconButton("sidebar.right", color: Palette.ink2, action: hide)
 					.help("Hide the inspector (⌥⌘I)")
 			}
 			ScrollView {
@@ -27,11 +27,7 @@ struct InspectorView: View {
 					PanelSection("Agent") {
 						Row("Model") {
 							Menu {
-								ForEach(models) { model in
-									Button(model.name ?? model.modelId) {
-										Task { await store.configure(SettingsChange(model: .set(model.ref))) }
-									}
-								}
+								ModelChoices(store: store, host: host)
 							} label: {
 								Value(currentInfo?.name ?? currentModel?.modelId ?? "—", chevron: true)
 							}
@@ -42,11 +38,7 @@ struct InspectorView: View {
 						}
 						Row("Thinking") {
 							Menu {
-								ForEach(currentInfo?.thinkingLevels ?? ThinkingLevel.known, id: \.self) { level in
-									Button(level.rawValue) {
-										Task { await store.configure(SettingsChange(thinkingLevel: .set(level))) }
-									}
-								}
+								ThinkingChoices(store: store, host: host)
 							} label: {
 								Value(thinking?.rawValue ?? "—", chevron: true)
 							}
@@ -120,6 +112,38 @@ struct InspectorView: View {
 			}
 		}
 		return nil
+	}
+}
+
+/// The models a session's host offers, as menu items; picking one configures the session. The inspector and the status
+/// line both use it.
+struct ModelChoices: View {
+	let store: ConversationStore
+	let host: HostStore
+
+	var body: some View {
+		ForEach(host.info?.models ?? []) { model in
+			Button(model.name ?? model.modelId) {
+				Task { await store.configure(SettingsChange(model: .set(model.ref))) }
+			}
+		}
+	}
+}
+
+/// The thinking levels the session's model takes, as menu items.
+struct ThinkingChoices: View {
+	let store: ConversationStore
+	let host: HostStore
+
+	var body: some View {
+		let settings = store.state.settings
+		let ref = settings?.stored.model ?? settings?.effective.model
+		let info = ref.flatMap { ref in host.info?.models.first { $0.ref == ref } }
+		ForEach(info?.thinkingLevels ?? ThinkingLevel.known, id: \.self) { level in
+			Button(level.rawValue) {
+				Task { await store.configure(SettingsChange(thinkingLevel: .set(level))) }
+			}
+		}
 	}
 }
 

@@ -133,7 +133,8 @@ private struct StatusLine: View {
 			if let selected = model.selected {
 				let store = selected.conversation
 				host(selected.machine.store)
-				segment(ComposerView.modelLine(store: store, host: selected.machine.store))
+				Text("  │  ").foregroundStyle(Palette.rule2)
+				SessionSettingsLine(store: store, host: selected.machine.store)
 				Spacer(minLength: 8)
 				if !store.state.inbox.isEmpty { segment("\(store.state.inbox.count) queued", trailing: true) }
 				if !store.state.approvals.isEmpty {
@@ -174,6 +175,57 @@ private struct StatusLine: View {
 			Text(text).foregroundStyle(Palette.ink3)
 			if trailing { Text("  │  ").foregroundStyle(Palette.rule2) }
 		}
+	}
+}
+
+/// The status line's model, thinking and context: `opus 5.5 · high · ctx 24k/1M`. The model and thinking are menus, as
+/// in the inspector, so either can change without opening it.
+private struct SessionSettingsLine: View {
+	let store: ConversationStore
+	let host: HostStore
+
+	var body: some View {
+		let settings = store.state.settings
+		let thinking = settings?.stored.thinkingLevel ?? settings?.effective.thinkingLevel
+		let context = ComposerView.contextLine(store: store, host: host)
+		HStack(spacing: 0) {
+			if let model = ComposerView.modelName(store: store, host: host) {
+				StatusMenu(model) { ModelChoices(store: store, host: host) }
+					.help("Change the model")
+					.disabled(host.info?.models.isEmpty ?? true)
+			}
+			if let thinking {
+				Text(" · ").foregroundStyle(Palette.ink3)
+				StatusMenu(thinking.rawValue) { ThinkingChoices(store: store, host: host) }
+					.help("Change the thinking level")
+			}
+			if let context {
+				Text(" · \(context)").foregroundStyle(Palette.ink3)
+			}
+		}
+	}
+}
+
+/// A status-line value that opens a menu: dim like the rest of the line, full ink under the pointer.
+private struct StatusMenu<Items: View>: View {
+	let title: String
+	@ViewBuilder let items: Items
+	@State private var hovering = false
+
+	init(_ title: String, @ViewBuilder items: () -> Items) {
+		self.title = title
+		self.items = items()
+	}
+
+	var body: some View {
+		Menu { items } label: {
+			Text(title).foregroundStyle(hovering ? Palette.ink : Palette.ink3)
+		}
+		.menuStyle(.button)
+		.buttonStyle(.plain)
+		.menuIndicator(.hidden)
+		.fixedSize()
+		.onHover { hovering = $0 }
 	}
 }
 

@@ -163,7 +163,7 @@ struct HeaderBar<Content: View>: View {
 	}
 }
 
-/// A quiet bracketed command for header bands and the status line: `[hide]`, `[+ add]`.
+/// A quiet bracketed command for header bands and the status line: `[−]`, `[reset]`.
 struct BracketButton: View {
 	let title: String
 	var color: Color = Palette.ink3
@@ -181,6 +181,33 @@ struct BracketButton: View {
 			Text("[\(title)]")
 				.font(Typography.uiSmall)
 				.foregroundStyle(hovering ? Palette.ink : color)
+				.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.onHover { hovering = $0 }
+	}
+}
+
+/// A quiet icon command for header bands, in BracketButton's colours: an SF Symbol where the bracket would be text.
+/// Pair it with `.help` so the command still has words.
+struct IconButton: View {
+	let systemName: String
+	var color: Color = Palette.ink3
+	let action: () -> Void
+	@State private var hovering = false
+
+	init(_ systemName: String, color: Color = Palette.ink3, action: @escaping () -> Void) {
+		self.systemName = systemName
+		self.color = color
+		self.action = action
+	}
+
+	var body: some View {
+		Button(action: action) {
+			Image(systemName: systemName)
+				.font(.system(size: 13 * Typography.scale, weight: .light))
+				.foregroundStyle(hovering ? Palette.ink : color)
+				.frame(minWidth: 18 * Typography.scale, minHeight: 18 * Typography.scale)
 				.contentShape(Rectangle())
 		}
 		.buttonStyle(.plain)

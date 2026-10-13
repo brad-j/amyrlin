@@ -57,7 +57,7 @@ final class AppModel {
 	func isCollapsed(machine: UUID, project: String) -> Bool {
 		collapsedProjects.contains("\(machine.uuidString)/\(project)")
 	}
-	/// Closed at launch; ⌥⌘I or the header's [inspector] opens it.
+	/// Closed at launch; ⌥⌘I or the header's inspector button opens it.
 	var showInspector = false
 	var showSidebar = true
 	var sidebarWidth: CGFloat = CGFloat(UserDefaults.standard.object(forKey: "sidebarWidth") as? Double ?? 280) {

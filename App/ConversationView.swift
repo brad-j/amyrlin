@@ -69,7 +69,7 @@ private struct ConversationHeader: View {
 				.help("Double-click to rename")
 			Spacer(minLength: 8)
 			if !showInspector {
-				BracketButton("inspector") { showInspector = true }
+				IconButton("sidebar.right") { showInspector = true }
 					.help("Show the inspector (⌥⌘I)")
 			}
 		}
@@ -249,18 +249,22 @@ struct ComposerView: View {
 	}
 
 	/// "opus 5.5 · high · ctx 38k/1M".
-	@MainActor static func modelLine(store: ConversationStore, host: HostStore) -> String {
+	/// The session's model as the status line names it, lowercased: `opus 5.5`.
+	@MainActor static func modelName(store: ConversationStore, host: HostStore) -> String? {
+		let settings = store.state.settings
+		guard let ref = settings?.stored.model ?? settings?.effective.model else { return nil }
+		let info = host.info?.models.first { $0.ref == ref }
+		return (info?.name ?? ref.modelId).lowercased()
+	}
+
+	/// How full the context is, as the status line says it: `ctx 24k/1M`.
+	@MainActor static func contextLine(store: ConversationStore, host: HostStore) -> String? {
+		guard let used = contextUsed(store) else { return nil }
 		let settings = store.state.settings
 		let ref = settings?.stored.model ?? settings?.effective.model
 		let info = ref.flatMap { ref in host.info?.models.first { $0.ref == ref } }
-		var parts: [String] = []
-		if let ref { parts.append((info?.name ?? ref.modelId).lowercased()) }
-		if let level = settings?.stored.thinkingLevel ?? settings?.effective.thinkingLevel { parts.append(level.rawValue) }
-		if let used = contextUsed(store) {
-			let window = info?.contextWindow.map { "/\(tokens($0))" } ?? ""
-			parts.append("ctx \(tokens(used))\(window)")
-		}
-		return parts.joined(separator: " · ")
+		let window = info?.contextWindow.map { "/\(tokens($0))" } ?? ""
+		return "ctx \(tokens(used))\(window)"
 	}
 
 	/// Tokens the newest answer's request sent: what the context holds now.
