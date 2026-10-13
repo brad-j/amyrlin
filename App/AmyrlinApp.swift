@@ -64,7 +64,7 @@ struct MainView: View {
 						.id(model.selection)
 				} else {
 					Text("No conversation selected")
-						.font(Typography.readingSmall)
+						.font(Typography.ui)
 						.foregroundStyle(Palette.tertiaryText)
 						.frame(maxWidth: .infinity, maxHeight: .infinity)
 						.background(Palette.panel)
@@ -99,7 +99,7 @@ struct MainView: View {
 			} else if model.machines.isEmpty {
 				VStack(spacing: 10) {
 					Text("No machines yet")
-						.font(Typography.reading)
+						.font(Typography.ui)
 						.foregroundStyle(Palette.secondaryText)
 					Button("Add Machine…") { model.isAddingMachine = true }
 				}
@@ -107,7 +107,7 @@ struct MainView: View {
 				.background(Palette.background)
 			} else {
 				Text("Select a conversation")
-					.font(Typography.reading)
+					.font(Typography.ui)
 					.foregroundStyle(Palette.tertiaryText)
 					.frame(maxWidth: .infinity, maxHeight: .infinity)
 					.background(Palette.background)
@@ -168,7 +168,7 @@ struct AddMachineSheet: View {
 				.frame(width: 380)
 				.onSubmit(add)
 			Text("The host's tailscale serve address, for example wss://aludra.example.ts.net/amyrlin.")
-				.font(Typography.readingSmall)
+				.font(Typography.ui)
 				.foregroundStyle(Palette.secondaryText)
 			HStack {
 				Spacer()

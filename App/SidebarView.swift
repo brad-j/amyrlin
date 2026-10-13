@@ -30,8 +30,8 @@ struct SidebarView: View {
 				Button {
 					model.isAddingMachine = true
 				} label: {
-					Label("Add Machine", systemImage: "plus")
-						.font(Typography.label)
+					Text("+ add machine")
+						.font(Typography.uiSmall)
 				}
 				.buttonStyle(.borderless)
 				.foregroundStyle(Palette.ink3)
@@ -88,18 +88,16 @@ private struct MachineSection: View {
 			HStack(spacing: 7) {
 				StatusDot(color: Palette.color(for: store.status), pulsing: !store.isConnected)
 				Text(store.state.host?.name ?? store.info?.host.name ?? machine.url.host() ?? machine.url.absoluteString)
-					.font(Typography.label)
-					.foregroundStyle(Palette.ink3)
-					.textCase(.uppercase)
+					.font(Typography.uiStrong)
+					.foregroundStyle(Palette.ink2)
 					.lineLimit(1)
 				Spacer()
 				Button {
 					model.newConversationMachine = machine.id
 				} label: {
-					Image(systemName: "plus")
-						.font(.system(size: 13, weight: .medium))
-						.foregroundStyle(Palette.ink2)
-						.frame(width: 22, height: 22)
+					Text("[+ new]")
+						.font(Typography.uiSmall)
+						.foregroundStyle(store.isConnected ? Palette.accent : Palette.ink3)
 						.contentShape(Rectangle())
 				}
 				.buttonStyle(.plain)
@@ -113,27 +111,31 @@ private struct MachineSection: View {
 				Button("Remove Machine", role: .destructive) { model.removeMachine(machine.id) }
 			}
 
-			ForEach(Self.groups(store), id: \.project) { group in
-				let collapsed = model.collapsedBinding(machine: machine.id, project: group.project)
-				PanelSection(
-					group.project.isEmpty ? "Sessions" : group.project,
-					titleColor: group.project.isEmpty ? Palette.ink3 : Palette.project(group.project),
-					collapsed: collapsed,
-					trailing: collapsed.wrappedValue ? foldedNote(group.sessions) : nil
-				) {
-					VStack(spacing: 2) {
-						ForEach(group.sessions) { summary in
-							let key = ConversationKey(machine: machine.id, conversation: summary.id)
-							SessionRow(summary: summary, selected: model.selection == key) {
-								model.selection = key
+			VStack(alignment: .leading, spacing: 10) {
+				ForEach(Self.groups(store), id: \.project) { group in
+					let collapsed = model.collapsedBinding(machine: machine.id, project: group.project)
+					VStack(alignment: .leading, spacing: 0) {
+						ProjectRow(
+							name: group.project.isEmpty ? "sessions" : group.project,
+							color: group.project.isEmpty ? Palette.ink3 : Palette.project(group.project),
+							collapsed: collapsed,
+							note: collapsed.wrappedValue ? foldedNote(group.sessions) : nil
+						)
+						if !collapsed.wrappedValue {
+							ForEach(Array(group.sessions.enumerated()), id: \.element.id) { index, summary in
+								let key = ConversationKey(machine: machine.id, conversation: summary.id)
+								SessionRow(summary: summary, last: index == group.sessions.count - 1, selected: model.selection == key) {
+									model.selection = key
+								}
 							}
 						}
 					}
 				}
 			}
+			.padding(.vertical, 12)
 			if store.state.hasSnapshot, store.state.active.isEmpty {
 				Text("No sessions yet")
-					.font(Typography.readingSmall)
+					.font(Typography.ui)
 					.foregroundStyle(Palette.ink3)
 					.padding(.vertical, 14)
 			}
@@ -158,34 +160,69 @@ private struct MachineSection: View {
 	}
 }
 
+/// A project in the tree: `▾ name`, folding its sessions; folded, a count or what needs attention.
+private struct ProjectRow: View {
+	let name: String
+	let color: Color
+	@Binding var collapsed: Bool
+	let note: String?
+
+	var body: some View {
+		Button {
+			withAnimation(.easeInOut(duration: 0.15)) { collapsed.toggle() }
+		} label: {
+			HStack(spacing: 6) {
+				Text(collapsed ? "▸" : "▾").foregroundStyle(Palette.ink3)
+				Text(name).foregroundStyle(color).lineLimit(1)
+				Spacer(minLength: 6)
+				if let note {
+					Text(note)
+						.foregroundStyle(note == "needs you" ? Palette.wait : note == "working" ? Palette.accent : Palette.ink3)
+				}
+			}
+			.font(Typography.projectHeader)
+			.padding(.vertical, 3)
+			.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.help(collapsed ? "Show \(name)" : "Hide \(name)")
+	}
+}
+
+/// A session in the tree: a guide (├ or └), its state mark, its title and age.
 private struct SessionRow: View {
 	let summary: ConversationSummary
+	let last: Bool
 	let selected: Bool
 	let select: () -> Void
 	@State private var hovering = false
 
 	var body: some View {
 		Button(action: select) {
-			HStack(spacing: 9) {
-				StateMark(summary.status, size: 11)
+			HStack(spacing: 7) {
+				Text(last ? "└" : "├")
+					.foregroundStyle(Palette.rule2)
+				StateMark(summary.status, size: 10)
 				Text(summary.title)
-					.font(Typography.readingSmall)
 					.foregroundStyle(selected ? Palette.ink : Palette.ink2)
 					.lineLimit(1)
 					.truncationMode(.tail)
 				Spacer(minLength: 6)
 				Text(Date(timeIntervalSince1970: TimeInterval(summary.updatedAt) / 1000).shortAge)
-					.font(Typography.label)
 					.foregroundStyle(Palette.ink3)
 					.monospacedDigit()
 			}
-			.padding(.horizontal, 8)
-			.padding(.vertical, 6)
-			.background(selected ? (summary.project.map(Palette.projectWash) ?? Palette.selection) : hovering ? Palette.paper2 : .clear, in: RoundedRectangle(cornerRadius: Metrics.radiusRow))
+			.font(Typography.ui)
+			.padding(.leading, 2)
+			.padding(.trailing, 6)
+			.padding(.vertical, 4)
+			.background(selected ? (summary.project.map(Palette.projectWash) ?? Palette.selection) : hovering ? Palette.paper2 : .clear)
+			.overlay(alignment: .leading) {
+				if selected { Rectangle().fill(summary.project.map(Palette.project) ?? Palette.accent).frame(width: 2) }
+			}
 			.contentShape(Rectangle())
 		}
 		.buttonStyle(.plain)
-		.padding(.horizontal, -8)
 		.onHover { hovering = $0 }
 		.help(summary.title)
 	}

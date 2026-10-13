@@ -35,10 +35,10 @@ struct NewConversationSheet: View {
 	var body: some View {
 		VStack(spacing: 0) {
 			HStack(spacing: 10) {
-				Image(systemName: "magnifyingglass").foregroundStyle(Palette.ink3)
+				Text("/").font(Typography.uiStrong).foregroundStyle(Palette.accent)
 				TextField("Find a project on \(machine.store.state.host?.name ?? "this machine")", text: $query)
 					.textFieldStyle(.plain)
-					.font(Typography.reading)
+					.font(Typography.ui)
 					.focused($searchFocused)
 					.onSubmit { open(selected.flatMap { id in flat.first { $0.id == id }?.project } ?? flat.first?.project) }
 					.onKeyPress(.downArrow) { move(1) }
@@ -55,14 +55,14 @@ struct NewConversationSheet: View {
 			}
 			Rectangle().fill(Palette.rule).frame(height: 1)
 			HStack(spacing: 8) {
-				Text("↑↓ to move · Return opens · the session starts when you send")
+				Text("↑↓ move · ↵ open · the session starts when you send")
 					.font(Typography.label)
 					.foregroundStyle(Palette.ink3)
 				Spacer()
-				Button("Cancel") { dismiss() }
+				Button("esc cancel") { dismiss() }
 					.buttonStyle(QuietButton())
 					.keyboardShortcut(.cancelAction)
-				Button("Open") { open(selected.flatMap { id in flat.first { $0.id == id }?.project }) }
+				Button("↵ open") { open(selected.flatMap { id in flat.first { $0.id == id }?.project }) }
 					.buttonStyle(QuietButton(fill: Palette.accent, ink: Palette.accentInk))
 					.keyboardShortcut(.defaultAction)
 					.disabled(selected == nil)
@@ -90,7 +90,7 @@ struct NewConversationSheet: View {
 					} label: {
 						HStack {
 							Text(item.title)
-								.font(Typography.readingSmall)
+								.font(Typography.ui)
 								.foregroundStyle(current ? Palette.ink : Palette.ink2)
 							Spacer()
 							Text("\(item.entries.count)")
@@ -118,7 +118,7 @@ struct NewConversationSheet: View {
 				LazyVStack(alignment: .leading, spacing: 0) {
 					if flat.isEmpty {
 						Text(searching ? "No project matches \u{201C}\(query)\u{201D}" : "No projects")
-							.font(Typography.readingSmall)
+							.font(Typography.ui)
 							.foregroundStyle(Palette.ink3)
 							.padding(16)
 					}
@@ -171,7 +171,7 @@ private struct ProjectRow: View {
 		HStack(spacing: 10) {
 			Circle().fill(Palette.project(entry.project.name)).frame(width: 8, height: 8)
 			Text(entry.project.name)
-				.font(Typography.reading)
+				.font(Typography.ui)
 				.foregroundStyle(Palette.ink)
 				.lineLimit(1)
 			Text(entry.project.path)
@@ -213,7 +213,7 @@ struct DraftView: View {
 		VStack(spacing: 0) {
 			VStack(spacing: 6) {
 				Text(project.name)
-					.font(Typography.reading.weight(.semibold))
+					.font(Typography.uiStrong)
 					.foregroundStyle(Palette.project(project.name))
 				Text(project.dir)
 					.font(Typography.code)
@@ -223,7 +223,7 @@ struct DraftView: View {
 			VStack(alignment: .leading, spacing: 4) {
 				TextField("Message", text: $text, axis: .vertical)
 					.textFieldStyle(.plain)
-					.font(Typography.reading)
+					.font(Typography.ui)
 					.lineLimit(1...10)
 					.focused($focused)
 					.disabled(sending)

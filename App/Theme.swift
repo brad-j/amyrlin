@@ -1,11 +1,17 @@
 import AmyrlinCore
 import SwiftUI
 
-// Tokens from aludra's approved design (aludra/design/tokens.css, 2026-10-11), converted from OKLCH to sRGB, so the
-// Mac and the phone read as one product. "The transcript is the interface; chrome is a hairline and a few icons."
-// Colour lives in state marks and the one accent; everything else is near-black, barely cool neutrals.
+/* Hallmark · redesign · genre: atmospheric (technical) · macrostructure: transcript-first app, console chrome
+ * theme: custom · vibe: "console chrome around a readable transcript" · paper: oklch(16.5% 0.003 260)
+ * accent: oklch(80% 0.13 300) violet, plus one colour per project · reading: Fira Sans (the transcript only)
+ * mono: SF Mono for all chrome · shape: square, 1 px rules · nav: tree sidebar · footer: status line
+ * pre-emit critique: P5 H4 E4 S5 R4 V4 · aludra/app/styles/app.css carries the same system
+ */
+// Colours from aludra's tokens (aludra/design/tokens.css), converted from OKLCH to sRGB, so the Mac and the phone read
+// as one product. Colour lives in state marks, the accent and project colours; everything else is near-black neutrals.
 
-/// Every typeface the app uses. Reading text is Fira Sans (bundled, App/Fonts); code is SF Mono.
+/// Every typeface the app uses. The transcript reads in Fira Sans (bundled, App/Fonts); every other surface, from the
+/// sidebar to the status line, is SF Mono, so the chrome reads as a console around the conversation.
 /// Every size goes through `scale`, so all text grows or shrinks together (a font-size setting can set it later).
 enum Typography {
 	static let scale: CGFloat = 1.15
@@ -21,8 +27,12 @@ enum Typography {
 	static let code = mono(12.5)
 	static let codeSmall = mono(11.5)
 	static let inlineCode = mono(13)
-	static let label = Font.system(size: 11 * scale, weight: .medium)
-	static let projectHeader = fira(13.5).weight(.semibold)
+	/// Chrome: sidebar rows, the inspector, the picker, the composer, the header.
+	static let ui = mono(12.5)
+	static let uiSmall = mono(11.5)
+	static let uiStrong = Font.system(size: 12.5 * scale, weight: .semibold, design: .monospaced)
+	static let label = Font.system(size: 10.5 * scale, weight: .medium, design: .monospaced)
+	static let projectHeader = Font.system(size: 12.5 * scale, weight: .semibold, design: .monospaced)
 	/// Line height of `codeSmall`, for blocks that keep a fixed number of lines.
 	static let codeSmallLine: CGFloat = 15.5 * scale
 }
@@ -92,8 +102,8 @@ enum Palette {
 enum Metrics {
 	/// The reading column: about 70 characters of reading text.
 	static let measure: CGFloat = 720 * Typography.scale
-	/// Every corner radius scales by this: 35% less rounding than aludra's milestone-2 tokens (2026-10-12).
-	static let rounding: CGFloat = 0.65
+	/// Every corner radius scales by this. Square since the console redesign (2026-10-12); 0.65 before.
+	static let rounding: CGFloat = 0
 	static let radiusSmall: CGFloat = 5 * rounding
 	/// Rows in the sidebar and the picker.
 	static let radiusRow: CGFloat = 6 * rounding

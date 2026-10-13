@@ -19,15 +19,11 @@ struct InspectorView: View {
 			VStack(alignment: .leading, spacing: 0) {
 				HStack {
 					Spacer()
-					Button(action: hide) {
-						Image(systemName: "sidebar.right")
-							.font(.system(size: 14))
-							.foregroundStyle(Palette.ink3)
-							.frame(width: 28, height: 28)
-							.contentShape(Rectangle())
-					}
-					.buttonStyle(.plain)
-					.help("Hide the inspector (⌥⌘I)")
+					Button("[hide]", action: hide)
+						.buttonStyle(.plain)
+						.font(Typography.ui)
+						.foregroundStyle(Palette.ink3)
+						.help("Hide the inspector (⌥⌘I)")
 				}
 				.padding(.top, 6)
 				PanelSection("Agent") {
@@ -80,7 +76,7 @@ struct InspectorView: View {
 								Text(fraction.formatted(.percent.precision(.fractionLength(0))))
 									.foregroundStyle(Palette.ink3)
 							}
-							.font(Typography.readingSmall)
+							.font(Typography.ui)
 							.foregroundStyle(Palette.ink)
 							.monospacedDigit()
 							Capsule().fill(Palette.rule2).frame(height: 3)
@@ -91,7 +87,7 @@ struct InspectorView: View {
 								}
 						}
 					} else {
-						Text("Nothing sent yet").font(Typography.readingSmall).foregroundStyle(Palette.ink3)
+						Text("Nothing sent yet").font(Typography.ui).foregroundStyle(Palette.ink3)
 					}
 				}
 				PanelSection("Usage") {
@@ -103,10 +99,10 @@ struct InspectorView: View {
 				}
 				PanelSection("Context actions") {
 					HStack(spacing: 8) {
-						Button("Compact") { Task { await store.compact() } }
+						Button("compact") { Task { await store.compact() } }
 							.buttonStyle(QuietButton())
 							.help("Summarize older messages so the model sees less")
-						Button("New context") { Task { await store.reset() } }
+						Button("new context") { Task { await store.reset() } }
 							.buttonStyle(QuietButton())
 							.help("Start the model from nothing; the transcript stays")
 					}
@@ -139,7 +135,7 @@ private struct Row<Content: View>: View {
 
 	var body: some View {
 		HStack {
-			Text(label).font(Typography.readingSmall).foregroundStyle(Palette.ink2)
+			Text(label).font(Typography.ui).foregroundStyle(Palette.ink2)
 			Spacer()
 			content
 		}
@@ -157,7 +153,7 @@ private struct Value: View {
 
 	var body: some View {
 		HStack(spacing: 5) {
-			Text(text).font(Typography.readingSmall).foregroundStyle(Palette.ink).monospacedDigit()
+			Text(text).font(Typography.ui).foregroundStyle(Palette.ink).monospacedDigit()
 			if chevron {
 				Image(systemName: "chevron.up.chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(Palette.ink3)
 			}
