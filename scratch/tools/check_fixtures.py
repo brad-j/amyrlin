@@ -35,6 +35,16 @@ checks = {
         and "aborted" in json.dumps(results(E)) and any(r.get("reason") == "aborted" for r in subs(E, "unanswered")),
     "13-configure-and-reset": lambda L, E: types(E).count("agent_changed") == 2 and "pi.reset" in json.dumps(E),
     "14-overflow-snapshot": lambda L, E: "snapshot" in types(E),
+    "17-retry": lambda L, E: types(E).count("auto_retry_start") == 1 and types(E).count("auto_retry_end") == 1
+        and assistant_stops(E) == ["error", "stop"] and subs(E, "done"),
+    "17-retry.during-wait": lambda L, E: L[0]["snapshot"].get("generation", {}).get("retry") is not None
+        and "auto_retry_end" in types(E),
+    "18-retry-exhausted": lambda L, E: types(E).count("auto_retry_start") == 1 and assistant_stops(E) == ["error", "error"]
+        and any(r.get("reason") == "model_error" for r in subs(E, "unanswered")) and "task_failed" not in types(E),
+    "19-provider-throws": lambda L, E: "auto_retry_start" not in types(E) and assistant_stops(E) == ["error"]
+        and any(r.get("reason") == "model_error" for r in subs(E, "unanswered")),
+    "20-tool-fault": lambda L, E: any(e["type"] == "task_failed" and e["kind"] == "pi.tool" for e in E)
+        and any(e["type"] == "tool_execution_end" and "entry" not in e for e in E) and not results(E) and subs(E, "done"),
 }
 
 root = pathlib.Path(sys.argv[1]); failed = 0

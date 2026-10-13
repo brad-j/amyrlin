@@ -2,17 +2,24 @@ import Foundation
 import Testing
 @testable import AmyrlinCore
 
-/// One run recorded from three attachment points: before submitting, mid-tool and mid-answer (fixture 10).
-/// A client that joins late must end where a client watching from the start ends (protocol section 7.3).
+/// Runs recorded from more than one attachment point: fixture 10 before submitting, mid-tool and mid-answer, and
+/// fixture 17 from the start and during its retry wait. A client that joins late must end where a client watching from
+/// the start ends (protocol section 7.3).
 @Suite struct ConvergenceTests {
-	static let joiners = ["10-late-join", "10-late-join.mid-answer"]
+	/// Each late joiner and the full stream of the same run.
+	static let fullStreams = [
+		"10-late-join": "10-late-join.full",
+		"10-late-join.mid-answer": "10-late-join.full",
+		"17-retry.during-wait": "17-retry",
+	]
+	static let joiners = fullStreams.keys.sorted()
 
 	@Test(arguments: joiners)
 	func lateJoinerReachesTheSameFinalState(_ joiner: String) throws {
-		let full = Fixtures.reduce(try Fixtures.wireFrames("10-late-join.full")).state
+		let full = Fixtures.reduce(try Fixtures.wireFrames(Self.fullStreams[joiner]!)).state
 		let late = Fixtures.reduce(try Fixtures.wireFrames(joiner)).state
 		#expect(late == full)
-		#expect(full.items.count == 4)
+		#expect(full.items.count >= 3)
 	}
 
 	/// Stronger: at the moment the late watcher attached, its snapshot equals the full stream's state at some frame.
@@ -26,7 +33,7 @@ import Testing
 		let joined = ConversationState(snapshot: snapshot).comparable
 		var state = ConversationState()
 		var matched = false
-		for frame in try Fixtures.wireFrames("10-late-join.full") {
+		for frame in try Fixtures.wireFrames(Self.fullStreams[joiner]!) {
 			state.apply(frame)
 			if state.comparable == joined { matched = true }
 		}

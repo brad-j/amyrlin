@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxText, fauxThinking, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { type AgentEvent, type Harness, hook, MemoryStorage, ToolTask } from "@earendil-works/pi-durable";
-import { context, lastUser, open, pause, Recorder } from "./lib.ts";
+import { context, lastUser, measureTool, open, pause, Recorder } from "./lib.ts";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const [outDir = join(here, "out"), ...only] = process.argv.slice(2);
@@ -394,6 +394,87 @@ const scenarios: Record<string, () => Promise<Output>> = {
 		await (await root.submit({ type: "input", content: "Continue.", requestId: "req-13b" }, context)).wait(context);
 		rec.note("configure clears thinkingLevel", { thinkingLevel: null });
 		await root.configure({ thinkingLevel: null }, context);
+		await finish(harness, stream);
+		return { "": rec };
+	},
+
+	// Recorded later, for the protocol's retry and task.failed events. Faux returns a provider error that pi-ai's
+	// isRetryableAssistantError accepts ("503", "overloaded"), so pi-durable waits and asks again.
+	async "17-retry"() {
+		const full = new Recorder();
+		const waiting = new Recorder();
+		const { harness, root } = await open({
+			storage: new MemoryStorage(),
+			settings: { retry: { baseDelayMs: 600 } },
+			responses: [
+				fauxAssistantMessage([], { stopReason: "error", errorMessage: "503 Service Unavailable: the model is overloaded" }),
+				fauxAssistantMessage("Porto is about three hours north of Lisbon by car."),
+			],
+		});
+		const fullStream = await full.attach(harness, root.id);
+		const submission = await root.submit({ type: "input", content: "How far is Porto from Lisbon?", requestId: "req-17" }, context);
+		full.note("submitted", { submissionId: submission.id, requestId: "req-17" });
+		await full.waitFor(is("auto_retry_start"));
+		full.note("late watcher attaching during the retry wait");
+		const waitingStream = await waiting.attach(harness, root.id);
+		waiting.note("attached during the retry wait; the full stream of the same run is 17-retry.jsonl");
+		await finish(harness, fullStream, waitingStream);
+		return { "": full, ".during-wait": waiting };
+	},
+
+	// Every attempt fails: the run ends unanswered with reason model_error. The generation ends `failed`, not
+	// `faulted`, so no task_failed.
+	async "18-retry-exhausted"() {
+		const rec = new Recorder();
+		const overloaded = () => fauxAssistantMessage([], { stopReason: "error", errorMessage: "529 overloaded_error: Overloaded" });
+		const { harness, root } = await open({
+			storage: new MemoryStorage(),
+			settings: { retry: { maxRetries: 1, baseDelayMs: 300 } },
+			responses: [overloaded(), overloaded()],
+		});
+		const stream = await rec.attach(harness, root.id);
+		const submission = await root.submit({ type: "input", content: "Is Braga worth a day?", requestId: "req-18" }, context);
+		rec.note("submitted", { submissionId: submission.id, requestId: "req-18" });
+		await finish(harness, stream);
+		return { "": rec };
+	},
+
+	// The provider throws instead of returning an error message, as a broken bridge would. pi-ai's Models turns that
+	// into an error message that isn't retryable, so the run ends unanswered with reason model_error at once.
+	async "19-provider-throws"() {
+		const rec = new Recorder();
+		const { harness, root } = await open({
+			storage: new MemoryStorage(),
+			provider: (faux) => ({
+				...faux,
+				streamSimple: () => {
+					throw new Error("Claude Code exited with code 1");
+				},
+			}),
+			responses: [],
+		});
+		const stream = await rec.attach(harness, root.id);
+		const submission = await root.submit({ type: "input", content: "What's in the notes?", requestId: "req-19" }, context);
+		rec.note("submitted", { submissionId: submission.id, requestId: "req-19" });
+		await finish(harness, stream);
+		return { "": rec };
+	},
+
+	// `measure` returns a result that can't be stored, so the tool task faults after it ran. A throw from execute()
+	// would not: that is a `tool_error` result and a `failed` task.
+	async "20-tool-fault"() {
+		const rec = new Recorder();
+		const { harness, root } = await open({
+			storage: new MemoryStorage(),
+			tools: [measureTool],
+			responses: [
+				toolCalls(fauxToolCall("measure", { path: "notes.txt" }, { id: "call-1" })),
+				fauxAssistantMessage("The measurement did not come back."),
+			],
+		});
+		const stream = await rec.attach(harness, root.id);
+		const submission = await root.submit({ type: "input", content: "How big is notes.txt?", requestId: "req-20" }, context);
+		rec.note("submitted", { submissionId: submission.id, requestId: "req-20" });
 		await finish(harness, stream);
 		return { "": rec };
 	},

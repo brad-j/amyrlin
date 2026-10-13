@@ -217,6 +217,68 @@ import Testing
 		}
 		#expect(result.content.first?.plainText.hasSuffix("160\n") == true)
 	}
+
+	@Test func retryShowsWhileWaitingThenClears() throws {
+		var state = ConversationState()
+		var waits: [RetryState] = []
+		for frame in try Fixtures.wireFrames("17-retry") {
+			state.apply(frame)
+			if let retry = state.retry { waits.append(retry) }
+		}
+		#expect(waits.map(\.attempt) == [1])
+		#expect(waits.first?.error.hasPrefix("503") == true)
+		#expect(state.retry == nil)
+		#expect(state.items.map(\.summary) == ["user", "assistant error", "assistant stop"])
+		guard case .assistant(let failed) = state.items[1].body else { return }
+		#expect(failed.error == waits.first?.error)
+		#expect(state.submission(requestId: "req-17")?.status == .done)
+	}
+
+	@Test func joiningDuringARetryWaitShowsTheWait() throws {
+		let frames = try Fixtures.wireFrames("17-retry.during-wait")
+		let joined = Fixtures.reduce([frames[0]]).state
+		#expect(joined.retry?.attempt == 1)
+		#expect(joined.run != nil)
+		#expect(Fixtures.reduce(frames).state.retry == nil)
+	}
+
+	@Test func exhaustedRetriesLeaveTheInputUnanswered() throws {
+		let state = Fixtures.reduce(try Fixtures.wireFrames("18-retry-exhausted")).state
+		#expect(state.items.map(\.summary) == ["user", "assistant error", "assistant error"])
+		#expect(state.retry == nil)
+		#expect(state.failures.isEmpty)
+		let submission = state.submission(requestId: "req-18")
+		#expect(submission?.status == .unanswered)
+		#expect(submission?.reason == "model_error")
+	}
+
+	@Test func aThrowingProviderIsAModelErrorWithoutRetry() throws {
+		let events = try Fixtures.wireFrames("19-provider-throws").joined()
+		#expect(!events.contains { if case .retryScheduled = $0 { true } else { false } })
+		let state = Fixtures.reduce(try Fixtures.wireFrames("19-provider-throws")).state
+		guard case .assistant(let failed) = state.items.last?.body else {
+			Issue.record("expected the failed answer last")
+			return
+		}
+		#expect(failed.stopReason.rawValue == "error")
+		#expect(failed.error == "Claude Code exited with code 1")
+		#expect(state.submission(requestId: "req-19")?.reason == "model_error")
+	}
+
+	@Test func aFaultedToolEndsWithoutAResultAndTheRunGoesOn() throws {
+		var state = ConversationState()
+		var statuses: [SlotStatus] = []
+		for frame in try Fixtures.wireFrames("20-tool-fault") {
+			state.apply(frame)
+			if let slot = state.tools.first, slot.callId == "call-1", statuses.last != slot.status { statuses.append(slot.status) }
+		}
+		#expect(statuses == [.running, .ended])
+		#expect(state.tools.isEmpty)
+		#expect(state.failures.map(\.kind) == ["pi.tool"])
+		#expect(state.failures.first?.message.contains("bigint") == true)
+		#expect(state.items.map(\.summary) == ["user", "assistant toolUse", "assistant stop"])
+		#expect(state.submission(requestId: "req-20")?.status == .done)
+	}
 }
 
 extension ApprovalResolution {

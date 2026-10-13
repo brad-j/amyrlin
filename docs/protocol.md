@@ -181,7 +181,7 @@ A tool call of the current round that the transcript cannot show yet.
 {"callId":"call-1","name":"count","status":"running","output":"1\n2\n3\n4\n5\n","droppedBytes":0,"droppedLines":0,"details":null,"diagnostics":[]}
 ```
 
-`status` is `running` or `ended`. `ended` means the call finished without a result entry, after a fault or an orphaning (`tool_execution_end` without `entry`, unrecorded).
+`status` is `running` or `ended`. `ended` means the call finished without a result entry, after a fault or an orphaning (`tool_execution_end` without `entry`, `20-tool-fault:9`).
 
 The server builds slots from durable `ToolSlot`s (`10-late-join:1`), with two rules that keep a late joiner's state equal to a from-the-start client's:
 
@@ -372,7 +372,7 @@ How the server builds it:
 1. It calls `watchEvents(harness, id)`. `stream.snapshot` and the registration for later batches are taken atomically.
 2. `items` are the durable snapshot's `entries` mapped by 4.3. If there are fewer than `limits.snapshotItems`, the server pages older entries with `entries({maxEntryId: lowestSnapshotEntryId - 1})`. It uses the lowest ID, not the first entry, because after a compaction the first entry is the summary and the entries it keeps have lower IDs (`09-manual-compaction:4`: summary 21, kept from 19). Older entries are immutable, so the read cannot race the stream. If the active transcript alone exceeds the limit, only its newest items are sent. `hasEarlier` says whether more exist.
 3. `contextStart` is the `head` of the snapshot's first entry when that entry is a head marker, otherwise `null`.
-4. `run` comes from `snapshot.run` (`10-late-join:1`). `streaming` comes from `snapshot.generation.message` (`10-late-join.mid-answer:1`). `retry` comes from `snapshot.generation.retry`.
+4. `run` comes from `snapshot.run` (`10-late-join:1`). `streaming` comes from `snapshot.generation.message` (`10-late-join.mid-answer:1`). `retry` comes from `snapshot.generation.retry` (`17-retry.during-wait:1`).
 5. `tools` follow 4.5, `inbox` follows 4.6, `settings` follow 4.8 and `spend` follows 4.2. `approvals` come from the server.
 
 Later frames hold the events of section 7. When pi-durable delivers a fresh `snapshot` event because the consumer fell more than 100 batches behind (`14-overflow-snapshot:6`), the server builds a wire `snapshot` from it the same way.
@@ -418,9 +418,9 @@ Each row lists the wire event, the durable event(s) it comes from, and fixture e
 | `spend.changed` | `spend` | `usage_changed` | `01-plain-answer:13` |
 | `compaction.started` | `taskId`, `reason`, `blocking` | `compaction_start` | `09-manual-compaction:2` |
 | `compaction.ended` | `taskId`, `reason` | `compaction_end` | `09-manual-compaction:4` |
-| `retry.scheduled` | `attempt`, `at`, `error` | `auto_retry_start` (`errorMessage` → `error`) | unrecorded |
-| `retry.cleared` | `attempt` | `auto_retry_end` | unrecorded |
-| `task.failed` | `taskId`, `kind`, `message` | `task_failed` | unrecorded |
+| `retry.scheduled` | `attempt`, `at`, `error` | `auto_retry_start` (`errorMessage` → `error`) | `17-retry:5`, retries run out `18-retry-exhausted:5` to `:7` |
+| `retry.cleared` | `attempt` | `auto_retry_end` | `17-retry:7` |
+| `task.failed` | `taskId`, `kind`, `message` | `task_failed` | a tool task `20-tool-fault:9` |
 | `approval.requested` | `approval` | server (section 8) | silence it fills: `12-approval-hook:6` to `:9` |
 | `approval.resolved` | `approvalId`, `decision`, `by?`, `message?` | server (section 8) | none |
 
@@ -565,4 +565,4 @@ Added 2026-10-13, also optional within v1 (aludra serves them; a server without 
 Deferred, not in v1:
 
 - Withdrawing one queued message (`harness.abortSubmission`). `abort` withdraws all queued inputs.
-- Fixtures for retry, deferred polling and `task_failed`. Faux can produce error responses, so these can be recorded before the server implements them.
+- A fixture for deferred polling. Faux can return deferred handles, so it can be recorded before a provider needs it.

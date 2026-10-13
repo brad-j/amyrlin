@@ -2,7 +2,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Context } from "@earendil-works/chord";
 import { Type, type FauxResponseStep, type TranscriptContext } from "@earendil-works/pi-ai";
-import { createModels } from "@earendil-works/pi-ai/models";
+import { createModels, type Provider } from "@earendil-works/pi-ai/models";
 import { fauxProvider, type RegisterFauxProviderOptions } from "@earendil-works/pi-ai/providers/faux";
 import {
 	createRegistry,
@@ -79,12 +79,27 @@ export const deleteTool = defineTool({
 	execute: async (args) => ({ content: [{ type: "text", text: `deleted ${args.path}` }] }),
 });
 
+/** `measure`: prints a line, then returns details JSON can't hold (a BigInt), so storing its result throws. */
+export const measureTool = defineTool({
+	name: "measure",
+	description: "Measure a file's size",
+	parameters: Type.Object({ path: Type.String() }),
+	execute: async (args, api) => {
+		api.output(`measuring ${args.path}\n`);
+		return { content: [{ type: "text", text: "12 KB" }], details: { bytes: 12_288n } as never };
+	},
+});
+
 export type Setup = {
 	storage: Storage;
 	responses: FauxResponseStep[];
 	faux?: RegisterFauxProviderOptions;
 	settings?: HarnessSettings;
 	hooks?: HookRegistration[];
+	/** Tools offered besides count, lookup and delete_file. */
+	tools?: (typeof measureTool)[];
+	/** Wraps the faux provider, for a provider that throws instead of returning an error message. */
+	provider?: (faux: Provider) => Provider;
 	agent?: Parameters<Harness["root"]>[1] extends infer O ? (O extends { agent?: infer A } ? A : never) : never;
 };
 
@@ -99,10 +114,14 @@ export async function open(setup: Setup) {
 	});
 	faux.setResponses(setup.responses);
 	const models = createModels();
-	models.setProvider(faux.provider);
+	models.setProvider(setup.provider?.(faux.provider) ?? faux.provider);
 	const registry = createRegistry();
 	registry.install(
-		defineExtension({ name: "fixture-tools", tools: [countTool, lookupTool, deleteTool], hooks: setup.hooks ?? [] }),
+		defineExtension({
+			name: "fixture-tools",
+			tools: [countTool, lookupTool, deleteTool, ...(setup.tools ?? [])],
+			hooks: setup.hooks ?? [],
+		}),
 	);
 	const harness = await Harness.open(setup.storage, { models, registry, settings: setup.settings }, context);
 	const root = await harness.root(context, { agent: { model: MODEL, ...setup.agent } });

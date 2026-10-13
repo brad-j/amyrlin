@@ -18,7 +18,7 @@ Node 24.11.1 runs the TypeScript sources directly. Each scenario opens its own H
 
 The recorder lives in `scratch/recorder`:
 
-- `lib.ts`: the faux model `faux/faux-1` (reasoning on, 50 tokens per second, so one answer spans several 100 ms partial commits), the three tools below, and the JSONL writer.
+- `lib.ts`: the faux model `faux/faux-1` (reasoning on, 50 tokens per second, so one answer spans several 100 ms partial commits), the tools below, an optional wrapper around the faux provider, and the JSONL writer.
 - `record.ts`: one function per scenario.
 - `crash-child.ts`: the two processes of scenario 11.
 
@@ -27,6 +27,7 @@ Tools, all in one extension named `fixture-tools`:
 - `count {n, delayMs?}`: streams `1\n` to `n\n` through `api.output()`, one line per `delayMs` (default 80), sets `details: {counted: n}`, and honours abort.
 - `lookup {city}`: returns a population after 30 ms with `details: {city, population}`.
 - `delete_file {path}`: only used where a hook blocks or approves it.
+- `measure {path}`: offered only in scenario 20. Prints a line, then returns `details` holding a BigInt, which strict JSON can't store.
 
 ## Line format
 
@@ -67,11 +68,23 @@ One JSON object per line. `t` is milliseconds since the scenario started. Each l
 | `13-configure-and-reset` | Evidence for the `configure` and `reset` commands. `configure()` emits `agent_changed` with the whole stored agent. Clearing a field with `null` removes it from the next `agent_changed`. `reset(handoff)` appends a `pi.reset` entry whose model message is the handoff as a user message. Its submission has no `requestId`. |
 | `14-overflow-snapshot` | The listener stalls for 2 s on its first batch while `count {n: 160}` commits output every few ms. More than 100 batches back up, so the pending ones are replaced by one batch holding a single `snapshot` event, followed by the batches committed after it. This is the "falls behind" case. |
 
+### Errors, recorded 2026-10-13
+
+None of these fault a task: pi-durable reports a throwing hook or prompt section and carries on, and pi-ai's `Models` turns a provider that throws into an error answer. A generation faults only when committing its own state fails, such as a storage error, which faux can't cause. A tool task faults when its result can't be stored. A throw from `execute()` does not fault it: that is a `tool_error` result and a `failed` task.
+
+| File | How it was produced |
+|---|---|
+| `17-retry` | Retry `baseDelayMs: 600`. Faux first returns an error answer, `503 Service Unavailable: the model is overloaded`, which pi-ai counts as retryable, then a real answer. The failed answer is an assistant entry with `stopReason: "error"`, in the same batch as `auto_retry_start`. `auto_retry_end` comes when the wait ends, before the next attempt streams. |
+| `17-retry.during-wait` | A second watcher on the same run, attached after `auto_retry_start`. The snapshot holds `generation.retry` (`at`, `error`) with `attempt: 1`. |
+| `18-retry-exhausted` | `maxRetries: 1`, `baseDelayMs: 300`. Both attempts return `529 overloaded_error: Overloaded`. The second error answer ends the run: the input settles `unanswered`, reason `model_error`, with the error as `detail`. The generation ends `failed`, not `faulted`, so no `task_failed`. |
+| `19-provider-throws` | The faux provider is wrapped so `streamSimple` throws `Claude Code exited with code 1`, as a broken bridge would. It arrives as an error answer that isn't retryable: no retry events, and the input settles `unanswered`, reason `model_error`. |
+| `20-tool-fault` | The answer calls `measure`. Its result can't be stored, so the tool task faults: `tool_execution_end` without `entry`, then `task_failed` with kind `pi.tool` and the JSON error. No result entry is written. The run goes on, the model answers, and the input settles `done`. |
+
 ## What faux could not produce
 
 - **Cost.** Faux reports every `cost` field as 0 (`pi-ai/dist/providers/faux.js`, `withUsageEstimate`), whatever the model definition says. Token counts are real estimates, so `usage_changed` and the snapshot's `usage` have true shapes and token numbers but zero cost. I did not invent cost values.
-- **Retries and deferred polling.** `auto_retry_start`, `auto_retry_end` and `deferred_poll` do not appear. Faux can return error messages and deferred handles, so these could be recorded later if the protocol needs them.
-- **`task_failed`.** No scenario faults a task.
+- **Deferred polling.** `deferred_poll` does not appear. Faux can return deferred handles, so it could be recorded later if the protocol needs it.
+- **A faulted generation.** See "Errors" above. `task_failed` is recorded for a tool task only.
 
 Everything else in the brief's list was recorded as asked.
 
