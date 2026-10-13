@@ -1,0 +1,13 @@
+<!-- amyrlin mark, concept C: the Amyrlin's stole, seven stripes for the seven Ajahs (blue, brown, gray, green, red,
+     white, yellow), toned to one lightness so they sit together, as the project colours do. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#0e0f10"/>
+  <rect x="100.5" y="100.5" width="823" height="823" rx="184.5" fill="none" stroke="#3b3d40" stroke-width="1"/>
+  <rect x="318" y="250" width="40" height="524" fill="#67aaed"/>
+  <rect x="374" y="250" width="40" height="524" fill="#a87b5d"/>
+  <rect x="430" y="250" width="40" height="524" fill="#929292"/>
+  <rect x="486" y="250" width="40" height="524" fill="#62bb78"/>
+  <rect x="542" y="250" width="40" height="524" fill="#e3645e"/>
+  <rect x="598" y="250" width="40" height="524" fill="#e8e8e8"/>
+  <rect x="654" y="250" width="40" height="524" fill="#e8cd62"/>
+</svg>

@@ -43,6 +43,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.bradjohnson.amyrlin
         PRODUCT_NAME: Amyrlin
+        # App/Assets.xcassets/AppIcon, rendered from design/logo/amyrlin-mark.svg.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "-"
         ENABLE_HARDENED_RUNTIME: YES

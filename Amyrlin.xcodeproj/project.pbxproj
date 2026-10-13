@@ -20,6 +20,7 @@
 		7354179E4A053ECEE88FACC4 /* FiraSans-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D499D81ACB8A90277BB94F00 /* FiraSans-Medium.ttf */; };
 		7AEDF87737CAA6817FCDDD9D /* FiraCode-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 82488F9473F22012821691AB /* FiraCode-OFL.txt */; };
 		A72E7A31DF98C83FA8A34DCE /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 683EB059DBE7F4081E821D7B /* MarkdownView.swift */; };
+		C498641CC1BFBED15AF6256C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 96C81C52F22A4378025089DF /* Assets.xcassets */; };
 		C6C2B99C10C1E17992E316B2 /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F46883B3C2B7443F8A34EB5 /* InspectorView.swift */; };
 		D738FBFF491503B86419621C /* FiraCode-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FB1C2690AC78E3B61B3110FB /* FiraCode-Variable.ttf */; };
 		EF49776FA13371AF809A8701 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0987027DBAEEDC51353D4ADB /* Theme.swift */; };
@@ -37,6 +38,7 @@
 		683EB059DBE7F4081E821D7B /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
 		7D357F171DCC5EF0B185509D /* Amyrlin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Amyrlin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		82488F9473F22012821691AB /* FiraCode-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "FiraCode-OFL.txt"; sourceTree = "<group>"; };
+		96C81C52F22A4378025089DF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9919763F27220BA381156823 /* Amyrlin.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Amyrlin.entitlements; sourceTree = "<group>"; };
 		A6FF507E96091DF46C73B8C0 /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
 		BA8EA64CEF1CD5AC382E123B /* AmyrlinApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmyrlinApp.swift; sourceTree = "<group>"; };
@@ -101,6 +103,7 @@
 				9919763F27220BA381156823 /* Amyrlin.entitlements */,
 				BA8EA64CEF1CD5AC382E123B /* AmyrlinApp.swift */,
 				E43E677CA5F20DE603B53B9F /* AppModel.swift */,
+				96C81C52F22A4378025089DF /* Assets.xcassets */,
 				A6FF507E96091DF46C73B8C0 /* ConversationView.swift */,
 				D8613CB42BCC02047555BA2C /* Info.plist */,
 				3F46883B3C2B7443F8A34EB5 /* InspectorView.swift */,
@@ -186,6 +189,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C498641CC1BFBED15AF6256C /* Assets.xcassets in Resources */,
 				7AEDF87737CAA6817FCDDD9D /* FiraCode-OFL.txt in Resources */,
 				D738FBFF491503B86419621C /* FiraCode-Variable.ttf in Resources */,
 				34AD9ED4998FC83EAF830C0B /* FiraSans-Bold.ttf in Resources */,
