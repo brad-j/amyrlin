@@ -4,19 +4,20 @@ import SwiftUI
 /* Hallmark · redesign · genre: atmospheric (technical) · macrostructure: transcript-first app, console chrome
  * theme: custom · vibe: "console chrome around a readable transcript" · paper: oklch(16.5% 0.003 260)
  * accent: oklch(80% 0.13 300) violet, plus one colour per project · reading: Fira Sans (the transcript only)
- * mono: SF Mono for all chrome · shape: square, 1 px rules · nav: tree sidebar · footer: status line
+ * mono: Fira Code (bundled) for all chrome · shape: square, 1 px rules · nav: tree sidebar · footer: status line
  * pre-emit critique: P5 H4 E4 S5 R4 V4 · aludra/app/styles/app.css carries the same system
  */
 // Colours from aludra's tokens (aludra/design/tokens.css), converted from OKLCH to sRGB, so the Mac and the phone read
 // as one product. Colour lives in state marks, the accent and project colours; everything else is near-black neutrals.
 
-/// Every typeface the app uses. The transcript reads in Fira Sans (bundled, App/Fonts); every other surface, from the
-/// sidebar to the status line, is SF Mono, so the chrome reads as a console around the conversation.
+/// Every typeface the app uses, both bundled in App/Fonts under the SIL OFL. The transcript reads in Fira Sans; every
+/// other surface, from the sidebar to the status line, is Fira Code, its monospaced sibling and aludra's mono.
 /// Every size goes through `scale`, so all text grows or shrinks together (a font-size setting can set it later).
 enum Typography {
 	static let scale: CGFloat = 1.15
 	private static func fira(_ size: CGFloat) -> Font { .custom("Fira Sans", size: size * scale) }
-	private static func mono(_ size: CGFloat) -> Font { .system(size: size * scale, design: .monospaced) }
+	/// Fira Code is one variable font, so weights come from `.weight(_:)`.
+	private static func mono(_ size: CGFloat) -> Font { .custom("Fira Code", size: size * scale) }
 
 	static let reading = fira(15)
 	static let readingSmall = fira(13)
@@ -30,9 +31,9 @@ enum Typography {
 	/// Chrome: sidebar rows, the inspector, the picker, the composer, the header.
 	static let ui = mono(12.5)
 	static let uiSmall = mono(11.5)
-	static let uiStrong = Font.system(size: 12.5 * scale, weight: .semibold, design: .monospaced)
-	static let label = Font.system(size: 10.5 * scale, weight: .medium, design: .monospaced)
-	static let projectHeader = Font.system(size: 12.5 * scale, weight: .semibold, design: .monospaced)
+	static let uiStrong = mono(12.5).weight(.semibold)
+	static let label = mono(10.5).weight(.medium)
+	static let projectHeader = mono(12.5).weight(.semibold)
 	/// Line height of `codeSmall`, for blocks that keep a fixed number of lines.
 	static let codeSmallLine: CGFloat = 15.5 * scale
 }
