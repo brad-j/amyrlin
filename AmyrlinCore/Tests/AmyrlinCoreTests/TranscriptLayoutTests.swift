@@ -16,6 +16,7 @@ import Testing
 		var statuses: [String: ToolCallRow.Status] = [:]
 		for row in rows {
 			if case .toolCall(let call) = row.kind { statuses[call.callId] = call.status }
+			if case .toolRound(let round) = row.kind { for call in round.calls { statuses[call.callId] = call.status } }
 		}
 		return statuses
 	}
@@ -74,6 +75,28 @@ import Testing
 		for frame in try Fixtures.wireFrames("04-steer-during-tools") { state.apply(frame) }
 		let pending = PendingSend(id: "req-x", text: "hello", whenBusy: .followUp)
 		#expect(TranscriptLayout.rows(state: state, outbox: [pending]).last?.id == "pending-req-x")
+	}
+
+	@Test func finishedRoundsFoldIntoOneLine() throws {
+		let parallel = try #require(try rowsOverTime("03-parallel-tools").last)
+		guard case .toolRound(let round)? = parallel.first(where: { if case .toolRound = $0.kind { true } else { false } })?.kind else {
+			Issue.record("three finished calls should fold")
+			return
+		}
+		#expect(round.calls.map(\.callId) == ["call-a", "call-b", "call-c"])
+		#expect(round.summary == "count ×2 · lookup")
+		// One call is not a round.
+		#expect(!(try #require(try rowsOverTime("02-tool-round").last)).contains { if case .toolRound = $0.kind { true } else { false } })
+		// A round still running stays open.
+		let mid = try rowsOverTime("03-parallel-tools").first { rows in rows.contains { if case .toolCall(let c) = $0.kind { c.status == .running } else { false } } }
+		#expect(mid?.contains { if case .toolRound = $0.kind { true } else { false } } == false)
+	}
+
+	@Test func roundSummaryNamesTheCodingTools() {
+		let calls = ["bash", "read", "bash", "edit", "read", "read"].enumerated().map { index, name in
+			ToolCallRow(callId: "c\(index)", name: name, args: .object([:]), status: .done, output: "", result: nil)
+		}
+		#expect(ToolRound(calls: calls, thinking: []).summary == "ran 2 commands · read 3 files · edited 1 file")
 	}
 
 	@Test func rowIDsAreUnique() throws {

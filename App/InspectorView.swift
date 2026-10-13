@@ -1,85 +1,176 @@
 import AmyrlinCore
 import SwiftUI
 
-/// Model, thinking level, working directory and spend for the selected conversation.
+/// The session's model, thinking, project, context and usage, in the transcript's quiet style: labels in small caps,
+/// values in ink, hairlines between groups.
 struct InspectorView: View {
 	let store: ConversationStore
 	let host: HostStore
 
 	private var settings: ConversationSettings? { store.state.settings }
 	private var models: [ModelInfo] { host.info?.models ?? [] }
+	private var currentModel: ModelRef? { settings?.stored.model ?? settings?.effective.model }
+	private var currentInfo: ModelInfo? { currentModel.flatMap { ref in models.first { $0.ref == ref } } }
+	private var thinking: ThinkingLevel? { settings?.stored.thinkingLevel ?? settings?.effective.thinkingLevel }
 
-	private var effectiveModel: ModelInfo? {
-		guard let ref = settings?.effective.model else { return nil }
-		return models.first { $0.ref == ref }
+	var body: some View {
+		ScrollView {
+			VStack(alignment: .leading, spacing: 0) {
+				InspectorGroup("Agent") {
+					Row("Model") {
+					Menu {
+						ForEach(models) { model in
+							Button(model.name ?? model.modelId) {
+								Task { await store.configure(SettingsChange(model: .set(model.ref))) }
+							}
+						}
+					} label: {
+						Value(currentInfo?.name ?? currentModel?.modelId ?? "—", chevron: true)
+					}
+					.menuStyle(.button)
+					.buttonStyle(.plain)
+					.fixedSize()
+					.disabled(models.isEmpty)
+					}
+					Row("Thinking") {
+						Menu {
+							ForEach(currentInfo?.thinkingLevels ?? ThinkingLevel.known, id: \.self) { level in
+								Button(level.rawValue) {
+									Task { await store.configure(SettingsChange(thinkingLevel: .set(level))) }
+								}
+							}
+						} label: {
+							Value(thinking?.rawValue ?? "—", chevron: true)
+						}
+						.menuStyle(.button)
+						.buttonStyle(.plain)
+						.fixedSize()
+					}
+				}
+				if let dir = settings?.effective.cwd ?? settings?.stored.cwd {
+					InspectorGroup("Project") {
+						Text(ConversationView.shortPath(dir))
+							.font(Typography.codeSmall)
+							.foregroundStyle(Palette.ink2)
+							.textSelection(.enabled)
+							.lineLimit(3)
+					}
+				}
+				InspectorGroup("Context") {
+					if let used = contextUsed, let window = currentInfo?.contextWindow, window > 0 {
+						let fraction = min(1, Double(used) / Double(window))
+						VStack(alignment: .leading, spacing: 6) {
+							HStack {
+								Text("\(ComposerView.tokens(used)) of \(ComposerView.tokens(window))")
+								Spacer()
+								Text(fraction.formatted(.percent.precision(.fractionLength(0))))
+									.foregroundStyle(Palette.ink3)
+							}
+							.font(Typography.readingSmall)
+							.foregroundStyle(Palette.ink)
+							.monospacedDigit()
+							Capsule().fill(Palette.rule2).frame(height: 3)
+								.overlay(alignment: .leading) {
+									GeometryReader { proxy in
+										Capsule().fill(fraction > 0.8 ? Palette.wait : Palette.ink2).frame(width: proxy.size.width * fraction)
+									}
+								}
+						}
+					} else {
+						Text("Nothing sent yet").font(Typography.readingSmall).foregroundStyle(Palette.ink3)
+					}
+				}
+				InspectorGroup("Usage") {
+					let spend = store.state.spend
+					Row("Tokens") { Value(spend.total.formatted()) }
+					Row("Output") { Value(spend.output.formatted()) }
+					Row("Cached") { Value(spend.cacheRead.formatted()) }
+					if spend.cost > 0 { Row("Cost") { Value(spend.costText) } }
+				}
+				InspectorGroup("Context actions") {
+					HStack(spacing: 8) {
+						Button("Compact") { Task { await store.compact() } }
+							.buttonStyle(QuietButton())
+							.help("Summarize older messages so the model sees less")
+						Button("New context") { Task { await store.reset() } }
+							.buttonStyle(QuietButton())
+							.help("Start the model from nothing; the transcript stays")
+					}
+				}
+			}
+			.padding(.horizontal, 16)
+			.padding(.vertical, 8)
+		}
+		.background(Palette.paper)
+	}
+
+	private var contextUsed: Int? {
+		for item in store.state.items.reversed() {
+			if case .assistant(let answer) = item.body, let spend = answer.spend, spend.input + spend.cacheRead + spend.cacheWrite > 0 {
+				return spend.input + spend.cacheRead + spend.cacheWrite
+			}
+		}
+		return nil
+	}
+}
+
+private struct InspectorGroup<Content: View>: View {
+	let title: String
+	@ViewBuilder let content: Content
+
+	init(_ title: String, @ViewBuilder content: () -> Content) {
+		self.title = title
+		self.content = content()
 	}
 
 	var body: some View {
-		Form {
-			Section("Model") {
-				Picker("Model", selection: modelBinding) {
-					ForEach(models) { model in
-						Text(model.name ?? model.modelId).tag(ModelRef?.some(model.ref))
-					}
-				}
-				Picker("Thinking", selection: thinkingBinding) {
-					ForEach(effectiveModel?.thinkingLevels ?? ThinkingLevel.known, id: \.self) { level in
-						Text(level.rawValue).tag(ThinkingLevel?.some(level))
-					}
-				}
-				.disabled(effectiveModel?.reasoning == false)
-			}
-			if let dir = settings?.effective.cwd ?? settings?.stored.cwd {
-				Section("Project") {
-					Text(dir)
-						.font(Typography.code)
-						.textSelection(.enabled)
-						.lineLimit(2)
-						.truncationMode(.head)
-				}
-			}
-			Section("Usage") {
-				if store.state.spend.cost > 0 {
-					LabeledContent("Cost", value: store.state.spend.costText)
-				}
-				LabeledContent("Tokens", value: store.state.spend.tokensText)
-				LabeledContent("Cache", value: "\(store.state.spend.cacheRead.formatted()) read · \(store.state.spend.cacheWrite.formatted()) written")
-				ForEach(store.state.spend.byModel.keys.sorted(), id: \.self) { key in
-					LabeledContent(key, value: store.state.spend.byModel[key].map { $0.cost > 0 ? $0.costText : $0.total.formatted() + " tokens" } ?? "")
-						.font(Typography.readingSmall)
-				}
-			}
-			Section("Run") {
-				LabeledContent("Status", value: store.state.isBusy ? "Working" : "Idle")
-				if !store.state.inbox.isEmpty { LabeledContent("Queued", value: "\(store.state.inbox.count)") }
-				if !store.state.compactions.isEmpty { LabeledContent("Compacting", value: "\(store.state.compactions.count)") }
-				HStack {
-					Button("Compact") { Task { await store.compact() } }
-					Button("Reset Context") { Task { await store.reset() } }
-				}
+		VStack(alignment: .leading, spacing: 9) {
+			Text(title)
+				.font(Typography.label)
+				.foregroundStyle(Palette.ink3)
+				.textCase(.uppercase)
+			content
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.padding(.vertical, 14)
+		.overlay(alignment: .bottom) { Rectangle().fill(Palette.rule).frame(height: 1) }
+	}
+}
+
+private struct Row<Content: View>: View {
+	let label: String
+	@ViewBuilder let content: Content
+
+	init(_ label: String, @ViewBuilder content: () -> Content) {
+		self.label = label
+		self.content = content()
+	}
+
+	var body: some View {
+		HStack {
+			Text(label).font(Typography.readingSmall).foregroundStyle(Palette.ink2)
+			Spacer()
+			content
+		}
+	}
+}
+
+private struct Value: View {
+	let text: String
+	var chevron = false
+
+	init(_ text: String, chevron: Bool = false) {
+		self.text = text
+		self.chevron = chevron
+	}
+
+	var body: some View {
+		HStack(spacing: 5) {
+			Text(text).font(Typography.readingSmall).foregroundStyle(Palette.ink).monospacedDigit()
+			if chevron {
+				Image(systemName: "chevron.up.chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(Palette.ink3)
 			}
 		}
-		.formStyle(.grouped)
-		.font(Typography.readingSmall)
-	}
-
-	private var modelBinding: Binding<ModelRef?> {
-		Binding(
-			get: { settings?.stored.model ?? settings?.effective.model },
-			set: { value in
-				guard let value else { return }
-				Task { await store.configure(SettingsChange(model: .set(value))) }
-			}
-		)
-	}
-
-	private var thinkingBinding: Binding<ThinkingLevel?> {
-		Binding(
-			get: { settings?.stored.thinkingLevel ?? settings?.effective.thinkingLevel },
-			set: { value in
-				guard let value else { return }
-				Task { await store.configure(SettingsChange(thinkingLevel: .set(value))) }
-			}
-		)
+		.contentShape(Rectangle())
 	}
 }

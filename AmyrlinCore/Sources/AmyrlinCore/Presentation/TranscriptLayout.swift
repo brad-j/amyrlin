@@ -25,6 +25,41 @@ public struct ToolCallRow: Sendable, Hashable {
 	public var result: ToolResultItem?
 }
 
+/// A finished round of two or more tool calls, folded into one line (aludra's design: "read 4 files · ran 2 commands").
+public struct ToolRound: Sendable, Hashable {
+	public var calls: [ToolCallRow]
+	/// Thinking between the calls, shown when the round is opened.
+	public var thinking: [String]
+
+	public var failed: Int {
+		calls.filter { if case .failed = $0.status { true } else { false } }.count
+	}
+
+	public var durationMs: Int {
+		calls.compactMap(\.result?.durationMs).reduce(0, +)
+	}
+
+	/// "ran 3 commands · read 2 files", in order of first use.
+	public var summary: String {
+		var order: [String] = []
+		var counts: [String: Int] = [:]
+		for call in calls {
+			if counts[call.name] == nil { order.append(call.name) }
+			counts[call.name, default: 0] += 1
+		}
+		return order.map { name in
+			let n = counts[name] ?? 0
+			switch name {
+			case "bash": return n == 1 ? "ran 1 command" : "ran \(n) commands"
+			case "read": return n == 1 ? "read 1 file" : "read \(n) files"
+			case "write": return n == 1 ? "wrote 1 file" : "wrote \(n) files"
+			case "edit": return n == 1 ? "edited 1 file" : "edited \(n) files"
+			default: return n == 1 ? "\(name)" : "\(name) ×\(n)"
+			}
+		}.joined(separator: " · ")
+	}
+}
+
 public enum TranscriptNotice: Sendable, Hashable {
 	case stopped
 	case error(String)
@@ -44,6 +79,7 @@ public struct TranscriptRow: Identifiable, Sendable, Hashable {
 		case text(String, streaming: Bool)
 		case thinking(String, redacted: Bool, streaming: Bool)
 		case toolCall(ToolCallRow)
+		case toolRound(ToolRound)
 		case notice(TranscriptNotice)
 		case queued(InboxItem)
 		case pending(PendingSend)
@@ -134,6 +170,7 @@ public enum TranscriptLayout {
 		for failure in state.failures {
 			rows.append(TranscriptRow(id: "failure-\(failure.taskId)", kind: .notice(.taskFailed(failure)), inContext: true))
 		}
+		rows = foldRounds(rows)
 		for item in state.inbox where item.mode != .write {
 			rows.append(TranscriptRow(id: "queued-\(item.submissionId)", kind: .queued(item), inContext: true))
 		}
@@ -141,6 +178,42 @@ public enum TranscriptLayout {
 			rows.append(TranscriptRow(id: "pending-\(pending.id)", kind: .pending(pending), inContext: true))
 		}
 		return rows
+	}
+
+	/// Folds each run of two or more finished calls (with any thinking between them) into one `toolRound` row.
+	static func foldRounds(_ rows: [TranscriptRow]) -> [TranscriptRow] {
+		var out: [TranscriptRow] = []
+		var run: [TranscriptRow] = []
+		func finish() {
+			let calls = run.compactMap { row -> ToolCallRow? in if case .toolCall(let call) = row.kind { call } else { nil } }
+			let settled = calls.allSatisfy { call in
+				switch call.status {
+				case .done, .failed, .ended, .noResult: true
+				default: false
+				}
+			}
+			if calls.count >= 2, settled, let first = run.first(where: { if case .toolCall = $0.kind { true } else { false } }) {
+				// Thinking before the first call stays visible: it's how the model started.
+				let lead = run.prefix { if case .thinking = $0.kind { true } else { false } }
+				out.append(contentsOf: lead)
+				let thinking = run.dropFirst(lead.count).compactMap { row -> String? in if case .thinking(let text, _, _) = row.kind { text } else { nil } }
+				out.append(TranscriptRow(id: "round-\(first.id)", kind: .toolRound(ToolRound(calls: calls, thinking: thinking)), inContext: first.inContext))
+			} else {
+				out.append(contentsOf: run)
+			}
+			run = []
+		}
+		for row in rows {
+			switch row.kind {
+			case .toolCall, .thinking:
+				run.append(row)
+			default:
+				finish()
+				out.append(row)
+			}
+		}
+		finish()
+		return out
 	}
 
 	static func toolRow(_ call: ToolCallBlock, result: ToolResultItem?, state: ConversationState, inRun: Bool) -> ToolCallRow {

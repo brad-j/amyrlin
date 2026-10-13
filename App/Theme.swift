@@ -1,64 +1,141 @@
 import AmyrlinCore
 import SwiftUI
 
-/// Every typeface the app uses, in one place. Reading text is Fira Sans, bundled in App/Fonts; controls keep SF.
+// Tokens from aludra's approved design (aludra/design/tokens.css, 2026-10-11), converted from OKLCH to sRGB, so the
+// Mac and the phone read as one product. "The transcript is the interface; chrome is a hairline and a few icons."
+// Colour lives in state marks and the one accent; everything else is near-black, barely cool neutrals.
+
+/// Every typeface the app uses. Reading text is Fira Sans (bundled, App/Fonts); code is SF Mono.
 enum Typography {
-	static let reading = Font.custom("Fira Sans", size: 14.5)
+	static let reading = Font.custom("Fira Sans", size: 15)
 	static let readingSmall = Font.custom("Fira Sans", size: 13)
-	static let code = Font.system(size: 12, design: .monospaced)
+	static let readingStrong = Font.custom("Fira Sans", size: 15).weight(.semibold)
+	static func heading(_ level: Int) -> Font {
+		Font.custom("Fira Sans", size: [20, 17.5, 16, 15][min(max(level, 1), 4) - 1]).weight(.semibold)
+	}
+	static let code = Font.system(size: 12.5, design: .monospaced)
+	static let codeSmall = Font.system(size: 11.5, design: .monospaced)
 	static let label = Font.system(size: 11, weight: .medium)
+	static let projectHeader = Font.custom("Fira Sans", size: 13.5).weight(.semibold)
 }
 
-/// Restrained cool neutrals, with color only where it carries meaning.
 enum Palette {
-	static let background = Color(red: 0.078, green: 0.086, blue: 0.098)
-	static let surface = Color(red: 0.118, green: 0.129, blue: 0.145)
-	static let raised = Color(red: 0.157, green: 0.169, blue: 0.188)
-	static let hairline = Color.white.opacity(0.07)
-	static let secondaryText = Color(red: 0.62, green: 0.66, blue: 0.71)
-	static let tertiaryText = Color(red: 0.45, green: 0.48, blue: 0.53)
-	static let accent = Color(red: 0.45, green: 0.64, blue: 1.0)
+	static let paper = Color(red: 0.053, green: 0.056, blue: 0.061)
+	static let paper2 = Color(red: 0.091, green: 0.095, blue: 0.103)
+	static let paper3 = Color(red: 0.131, green: 0.137, blue: 0.146)
+	static let rule = Color(red: 0.146, green: 0.151, blue: 0.158)
+	static let rule2 = Color(red: 0.233, green: 0.240, blue: 0.250)
+	static let ink = Color(red: 0.904, green: 0.909, blue: 0.917)
+	static let ink2 = Color(red: 0.724, green: 0.732, blue: 0.744)
+	static let ink3 = Color(red: 0.541, green: 0.550, blue: 0.564)
+	static let accent = Color(red: 0.454, green: 0.876, blue: 0.975)
+	static let accentInk = Color(red: 0.010, green: 0.068, blue: 0.104)
+	static let wait = Color(red: 0.960, green: 0.760, blue: 0.371)
+	static let waitInk = Color(red: 0.121, green: 0.078, blue: 0.002)
+	static let bad = Color(red: 0.957, green: 0.479, blue: 0.476)
+	static let add = Color(red: 0.478, green: 0.834, blue: 0.610)
 
-	static let idle = Color(red: 0.42, green: 0.45, blue: 0.50)
-	static let busy = Color(red: 0.36, green: 0.62, blue: 1.0)
-	static let approval = Color(red: 0.70, green: 0.55, blue: 1.0)
-	static let failure = Color(red: 1.0, green: 0.45, blue: 0.48)
-	static let success = Color(red: 0.40, green: 0.80, blue: 0.70)
+	// Names the views used before the redesign.
+	static let background = paper
+	static let surface = paper2
+	static let raised = paper3
+	static let hairline = rule
+	static let secondaryText = ink2
+	static let tertiaryText = ink3
+	static let failure = bad
+	static let success = add
 
 	static func color(for status: ConversationStatus) -> Color {
 		switch status {
-		case .idle: idle
-		case .busy: busy
-		case .needsApproval: approval
-		case .stuck: failure
-		case .unknown: idle
+		case .busy: accent
+		case .needsApproval: wait
+		case .stuck: bad
+		case .idle, .unknown: ink3
 		}
 	}
 
 	static func color(for status: HostConnection.Status) -> Color {
 		switch status {
-		case .connected: success
-		case .connecting, .waiting: busy.opacity(0.6)
-		case .failed: failure
-		case .idle, .stopped: idle
+		case .connected: add
+		case .connecting, .waiting: wait
+		case .failed: bad
+		case .idle, .stopped: ink3
 		}
 	}
 }
 
+enum Metrics {
+	/// The reading column: about 70 characters of Fira Sans at 15 pt.
+	static let measure: CGFloat = 720
+	static let radiusSmall: CGFloat = 5
+	static let radius: CGFloat = 8
+	static let radiusLarge: CGFloat = 14
+}
+
+/// A state mark: shape and colour together, as in aludra (spinner, amber diamond, red cross, check, square).
+struct StateMark: View {
+	enum State { case running, waiting, failed, done, idle, queued }
+	let state: State
+	var size: CGFloat = 12
+
+	var body: some View {
+		Group {
+			switch state {
+			case .running:
+				Spinner(color: Palette.accent)
+			case .waiting:
+				Image(systemName: "diamond.fill").resizable().scaledToFit().foregroundStyle(Palette.wait)
+			case .failed:
+				Image(systemName: "xmark.circle").resizable().scaledToFit().foregroundStyle(Palette.bad)
+			case .done:
+				Image(systemName: "checkmark").resizable().scaledToFit().fontWeight(.semibold).foregroundStyle(Palette.ink3)
+			case .idle:
+				Circle().strokeBorder(Palette.rule2, lineWidth: 1.5)
+			case .queued:
+				Image(systemName: "circle.dotted").resizable().scaledToFit().foregroundStyle(Palette.ink3)
+			}
+		}
+		.frame(width: size, height: size)
+	}
+
+	init(_ state: State, size: CGFloat = 12) {
+		self.state = state
+		self.size = size
+	}
+
+	init(_ status: ConversationStatus, size: CGFloat = 12) {
+		switch status {
+		case .busy: state = .running
+		case .needsApproval: state = .waiting
+		case .stuck: state = .failed
+		case .idle, .unknown: state = .idle
+		}
+		self.size = size
+	}
+}
+
+/// A quarter arc turning once every 0.9 s.
+struct Spinner: View {
+	let color: Color
+
+	var body: some View {
+		TimelineView(.animation) { context in
+			let angle = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.9) / 0.9 * 360
+			ZStack {
+				Circle().stroke(color.opacity(0.22), lineWidth: 1.6)
+				Circle().trim(from: 0, to: 0.28).stroke(color, style: StrokeStyle(lineWidth: 1.6, lineCap: .round)).rotationEffect(.degrees(angle))
+			}
+		}
+	}
+}
+
+/// Kept for the sidebar's machine header.
 struct StatusDot: View {
 	let color: Color
 	var pulsing = false
 
-	@State private var dim = false
-
 	var body: some View {
-		Circle()
-			.fill(color)
-			.frame(width: 7, height: 7)
-			.opacity(pulsing && dim ? 0.35 : 1)
-			.animation(pulsing ? .easeInOut(duration: 0.9).repeatForever() : .default, value: dim)
-			.onAppear { dim = pulsing }
-			.onChange(of: pulsing) { _, now in dim = now }
+		Circle().fill(color).frame(width: 7, height: 7).opacity(pulsing ? 0.6 : 1)
 	}
 }
 
@@ -69,5 +146,18 @@ extension Spend {
 
 	var tokensText: String {
 		"\(input.formatted()) in · \(output.formatted()) out"
+	}
+}
+
+extension Date {
+	/// "now", "4m", "3h", "2d": how aludra's drawer shows age.
+	var shortAge: String {
+		let seconds = max(0, Int(Date.now.timeIntervalSince(self)))
+		switch seconds {
+		case ..<60: return "now"
+		case ..<3600: return "\(seconds / 60)m"
+		case ..<86_400: return "\(seconds / 3600)h"
+		default: return "\(seconds / 86_400)d"
+		}
 	}
 }

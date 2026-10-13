@@ -25,7 +25,15 @@ final class AppModel {
 
 	private(set) var machines: [Machine] = []
 	var selection: ConversationKey? {
-		didSet { if selection != nil { draft = nil } }
+		didSet {
+			if selection != nil { draft = nil }
+			// Reopened at the next launch.
+			if let selection {
+				UserDefaults.standard.set(["machine": selection.machine.uuidString, "conversation": String(selection.conversation)], forKey: Self.selectionKey)
+			} else {
+				UserDefaults.standard.removeObject(forKey: Self.selectionKey)
+			}
+		}
 	}
 	/// Shown in place of a conversation until its first message is sent.
 	var draft: Draft?
@@ -37,6 +45,7 @@ final class AppModel {
 	var error: String?
 
 	private static let defaultsKey = "machines"
+	private static let selectionKey = "selection"
 	private let client = ClientInfo(
 		name: "amyrlin",
 		version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
@@ -53,6 +62,12 @@ final class AppModel {
 		}
 		save()
 		for machine in machines { machine.store.start() }
+		if let saved = UserDefaults.standard.dictionary(forKey: Self.selectionKey) as? [String: String],
+			let machine = saved["machine"].flatMap(UUID.init(uuidString:)), self.machine(machine) != nil,
+			let conversation = saved["conversation"].flatMap(ConversationID.init)
+		{
+			selection = ConversationKey(machine: machine, conversation: conversation)
+		}
 	}
 
 	func addMachine(_ url: URL) {
