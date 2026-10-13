@@ -1,6 +1,6 @@
 # amyrlin wire protocol, v1 draft
 
-Status: v1, reviewed 2026-10-12 (decisions in section 10). Nothing implements it yet.
+Status: v1, reviewed 2026-10-12 (decisions in section 10). aludra implements it at `/amyrlin`.
 
 This is the contract between the amyrlin app (client) and an amyrlin server (one Node process per machine that owns a pi-durable 1.1.0 Harness, its SQLite store and its model credentials). The client depends only on this document. The server translates pi-durable's experimental `watchEvents()` stream into the events defined here.
 
@@ -555,9 +555,13 @@ Added 2026-10-12, as optional fields within v1:
 
 6. **Projects.** aludra's host serves v1 at `/amyrlin` and ties each conversation to a project: `host.info` lists `projects`, summaries carry `workspace`, `project` and `dir`, `conversations.create` takes `project` and a first message `text`, and `configure` refuses `cwd` and `tools`. Forks and archiving answer `unsupported` there. Approvals carry an extra `summary` ("git push"). A create without a project makes a no-project session (T3 Code's no-project threads): its own scratch directory, no `project` in its summary.
 
+Added 2026-10-13, also optional within v1 (aludra serves them; a server without them answers `unknown_method`):
+
+7. **Renaming.** `conversations.rename {conversationId, title}` returns `{conversation}` with the new title, and watchers get `conversation.updated`. aludra folds whitespace and takes 1 to 200 characters; anything else is `bad_request`.
+8. **Picked project colours.** A project's colour is hashed from its name (`ProjectColor`), and names can clash. `host.info` and `host.snapshot` carry `projectColors`, project name to an index into `ProjectColor.hues`; `projects.setColor {project, color}` sets one (`color: null` clears it, so the name's hue is back) and returns `{projectColors}`; `host.watch` sends `{"type":"host.projectColors","projectColors":{…}}` when they change. A client that doesn't know the event resyncs once.
+
 Deferred, not in v1:
 
-- Renaming conversations. `amyrlin.meta` already holds a title, so `conversations.rename` would be small.
 - Withdrawing one queued message (`harness.abortSubmission`). `abort` withdraws all queued inputs.
 - Image data. Image blocks carry no data in v1.
 - Fixtures for retry, deferred polling and `task_failed`. Faux can produce error responses, so these can be recorded before the server implements them.

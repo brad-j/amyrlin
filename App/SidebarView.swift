@@ -133,15 +133,21 @@ private struct MachineSection: View {
 					VStack(alignment: .leading, spacing: 0) {
 						ProjectRow(
 							name: group.project.isEmpty ? "no project" : group.project,
-							color: group.project.isEmpty ? Palette.ink3 : Palette.project(group.project),
+							color: group.project.isEmpty ? Palette.ink3 : Palette.project(group.project, in: store.state.projectColors),
 							collapsed: collapsed,
 							note: collapsed.wrappedValue ? foldedNote(group.sessions) : nil
 						)
+						.contextMenu {
+							if !group.project.isEmpty, store.isConnected { colourMenu(group.project) }
+						}
 						if !collapsed.wrappedValue {
 							ForEach(Array(group.sessions.enumerated()), id: \.element.id) { index, summary in
 								let key = ConversationKey(machine: machine.id, conversation: summary.id)
-								SessionRow(summary: summary, last: index == group.sessions.count - 1, selected: model.selection == key) {
+								SessionRow(summary: summary, last: index == group.sessions.count - 1, selected: model.selection == key, colors: store.state.projectColors) {
 									model.selection = key
+								}
+								.contextMenu {
+									Button("Rename…") { model.renaming = key }.disabled(!store.isConnected)
 								}
 							}
 						}
@@ -154,6 +160,26 @@ private struct MachineSection: View {
 					.font(Typography.ui)
 					.foregroundStyle(Palette.ink3)
 					.padding(.vertical, 14)
+			}
+		}
+	}
+
+	/// Picks the project's colour on this machine, for names whose hashed colours clash; Automatic goes back to the name's.
+	@ViewBuilder private func colourMenu(_ project: String) -> some View {
+		let picked = store.state.projectColors[project]
+		Menu("Colour") {
+			Button(picked == nil ? "✓ Automatic" : "Automatic") { model.setProjectColor(project, nil, on: machine) }
+			Divider()
+			ForEach(ProjectColor.names.indices, id: \.self) { index in
+				Button {
+					model.setProjectColor(project, index, on: machine)
+				} label: {
+					Label {
+						Text(picked == index ? "✓ \(ProjectColor.names[index])" : ProjectColor.names[index])
+					} icon: {
+						Image(nsImage: Palette.swatch(index))
+					}
+				}
 			}
 		}
 	}
@@ -219,6 +245,7 @@ private struct SessionRow: View {
 	let summary: ConversationSummary
 	let last: Bool
 	let selected: Bool
+	let colors: [String: Int]
 	let select: () -> Void
 	@State private var hovering = false
 
@@ -241,9 +268,9 @@ private struct SessionRow: View {
 			.padding(.leading, 2)
 			.padding(.trailing, 6)
 			.padding(.vertical, 4)
-			.background(selected ? (summary.project.map(Palette.projectWash) ?? Palette.selection) : hovering ? Palette.paper2 : .clear)
+			.background(selected ? (summary.project.map { Palette.projectWash($0, in: colors) } ?? Palette.selection) : hovering ? Palette.paper2 : .clear)
 			.overlay(alignment: .leading) {
-				if selected { Rectangle().fill(summary.project.map(Palette.project) ?? Palette.accent).frame(width: 2) }
+				if selected { Rectangle().fill(summary.project.map { Palette.project($0, in: colors) } ?? Palette.accent).frame(width: 2) }
 			}
 			.contentShape(Rectangle())
 		}

@@ -78,6 +78,9 @@ struct MainView: View {
 		.sheet(isPresented: $model.isAddingMachine) {
 			AddMachineSheet(model: model)
 		}
+		.sheet(item: Binding(get: { model.renaming.map(RenameRef.init) }, set: { model.renaming = $0?.conversation })) { ref in
+			RenameSheet(model: model, target: ref.conversation)
+		}
 		.sheet(item: Binding(get: { model.newConversationMachine.flatMap(model.machine) .map(MachineRef.init) }, set: { model.newConversationMachine = $0?.id })) { ref in
 			NewConversationSheet(model: model, machine: ref.machine)
 		}
@@ -93,7 +96,8 @@ struct MainView: View {
 				ConversationView(
 					store: selected.conversation,
 					host: selected.machine.store,
-					showInspector: $model.showInspector
+					showInspector: $model.showInspector,
+					rename: { model.renaming = model.selection }
 				)
 				.id(model.selection)
 			} else if let draft = model.draft, let machine = model.machine(draft.machine) {
@@ -191,6 +195,64 @@ struct SetupGuide: View {
 		.padding(40)
 		.frame(maxWidth: .infinity, maxHeight: .infinity)
 		.background(Palette.background)
+	}
+}
+
+struct RenameRef: Identifiable {
+	let conversation: ConversationKey
+	var id: ConversationKey { conversation }
+}
+
+/// A conversation's new title, saved on its host; the phone app shows it too.
+struct RenameSheet: View {
+	let model: AppModel
+	let target: ConversationKey
+	@Environment(\.dismiss) private var dismiss
+	@State private var title = ""
+	@FocusState private var focused: Bool
+
+	private var trimmed: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 0) {
+			HStack(spacing: 10) {
+				Text("❯").font(Typography.uiStrong).foregroundStyle(Palette.accent)
+				TextField("", text: $title, prompt: Text("title").foregroundStyle(Palette.ink3))
+					.textFieldStyle(.plain)
+					.font(Typography.ui)
+					.foregroundStyle(Palette.ink)
+					.focused($focused)
+					.onSubmit(save)
+			}
+			.padding(.horizontal, 16)
+			.padding(.vertical, 13)
+			Rectangle().fill(Palette.rule).frame(height: 1)
+			HStack(spacing: 8) {
+				Text("rename").font(Typography.label).foregroundStyle(Palette.ink3).textCase(.uppercase)
+				Spacer()
+				Button("esc cancel") { dismiss() }
+					.buttonStyle(QuietButton())
+					.keyboardShortcut(.cancelAction)
+				Button("↵ rename", action: save)
+					.buttonStyle(QuietButton(fill: trimmed.isEmpty ? nil : Palette.accent, ink: trimmed.isEmpty ? Palette.ink3 : Palette.accentInk))
+					.keyboardShortcut(.defaultAction)
+					.disabled(trimmed.isEmpty)
+			}
+			.padding(.horizontal, 16)
+			.padding(.vertical, 10)
+		}
+		.frame(width: 560 * Typography.scale)
+		.background(Palette.paper)
+		.onAppear {
+			title = model.machine(target.machine)?.store.state.conversations[target.conversation]?.title ?? ""
+			focused = true
+		}
+	}
+
+	private func save() {
+		guard !trimmed.isEmpty else { return }
+		model.rename(target, to: trimmed)
+		dismiss()
 	}
 }
 

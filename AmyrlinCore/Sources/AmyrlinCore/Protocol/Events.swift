@@ -224,6 +224,8 @@ public struct HostSnapshot: Decodable, Sendable, Hashable {
 	public var host: HostIdentity
 	public var spend: Spend
 	public var conversations: [ConversationSummary]
+	/// Projects whose colour was picked (aludra).
+	public var projectColors: [String: Int]?
 }
 
 /// Events of a `host.watch` subscription (protocol section 6.2).
@@ -232,6 +234,8 @@ public enum HostEvent: Decodable, Sendable, Hashable {
 	case conversationUpdated(ConversationSummary)
 	case conversationRemoved(ConversationID)
 	case spend(Spend)
+	/// The picked project colours changed (aludra).
+	case projectColors([String: Int])
 	case unknown(type: String)
 
 	public init(from decoder: any Decoder) throws {
@@ -239,6 +243,7 @@ public enum HostEvent: Decodable, Sendable, Hashable {
 		let type = try c.decode(String.self, forKey: .type)
 		switch type {
 		case "host.snapshot": self = .snapshot(try HostSnapshot(from: decoder))
+		case "host.projectColors": self = .projectColors(try c.decode([String: Int].self, forKey: .projectColors))
 		case "conversation.updated": self = .conversationUpdated(try c.decode(ConversationSummary.self, forKey: .conversation))
 		case "conversation.removed": self = .conversationRemoved(try c.decode(ConversationID.self, forKey: .conversationId))
 		case "host.spend": self = .spend(try c.decode(Spend.self, forKey: .spend))
@@ -246,7 +251,7 @@ public enum HostEvent: Decodable, Sendable, Hashable {
 		}
 	}
 
-	private enum CodingKeys: String, CodingKey { case type, conversation, conversationId, spend }
+	private enum CodingKeys: String, CodingKey { case type, conversation, conversationId, spend, projectColors }
 }
 
 /// An event that failed to decode, kept so the subscription can log it and resync.

@@ -64,9 +64,19 @@ public final class HostStore {
 		return result.conversation
 	}
 
+	public func rename(_ id: ConversationID, to title: String) async throws {
+		let result = try await connection.send(Commands.RenameConversation(conversationId: id, title: title))
+		state.upsert(result.conversation)
+	}
+
 	public func setArchived(_ id: ConversationID, _ archived: Bool) async throws {
 		let result = try await connection.send(Commands.ArchiveConversation(conversationId: id, archived: archived))
 		state.upsert(result.conversation)
+	}
+
+	/// Picks `project`'s colour on this host, or with nil gives it back its name's.
+	public func setProjectColor(_ project: String, _ color: Int?) async throws {
+		state.projectColors = try await connection.send(Commands.SetProjectColor(project: project, color: color)).projectColors
 	}
 
 	private func refreshInfo() async {

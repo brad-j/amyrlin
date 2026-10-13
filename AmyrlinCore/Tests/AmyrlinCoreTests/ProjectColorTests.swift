@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import AmyrlinCore
 
@@ -6,6 +7,29 @@ import Testing
 		// Pinned: a change here recolours every project Brad has.
 		#expect(ProjectColor.index(for: "aludra") == 6)
 		#expect(ProjectColor.index(for: "waygate-cs") == 8)
+	}
+
+	@Test func aPickedColourWinsForThatProjectOnly() {
+		#expect(ProjectColor.index(for: "aludra", overrides: ["aludra": 2]) == 2)
+		#expect(ProjectColor.index(for: "waygate-cs", overrides: ["aludra": 2]) == 8)
+		#expect(ProjectColor.index(for: "aludra", overrides: ["aludra": 99]) == 6, "an index out of range falls back")
+		#expect(ProjectColor.names.count == ProjectColor.hues.count)
+	}
+
+	@Test func pickedColoursArriveInTheSnapshotAndInEvents() throws {
+		let decode = { (json: String) in try JSONDecoder().decode(HostEvent.self, from: Data(json.utf8)) }
+		var state = HostState()
+		state.apply(try decode(#"{"type":"host.snapshot","host":{"hostId":"h","name":"egwene"},"spend":{},"conversations":[],"projectColors":{"aludra":4}}"#))
+		#expect(state.projectColors == ["aludra": 4])
+		state.apply(try decode(#"{"type":"host.projectColors","projectColors":{"loial":1}}"#))
+		#expect(state.projectColors == ["loial": 1])
+		state.apply(try decode(#"{"type":"host.snapshot","host":{"hostId":"h","name":"egwene"},"spend":{},"conversations":[]}"#))
+		#expect(state.projectColors == [:], "a host without colours has none")
+	}
+
+	@Test func clearingAColourSendsNull() throws {
+		let json = String(decoding: try JSONEncoder().encode(Commands.SetProjectColor(project: "aludra", color: nil).params), as: UTF8.self)
+		#expect(json.contains(#""color":null"#))
 	}
 
 	@Test func coloursAvoidFailedRedAndWaitingAmber() {

@@ -6,6 +6,8 @@ struct ConversationView: View {
 	let store: ConversationStore
 	let host: HostStore
 	@Binding var showInspector: Bool
+	/// Opens the rename sheet for this conversation.
+	var rename: () -> Void = {}
 
 	private var summary: ConversationSummary? { host.state.conversations[store.id] }
 
@@ -16,7 +18,7 @@ struct ConversationView: View {
 			} else if store.isResyncing || !host.isConnected {
 				Banner(text: host.isConnected ? "Catching up" : "Reconnecting to \(host.url.host() ?? "the host")", color: Palette.wait)
 			}
-			ConversationHeader(title: summary?.title ?? store.state.conversation?.title ?? "Conversation", project: summary?.project, dir: summary?.dir, busy: store.state.isBusy, showInspector: $showInspector)
+			ConversationHeader(title: summary?.title ?? store.state.conversation?.title ?? "Conversation", project: summary?.project, dir: summary?.dir, colors: host.state.projectColors, busy: store.state.isBusy, showInspector: $showInspector, rename: rename)
 			TranscriptView(store: store)
 			VStack(spacing: 8) {
 				ForEach(store.state.approvals) { approval in
@@ -50,8 +52,10 @@ private struct ConversationHeader: View {
 	let title: String
 	let project: String?
 	let dir: String?
+	let colors: [String: Int]
 	let busy: Bool
 	@Binding var showInspector: Bool
+	let rename: () -> Void
 
 	var body: some View {
 		HStack(spacing: 0) {
@@ -63,13 +67,15 @@ private struct ConversationHeader: View {
 				let short = ConversationView.shortPath(dir)
 				let parent = project.map { short.hasSuffix($0) ? String(short.dropLast($0.count)) : short + "/" } ?? short
 				Text(parent).foregroundStyle(Palette.ink3)
-				if let project { Text(project).foregroundStyle(Palette.project(project)) }
+				if let project { Text(project).foregroundStyle(Palette.project(project, in: colors)) }
 				Text("  ").foregroundStyle(Palette.ink3)
 			}
 			if busy {
 				StateMark(.running, size: 10).padding(.trailing, 6)
 			}
 			Text(title).foregroundStyle(Palette.ink2).lineLimit(1).truncationMode(.tail)
+				.onTapGesture(count: 2, perform: rename)
+				.help("Double-click to rename")
 			Spacer(minLength: 8)
 			if !showInspector {
 				Button("[inspector]") { showInspector = true }

@@ -63,6 +63,8 @@ final class AppModel {
 		didSet { UserDefaults.standard.set(Double(sidebarWidth), forKey: "sidebarWidth") }
 	}
 	var isAddingMachine = false
+	/// The conversation whose title is being changed.
+	var renaming: ConversationKey?
 	/// The machine a new conversation is being started on, while its sheet is open.
 	var newConversationMachine: UUID?
 	/// A failed app-level action, shown once in the window.
@@ -172,6 +174,29 @@ final class AppModel {
 		} catch {
 			self.error = (error as? ProtocolError)?.message ?? String(describing: error)
 			return false
+		}
+	}
+
+	/// Gives a conversation a new title on its host.
+	func rename(_ target: ConversationKey, to title: String) {
+		guard let machine = machine(target.machine) else { return }
+		Task {
+			do {
+				try await machine.store.rename(target.conversation, to: title)
+			} catch {
+				self.error = (error as? ProtocolError)?.message ?? String(describing: error)
+			}
+		}
+	}
+
+	/// Picks `project`'s colour on `machine`, or with nil gives it back its name's.
+	func setProjectColor(_ project: String, _ color: Int?, on machine: Machine) {
+		Task {
+			do {
+				try await machine.store.setProjectColor(project, color)
+			} catch {
+				self.error = (error as? ProtocolError)?.message ?? String(describing: error)
+			}
 		}
 	}
 

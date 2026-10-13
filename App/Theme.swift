@@ -70,16 +70,29 @@ enum Palette {
 	static let failure = bad
 	static let success = add
 
-	/// Each project's own colour (AmyrlinCore's ProjectColor), the same everywhere it appears.
-	static func project(_ name: String) -> Color {
-		let c = ProjectColor.rgb(for: name)
+	/// Each project's own colour (AmyrlinCore's ProjectColor), the same everywhere it appears: the one picked on its
+	/// host (`colors`, the host's `projectColors`), else its name's.
+	static func project(_ name: String, in colors: [String: Int]) -> Color {
+		let c = ProjectColor.rgb(for: name, overrides: colors)
 		return Color(red: c.red, green: c.green, blue: c.blue)
 	}
 
 	/// The selected row's wash in a project's hue: dark paper with a trace of it.
-	static func projectWash(_ name: String) -> Color {
-		let c = ProjectColor.oklchToSRGB(lightness: 0.25, chroma: 0.035, hue: ProjectColor.hues[ProjectColor.index(for: name)])
+	static func projectWash(_ name: String, in colors: [String: Int]) -> Color {
+		let c = ProjectColor.oklchToSRGB(lightness: 0.25, chroma: 0.035, hue: ProjectColor.hues[ProjectColor.index(for: name, overrides: colors)])
 		return Color(red: c.red, green: c.green, blue: c.blue)
+	}
+
+	/// Hue `index` as a small filled circle for menus, which draw SF Symbols in one ink.
+	static func swatch(_ index: Int) -> NSImage {
+		let c = ProjectColor.oklchToSRGB(lightness: ProjectColor.lightness, chroma: ProjectColor.chroma, hue: ProjectColor.hues[index])
+		let image = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
+			NSColor(srgbRed: c.red, green: c.green, blue: c.blue, alpha: 1).setFill()
+			NSBezierPath(ovalIn: rect.insetBy(dx: 1, dy: 1)).fill()
+			return true
+		}
+		image.isTemplate = false
+		return image
 	}
 
 	static func color(for status: ConversationStatus) -> Color {

@@ -19,10 +19,19 @@ public enum ProjectColor {
 		return Int(hash % UInt64(hues.count))
 	}
 
-	/// sRGB components in 0...1.
-	public static func rgb(for project: String) -> (red: Double, green: Double, blue: Double) {
-		oklchToSRGB(lightness: lightness, chroma: chroma, hue: hues[index(for: project)])
+	/// Index into `hues` for `project`: the one picked for it on its host (`overrides`, name to index), else its name's.
+	public static func index(for project: String, overrides: [String: Int]) -> Int {
+		if let picked = overrides[project], hues.indices.contains(picked) { return picked }
+		return index(for: project)
 	}
+
+	/// sRGB components in 0...1.
+	public static func rgb(for project: String, overrides: [String: Int] = [:]) -> (red: Double, green: Double, blue: Double) {
+		oklchToSRGB(lightness: lightness, chroma: chroma, hue: hues[index(for: project, overrides: overrides)])
+	}
+
+	/// A name for each hue, for menus.
+	public static let names = ["violet", "mint", "coral", "blue", "pink", "lime", "teal", "rose", "periwinkle", "green", "sky"]
 
 	/// OKLCH to gamma-encoded sRGB, clamped to the gamut.
 	public static func oklchToSRGB(lightness: Double, chroma: Double, hue: Double) -> (red: Double, green: Double, blue: Double) {

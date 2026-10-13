@@ -146,7 +146,7 @@ struct NewConversationSheet: View {
 								.padding(.bottom, 4)
 						}
 						ForEach(section.entries) { entry in
-							ProjectRow(entry: entry, selected: selected == entry.id)
+							ProjectRow(entry: entry, selected: selected == entry.id, colors: machine.store.state.projectColors)
 								.id(entry.id)
 								.onTapGesture(count: 2) { open(entry.project) }
 								.onTapGesture { selected = entry.id }
@@ -208,10 +208,11 @@ private struct NoProjectRow: View {
 private struct ProjectRow: View {
 	let entry: ProjectCatalog.Entry
 	let selected: Bool
+	let colors: [String: Int]
 
 	var body: some View {
 		HStack(spacing: 10) {
-			Circle().fill(Palette.project(entry.project.name)).frame(width: 8, height: 8)
+			Circle().fill(Palette.project(entry.project.name, in: colors)).frame(width: 8, height: 8)
 			Text(entry.project.name)
 				.font(Typography.ui)
 				.foregroundStyle(Palette.ink)
@@ -231,7 +232,7 @@ private struct ProjectRow: View {
 		}
 		.padding(.horizontal, 12)
 		.padding(.vertical, 8)
-		.background(selected ? Palette.projectWash(entry.project.name) : .clear, in: RoundedRectangle(cornerRadius: Metrics.radiusRow))
+		.background(selected ? Palette.projectWash(entry.project.name, in: colors) : .clear, in: RoundedRectangle(cornerRadius: Metrics.radiusRow))
 		.contentShape(Rectangle())
 	}
 
@@ -257,7 +258,7 @@ struct DraftView: View {
 			VStack(spacing: 6) {
 				Text(project?.name ?? "no project")
 					.font(Typography.uiStrong)
-					.foregroundStyle(project.map { Palette.project($0.name) } ?? Palette.ink2)
+					.foregroundStyle(project.map { Palette.project($0.name, in: machine.store.state.projectColors) } ?? Palette.ink2)
 				Text(project.map { ConversationView.shortPath($0.dir) } ?? "a scratch directory of its own, on \(machine.store.state.host?.name ?? "the host")")
 					.font(Typography.code)
 					.foregroundStyle(Palette.tertiaryText)

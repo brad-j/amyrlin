@@ -26,9 +26,33 @@ public enum Commands {
 			public var defaults: Defaults?
 			/// Where new conversations can start; servers that tie conversations to projects list them (aludra does).
 			public var projects: [ProjectInfo]?
+			/// Projects whose colour was picked, name to `ProjectColor.hues` index (aludra).
+			public var projectColors: [String: Int]?
 		}
 		public let params = Params()
 		public init() {}
+	}
+
+	/// Picks a project's colour on its host, or with nil gives it back its name's (aludra).
+	public struct SetProjectColor: Command {
+		public static let method = "projects.setColor"
+		public static let retriesOnReconnect = true
+		public struct Params: Encodable, Sendable {
+			public var project: String
+			public var color: Int?
+
+			// `color` is sent as null to clear it; the synthesized encoding would leave it out.
+			public func encode(to encoder: any Encoder) throws {
+				var c = encoder.container(keyedBy: CodingKeys.self)
+				try c.encode(project, forKey: .project)
+				try c.encode(color, forKey: .color)
+			}
+
+			private enum CodingKeys: String, CodingKey { case project, color }
+		}
+		public struct Result: Decodable, Sendable, Hashable { public var projectColors: [String: Int] }
+		public let params: Params
+		public init(project: String, color: Int?) { params = Params(project: project, color: color) }
 	}
 
 	public struct ListConversations: Command {
@@ -77,6 +101,21 @@ public enum Commands {
 		public let params: Params
 		public init(requestId: String = UUID().uuidString, conversationId: ConversationID, at: EntryID, title: String? = nil) {
 			params = Params(requestId: requestId, conversationId: conversationId, at: at, title: title)
+		}
+	}
+
+	/// Gives a conversation a new title (aludra; deferred in the v1 review, added as an optional method).
+	public struct RenameConversation: Command {
+		public static let method = "conversations.rename"
+		public static let retriesOnReconnect = true
+		public struct Params: Encodable, Sendable {
+			public var conversationId: ConversationID
+			public var title: String
+		}
+		public struct Result: Decodable, Sendable, Hashable { public var conversation: ConversationSummary }
+		public let params: Params
+		public init(conversationId: ConversationID, title: String) {
+			params = Params(conversationId: conversationId, title: title)
 		}
 	}
 

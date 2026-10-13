@@ -4,6 +4,8 @@ import Foundation
 public struct HostState: Sendable, Hashable {
 	public var host: HostIdentity?
 	public var spend: Spend = .zero
+	/// Projects whose colour was picked on this host: name to `ProjectColor.hues` index.
+	public var projectColors: [String: Int] = [:]
 	public private(set) var conversations: [ConversationID: ConversationSummary] = [:]
 	public private(set) var hasSnapshot = false
 
@@ -45,6 +47,7 @@ public struct HostState: Sendable, Hashable {
 		case .snapshot(let snapshot):
 			host = snapshot.host
 			spend = snapshot.spend
+			projectColors = snapshot.projectColors ?? [:]
 			conversations = Dictionary(snapshot.conversations.map { ($0.id, $0) }) { _, last in last }
 			hasSnapshot = true
 		case .conversationUpdated(let summary):
@@ -53,6 +56,8 @@ public struct HostState: Sendable, Hashable {
 			conversations[id] = nil
 		case .spend(let spend):
 			self.spend = spend
+		case .projectColors(let colors):
+			projectColors = colors
 		case .unknown(let type):
 			return .needsResync(reason: "unknown event type \(type)")
 		}
