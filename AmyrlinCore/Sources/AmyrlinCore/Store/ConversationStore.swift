@@ -7,6 +7,8 @@ public struct PendingSend: Identifiable, Sendable, Hashable {
 	public let id: String
 	public let text: String
 	public let whenBusy: WhenBusy
+	/// Its images, kept for a retry.
+	public var images: [ImageUpload] = []
 	public var submissionId: SubmissionID?
 	/// Set when the server refused it or its outcome is unknown; the user can retry.
 	public var failure: String?
@@ -28,6 +30,8 @@ public final class ConversationStore {
 	@ObservationIgnored private let connection: HostConnection
 	@ObservationIgnored private var task: Task<Void, Never>?
 	@ObservationIgnored private var subscription: Subscription<ConversationEvent>?
+	/// Images of the transcript fetched so far; a stored image never changes.
+	@ObservationIgnored private var images: [ImageRef: Data] = [:]
 
 	init(id: ConversationID, connection: HostConnection) {
 		self.id = id
@@ -49,11 +53,11 @@ public final class ConversationStore {
 
 	// MARK: Commands
 
-	/// Sends a message. Return sends a follow-up when busy; the steer modifier sends `.steer`.
-	public func send(_ text: String, whenBusy: WhenBusy = .followUp) {
+	/// Sends a message, with any images. Return sends a follow-up when busy; the steer modifier sends `.steer`.
+	public func send(_ text: String, images: [ImageUpload] = [], whenBusy: WhenBusy = .followUp) {
 		let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-		guard !trimmed.isEmpty else { return }
-		let pending = PendingSend(id: UUID().uuidString, text: trimmed, whenBusy: whenBusy)
+		guard !trimmed.isEmpty || !images.isEmpty else { return }
+		let pending = PendingSend(id: UUID().uuidString, text: trimmed, whenBusy: whenBusy, images: images)
 		outbox.append(pending)
 		submit(pending)
 	}
@@ -110,8 +114,17 @@ public final class ConversationStore {
 		}
 	}
 
+	/// An image of the transcript, fetched once from the host.
+	public func image(_ ref: ImageRef) async throws -> Data {
+		if let cached = images[ref] { return cached }
+		let result = try await connection.send(Commands.ConversationImage(conversationId: id, entryId: ref.entryId, index: ref.index))
+		guard let data = Data(base64Encoded: result.data) else { throw ProtocolError(code: "internal", message: "The image came back unreadable") }
+		images[ref] = data
+		return data
+	}
+
 	private func submit(_ pending: PendingSend) {
-		let command = Commands.Submit(conversationId: id, requestId: pending.id, text: pending.text, whenBusy: pending.whenBusy)
+		let command = Commands.Submit(conversationId: id, requestId: pending.id, text: pending.text, whenBusy: pending.whenBusy, images: pending.images)
 		Task {
 			do {
 				let result = try await connection.send(command)

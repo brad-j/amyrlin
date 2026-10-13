@@ -560,8 +560,9 @@ Added 2026-10-13, also optional within v1 (aludra serves them; a server without 
 7. **Renaming.** `conversations.rename {conversationId, title}` returns `{conversation}` with the new title, and watchers get `conversation.updated`. aludra folds whitespace and takes 1 to 200 characters; anything else is `bad_request`.
 8. **Picked project colours.** A project's colour is hashed from its name (`ProjectColor`), and names can clash. `host.info` and `host.snapshot` carry `projectColors`, project name to an index into `ProjectColor.hues`; `projects.setColor {project, color}` sets one (`color: null` clears it, so the name's hue is back) and returns `{projectColors}`; `host.watch` sends `{"type":"host.projectColors","projectColors":{…}}` when they change. A client that doesn't know the event resyncs once.
 
+9. **Images.** `submit` and `conversations.create` take `images: [{mimeType, data}]` (base64) beside `text`, which may then be empty. aludra takes PNG, JPEG, GIF and WebP, at most 8 a message and 5 MB each, and checks the bytes are the type named; the Mac app scales each to 1568 px on the long side first. Image blocks in items still carry only `mimeType`; `conversation.image {conversationId, entryId, index}` returns `{mimeType, data}` for block `index` of item `entryId`, a user message's or a tool result's.
+
 Deferred, not in v1:
 
 - Withdrawing one queued message (`harness.abortSubmission`). `abort` withdraws all queued inputs.
-- Image data. Image blocks carry no data in v1.
 - Fixtures for retry, deferred polling and `task_failed`. Faux can produce error responses, so these can be recorded before the server implements them.

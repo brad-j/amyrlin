@@ -250,6 +250,7 @@ struct DraftView: View {
 	/// Nil for a no-project session.
 	let project: ProjectInfo?
 	@State private var text = ""
+	@State private var attachments = Attachments()
 	@State private var sending = false
 	@FocusState private var focused: Bool
 
@@ -265,6 +266,7 @@ struct DraftView: View {
 			}
 			.frame(maxWidth: .infinity, maxHeight: .infinity)
 			VStack(alignment: .leading, spacing: 4) {
+				AttachmentStrip(attachments: attachments)
 				TextField("Message", text: $text, axis: .vertical)
 					.textFieldStyle(.plain)
 					.font(Typography.ui)
@@ -279,10 +281,20 @@ struct DraftView: View {
 					.padding(10)
 					.background(Palette.surface, in: RoundedRectangle(cornerRadius: Metrics.radius))
 					.overlay(RoundedRectangle(cornerRadius: Metrics.radius).stroke(focused ? Palette.accent.opacity(0.5) : Palette.hairline))
-				Text(sending ? "Starting…" : "Return starts the conversation · ⌥Return new line")
-					.font(Typography.label)
-					.foregroundStyle(Palette.tertiaryText)
-					.padding(.horizontal, 2)
+					.acceptsImages(attachments, focused: focused)
+				HStack {
+					Text(sending ? "Starting…" : "Return starts the conversation · ⌥Return new line")
+						.font(Typography.label)
+						.foregroundStyle(Palette.tertiaryText)
+					Spacer()
+					Button("[+ image]") { attachments.pick() }
+						.buttonStyle(.plain)
+						.font(Typography.uiSmall)
+						.foregroundStyle(attachments.isFull ? Palette.ink3 : Palette.ink2)
+						.disabled(attachments.isFull || sending)
+						.help("Attach images; you can also drop them on the message or paste them (⌘V)")
+				}
+				.padding(.horizontal, 2)
 			}
 			.padding(.horizontal, 16)
 			.padding(.top, 8)
@@ -294,10 +306,15 @@ struct DraftView: View {
 
 	private func send() {
 		let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
-		guard !message.isEmpty, !sending else { return }
+		guard !message.isEmpty || !attachments.isEmpty, !sending else { return }
 		sending = true
+		let images = attachments.items.map(\.upload)
 		Task {
-			if !(await model.startConversation(on: machine, project: project?.dir, text: message)) { sending = false }
+			if await model.startConversation(on: machine, project: project?.dir, text: message, images: images) {
+				_ = attachments.take()
+			} else {
+				sending = false
+			}
 		}
 	}
 }

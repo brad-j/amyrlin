@@ -24,6 +24,7 @@
 		A72E7A31DF98C83FA8A34DCE /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 683EB059DBE7F4081E821D7B /* MarkdownView.swift */; };
 		A96F62B37DD56C9283F7B1B1 /* IBMPlexMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 976BB1CCA2CDFB3AECFBE1CE /* IBMPlexMono-Regular.ttf */; };
 		B1AED751167FC0C047FB468F /* IBMPlexMono-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E098E2DEA603F2E95964E60C /* IBMPlexMono-Medium.ttf */; };
+		BB425F65EF15556751759DE3 /* Attachments.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFE9608226016C37DE47EB59 /* Attachments.swift */; };
 		C498641CC1BFBED15AF6256C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 96C81C52F22A4378025089DF /* Assets.xcassets */; };
 		C6C2B99C10C1E17992E316B2 /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F46883B3C2B7443F8A34EB5 /* InspectorView.swift */; };
 		CCB8CBF3B5AABAE0AEAE85C7 /* IBMPlexMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F5FE85A895879393A37D7CB0 /* IBMPlexMono-Bold.ttf */; };
@@ -59,6 +60,7 @@
 		F5FE85A895879393A37D7CB0 /* IBMPlexMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Bold.ttf"; sourceTree = "<group>"; };
 		F9F1EDA367D84F1E12969C30 /* IBMPlex-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "IBMPlex-OFL.txt"; sourceTree = "<group>"; };
 		FACC027B3134DED45C50F173 /* IBMPlexMono-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-SemiBold.ttf"; sourceTree = "<group>"; };
+		FFE9608226016C37DE47EB59 /* Attachments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Attachments.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -116,6 +118,7 @@
 				BA8EA64CEF1CD5AC382E123B /* AmyrlinApp.swift */,
 				E43E677CA5F20DE603B53B9F /* AppModel.swift */,
 				96C81C52F22A4378025089DF /* Assets.xcassets */,
+				FFE9608226016C37DE47EB59 /* Attachments.swift */,
 				A6FF507E96091DF46C73B8C0 /* ConversationView.swift */,
 				D8613CB42BCC02047555BA2C /* Info.plist */,
 				3F46883B3C2B7443F8A34EB5 /* InspectorView.swift */,
@@ -226,6 +229,7 @@
 			files = (
 				F6D4E2824150EEE404DCACB5 /* AmyrlinApp.swift in Sources */,
 				FED63C9D31BD47D6F5D4A3BE /* AppModel.swift in Sources */,
+				BB425F65EF15556751759DE3 /* Attachments.swift in Sources */,
 				3E246E97702392C8017B1D82 /* ConversationView.swift in Sources */,
 				C6C2B99C10C1E17992E316B2 /* InspectorView.swift in Sources */,
 				A72E7A31DF98C83FA8A34DCE /* MarkdownView.swift in Sources */,

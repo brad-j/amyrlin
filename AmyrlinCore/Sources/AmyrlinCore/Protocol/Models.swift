@@ -6,6 +6,35 @@ public typealias SubmissionID = Int64
 public typealias TaskID = Int64
 public typealias ConversationID = Int64
 
+/// An image's bytes as the protocol carries them: base64, with its type.
+public struct ImageUpload: Codable, Sendable, Hashable {
+	public var mimeType: String
+	public var data: String
+	public init(mimeType: String, data: String) {
+		self.mimeType = mimeType
+		self.data = data
+	}
+}
+
+/// Where an image is in a transcript: block `index` of item `entryId`.
+public struct ImageRef: Sendable, Hashable {
+	public var entryId: EntryID
+	public var index: Int
+	public var mimeType: String
+	public init(entryId: EntryID, index: Int, mimeType: String) {
+		self.entryId = entryId
+		self.index = index
+		self.mimeType = mimeType
+	}
+
+	/// The image blocks of item `entryId`'s content.
+	public static func all(in content: [Block], entryId: EntryID) -> [ImageRef] {
+		content.enumerated().compactMap { index, block in
+			if case .image(let mimeType) = block { ImageRef(entryId: entryId, index: index, mimeType: mimeType) } else { nil }
+		}
+	}
+}
+
 public struct ModelRef: Codable, Sendable, Hashable {
 	public var provider: String
 	public var modelId: String

@@ -23,6 +23,8 @@ public struct ToolCallRow: Sendable, Hashable {
 	/// Live output while running, otherwise the result's text.
 	public var output: String
 	public var result: ToolResultItem?
+	/// Images the result returned, such as a screenshot the call read.
+	public var images: [ImageRef] = []
 }
 
 /// A finished round of two or more tool calls, folded into one line (aludra's design: "read 4 files · ran 2 commands").
@@ -75,7 +77,7 @@ public enum TranscriptNotice: Sendable, Hashable {
 public struct TranscriptRow: Identifiable, Sendable, Hashable {
 	public enum Kind: Sendable, Hashable {
 		case loadEarlier
-		case user(text: String, kind: String?)
+		case user(text: String, kind: String?, images: [ImageRef])
 		case text(String, streaming: Bool)
 		case thinking(String, redacted: Bool, streaming: Bool)
 		case toolCall(ToolCallRow)
@@ -97,8 +99,12 @@ public enum TranscriptLayout {
 		if state.hasEarlier { rows.append(TranscriptRow(id: "load-earlier", kind: .loadEarlier, inContext: false)) }
 
 		var results: [String: ToolResultItem] = [:]
+		var resultEntries: [String: EntryID] = [:]
 		for item in state.items {
-			if case .toolResult(let result) = item.body { results[result.callId] = result }
+			if case .toolResult(let result) = item.body {
+				results[result.callId] = result
+				resultEntries[result.callId] = item.id
+			}
 		}
 		let lastAssistant = state.items.last { if case .assistant = $0.body { true } else { false } }?.id
 		var shownCalls: Set<String> = []
@@ -107,7 +113,7 @@ public enum TranscriptLayout {
 			let inContext = state.isInContext(item.id)
 			switch item.body {
 			case .user(let user):
-				rows.append(TranscriptRow(id: "item-\(item.id)", kind: .user(text: text(of: user.content), kind: user.kind), inContext: inContext))
+				rows.append(TranscriptRow(id: "item-\(item.id)", kind: .user(text: text(of: user.content, images: false), kind: user.kind, images: ImageRef.all(in: user.content, entryId: item.id)), inContext: inContext))
 			case .assistant(let assistant):
 				for (index, block) in assistant.content.enumerated() {
 					let id = "item-\(item.id)-\(index)"
@@ -121,7 +127,7 @@ public enum TranscriptLayout {
 						let pendingInRun = state.isBusy && item.id == lastAssistant
 						rows.append(TranscriptRow(
 							id: "call-\(call.id)",
-							kind: .toolCall(toolRow(call, result: results[call.id], state: state, inRun: pendingInRun)),
+							kind: .toolCall(toolRow(call, result: results[call.id], resultEntry: resultEntries[call.id], state: state, inRun: pendingInRun)),
 							inContext: inContext
 						))
 					default:
@@ -138,7 +144,7 @@ public enum TranscriptLayout {
 				// Shown with its call. A result whose call is outside the window gets a row of its own.
 				if !shownCalls.contains(result.callId) {
 					let call = ToolCallBlock(id: result.callId, name: result.toolName, args: .object([:]))
-					rows.append(TranscriptRow(id: "call-\(result.callId)", kind: .toolCall(toolRow(call, result: result, state: state, inRun: false)), inContext: inContext))
+					rows.append(TranscriptRow(id: "call-\(result.callId)", kind: .toolCall(toolRow(call, result: result, resultEntry: item.id, state: state, inRun: false)), inContext: inContext))
 				}
 			case .reset(let reset):
 				rows.append(TranscriptRow(id: "item-\(item.id)", kind: .notice(.reset(handoff: reset.handoff)), inContext: true))
@@ -216,10 +222,11 @@ public enum TranscriptLayout {
 		return out
 	}
 
-	static func toolRow(_ call: ToolCallBlock, result: ToolResultItem?, state: ConversationState, inRun: Bool) -> ToolCallRow {
+	static func toolRow(_ call: ToolCallBlock, result: ToolResultItem?, resultEntry: EntryID?, state: ConversationState, inRun: Bool) -> ToolCallRow {
 		var row = ToolCallRow(callId: call.id, name: call.name, args: call.args, status: .noResult, output: "", result: result)
 		if let result {
-			row.output = text(of: result.content)
+			row.output = text(of: result.content, images: resultEntry == nil)
+			if let resultEntry { row.images = ImageRef.all(in: result.content, entryId: resultEntry) }
 			row.status = result.isError ? .failed(code: result.diagnostics.first?.code) : .done
 		} else if let slot = state.tools.first(where: { $0.callId == call.id }) {
 			row.output = slot.output
@@ -232,11 +239,12 @@ public enum TranscriptLayout {
 		return row
 	}
 
-	static func text(of blocks: [Block]) -> String {
+	/// The blocks' text; images as a placeholder unless they're shown on their own (`images: false`).
+	static func text(of blocks: [Block], images: Bool = true) -> String {
 		blocks.compactMap { block in
 			switch block {
 			case .text(let text): text
-			case .image(let mimeType): "[image \(mimeType)]"
+			case .image(let mimeType): images ? "[image \(mimeType)]" : nil
 			default: nil
 			}
 		}.joined(separator: "\n")

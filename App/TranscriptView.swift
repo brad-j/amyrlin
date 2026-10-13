@@ -79,6 +79,11 @@ struct TranscriptRowView: View {
 	let store: ConversationStore
 
 	var body: some View {
+		// Rows' images fetch through the conversation's store.
+		content.environment(store)
+	}
+
+	@ViewBuilder private var content: some View {
 		switch row.kind {
 		case .loadEarlier:
 			HStack(spacing: 8) {
@@ -89,8 +94,8 @@ struct TranscriptRowView: View {
 			}
 			.padding(.vertical, 10)
 			.task { await store.loadEarlier() }
-		case .user(let text, _):
-			UserBlock(text: text)
+		case .user(let text, _, let images):
+			UserBlock(text: text, images: images)
 		case .text(let text, let streaming):
 			AnswerBlock(text: text, streaming: streaming)
 		case .thinking(let text, let redacted, let streaming):
@@ -132,8 +137,12 @@ private struct Gutter<Content: View>: View {
 /// The user's message: a framed block with a `❯` prompt and a violet edge.
 private struct UserBlock: View {
 	let text: String
+	var images: [ImageRef] = []
 	var tag: String?
 	var dim = false
+	/// Images not sent yet, shown as a count.
+	var pendingImages = 0
+	@Environment(ConversationStore.self) private var store
 
 	var body: some View {
 		Gutter(glyph: "❯", color: dim ? Palette.ink3 : Palette.accent) {
@@ -141,11 +150,17 @@ private struct UserBlock: View {
 				if let tag {
 					Text(tag).font(Typography.label).foregroundStyle(Palette.accent)
 				}
-				Text(text)
-					.font(Typography.reading)
-					.foregroundStyle(dim ? Palette.ink2 : Palette.ink)
-					.lineSpacing(3)
-					.textSelection(.enabled)
+				if !images.isEmpty { TranscriptImages(refs: images, store: store) }
+				if pendingImages > 0 {
+					Text(pendingImages == 1 ? "[1 image]" : "[\(pendingImages) images]").font(Typography.uiSmall).foregroundStyle(Palette.ink3)
+				}
+				if !text.isEmpty {
+					Text(text)
+						.font(Typography.reading)
+						.foregroundStyle(dim ? Palette.ink2 : Palette.ink)
+						.lineSpacing(3)
+						.textSelection(.enabled)
+				}
 			}
 			.padding(.horizontal, 12)
 			.padding(.vertical, 9)
@@ -333,6 +348,7 @@ private struct CallLine: View {
 private struct CallDetail: View {
 	let call: ToolCallRow
 	let tail: Bool
+	@Environment(ConversationStore.self) private var store
 
 	private static let tailLines = 8
 
@@ -344,6 +360,7 @@ private struct CallDetail: View {
 			if !call.output.isEmpty {
 				OutputText(text: tail ? tailText : fullText, minLines: tail ? Self.tailLines : nil)
 			}
+			if !tail, !call.images.isEmpty { TranscriptImages(refs: call.images, store: store) }
 			ForEach(Array((call.result?.diagnostics ?? []).enumerated()), id: \.offset) { _, diagnostic in
 				Text("\(diagnostic.severity): \(diagnostic.message)")
 					.font(Typography.uiSmall)
@@ -556,7 +573,7 @@ private struct PendingView: View {
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 6) {
-			UserBlock(text: pending.text, tag: pending.failure == nil ? "sending" : nil, dim: true)
+			UserBlock(text: pending.text, tag: pending.failure == nil ? "sending" : nil, dim: true, pendingImages: pending.images.count)
 			if let failure = pending.failure {
 				HStack(spacing: 10) {
 					Text(failure).foregroundStyle(Palette.bad)

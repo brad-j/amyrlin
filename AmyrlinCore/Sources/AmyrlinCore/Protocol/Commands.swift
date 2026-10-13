@@ -80,11 +80,13 @@ public enum Commands {
 			public var project: String?
 			/// A first message, submitted with the conversation.
 			public var text: String?
+			/// The first message's images (aludra).
+			public var images: [ImageUpload]?
 		}
 		public typealias Result = CreatedResult
 		public let params: Params
-		public init(requestId: String = UUID().uuidString, title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil) {
-			params = Params(requestId: requestId, title: title, settings: settings, project: project, text: text)
+		public init(requestId: String = UUID().uuidString, title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = []) {
+			params = Params(requestId: requestId, title: title, settings: settings, project: project, text: text, images: images.isEmpty ? nil : images)
 		}
 	}
 
@@ -141,14 +143,32 @@ public enum Commands {
 			public var requestId: String
 			public var text: String
 			public var whenBusy: WhenBusy
+			/// Images with the text (aludra).
+			public var images: [ImageUpload]?
 		}
 		public struct Result: Decodable, Sendable, Hashable {
 			public var submission: Submission
 			public var duplicate: Bool
 		}
 		public let params: Params
-		public init(conversationId: ConversationID, requestId: String, text: String, whenBusy: WhenBusy = .followUp) {
-			params = Params(conversationId: conversationId, requestId: requestId, text: text, whenBusy: whenBusy)
+		public init(conversationId: ConversationID, requestId: String, text: String, whenBusy: WhenBusy = .followUp, images: [ImageUpload] = []) {
+			params = Params(conversationId: conversationId, requestId: requestId, text: text, whenBusy: whenBusy, images: images.isEmpty ? nil : images)
+		}
+	}
+
+	/// An image in the transcript: block `index` of item `entryId` (aludra). Image blocks carry no bytes.
+	public struct ConversationImage: Command {
+		public static let method = "conversation.image"
+		public static let retriesOnReconnect = true
+		public struct Params: Encodable, Sendable {
+			public var conversationId: ConversationID
+			public var entryId: EntryID
+			public var index: Int
+		}
+		public typealias Result = ImageUpload
+		public let params: Params
+		public init(conversationId: ConversationID, entryId: EntryID, index: Int) {
+			params = Params(conversationId: conversationId, entryId: entryId, index: index)
 		}
 	}
 

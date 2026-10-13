@@ -214,11 +214,27 @@ struct ComposerView: View {
 	let host: HostStore
 	@State private var text = ""
 	@State private var steer = false
+	@State private var attachments = Attachments()
 	@FocusState private var focused: Bool
 
 	private var busy: Bool { store.state.isBusy }
 
 	var body: some View {
+		VStack(alignment: .leading, spacing: 8) {
+			AttachmentStrip(attachments: attachments)
+			line
+		}
+		.padding(.horizontal, 12)
+		.padding(.vertical, 10)
+		.background(Palette.paper2)
+		.overlay(Rectangle().stroke(focused ? Palette.rule2 : Palette.rule))
+		.overlay(alignment: .leading) { Rectangle().fill(focused ? Palette.accent : .clear).frame(width: 2) }
+		.acceptsImages(attachments, focused: focused)
+		.onAppear { focused = true }
+		.onChange(of: busy) { _, now in if !now { steer = false } }
+	}
+
+	private var line: some View {
 		HStack(alignment: .firstTextBaseline, spacing: 10) {
 			Text("❯")
 				.font(Typography.uiStrong)
@@ -251,6 +267,12 @@ struct ComposerView: View {
 					.foregroundStyle(Palette.bad)
 					.help("Stop the run (Esc)")
 			}
+			Button("[+ image]") { attachments.pick() }
+				.buttonStyle(.plain)
+				.font(Typography.uiSmall)
+				.foregroundStyle(attachments.isFull ? Palette.ink3 : Palette.ink2)
+				.disabled(attachments.isFull)
+				.help("Attach images; you can also drop them here or paste them (⌘V)")
 			Button {
 				send(steer: steer)
 			} label: {
@@ -264,17 +286,10 @@ struct ComposerView: View {
 			.disabled(!canSend)
 			.help("Send (Return)")
 		}
-		.padding(.horizontal, 12)
-		.padding(.vertical, 10)
-		.background(Palette.paper2)
-		.overlay(Rectangle().stroke(focused ? Palette.rule2 : Palette.rule))
-		.overlay(alignment: .leading) { Rectangle().fill(focused ? Palette.accent : .clear).frame(width: 2) }
-		.onAppear { focused = true }
-		.onChange(of: busy) { _, now in if !now { steer = false } }
 	}
 
 	private var canSend: Bool {
-		!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
 	}
 
 	/// "opus 5.5 · high · ctx 38k/1M".
@@ -308,8 +323,8 @@ struct ComposerView: View {
 
 	private func send(steer: Bool) {
 		let message = text
-		guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+		guard canSend else { return }
 		text = ""
-		store.send(message, whenBusy: steer ? .steer : .followUp)
+		store.send(message, images: attachments.take(), whenBusy: steer ? .steer : .followUp)
 	}
 }

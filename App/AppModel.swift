@@ -107,6 +107,12 @@ final class AppModel {
 			selection = ConversationKey(machine: machine, conversation: conversation)
 		}
 		#if DEBUG
+		// `--args -openConversation 12` opens conversation 12 of the first machine, for screenshots.
+		if let flag = ProcessInfo.processInfo.arguments.firstIndex(of: "-openConversation"), flag + 1 < ProcessInfo.processInfo.arguments.count,
+			let conversation = ConversationID(ProcessInfo.processInfo.arguments[flag + 1]), let first = machines.first
+		{
+			selection = ConversationKey(machine: first.id, conversation: conversation)
+		}
 		// `--args -openAddMachine` shows the Add Machine sheet at launch, for screenshots.
 		if ProcessInfo.processInfo.arguments.contains("-openAddMachine") {
 			Task {
@@ -166,9 +172,9 @@ final class AppModel {
 	}
 
 	/// Starts a conversation in `project` with `text` as its first message, and selects it.
-	func startConversation(on machine: Machine, project: String?, text: String) async -> Bool {
+	func startConversation(on machine: Machine, project: String?, text: String, images: [ImageUpload] = []) async -> Bool {
 		do {
-			let summary = try await machine.store.createConversation(project: project, text: text)
+			let summary = try await machine.store.createConversation(project: project, text: text, images: images)
 			selection = ConversationKey(machine: machine.id, conversation: summary.id)
 			return true
 		} catch {
