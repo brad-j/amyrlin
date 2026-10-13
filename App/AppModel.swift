@@ -8,6 +8,12 @@ struct ConversationKey: Hashable {
 	let conversation: ConversationID
 }
 
+/// A conversation not created yet: a project picked, no message sent. The first message creates it on the host.
+struct Draft: Equatable {
+	let machine: UUID
+	let project: ProjectInfo
+}
+
 /// The machines the app knows, persisted as URLs, and the current selection.
 @MainActor @Observable
 final class AppModel {
@@ -18,7 +24,11 @@ final class AppModel {
 	}
 
 	private(set) var machines: [Machine] = []
-	var selection: ConversationKey?
+	var selection: ConversationKey? {
+		didSet { if selection != nil { draft = nil } }
+	}
+	/// Shown in place of a conversation until its first message is sent.
+	var draft: Draft?
 	var showInspector = true
 	var isAddingMachine = false
 	/// The machine a new conversation is being started on, while its sheet is open.
@@ -69,6 +79,12 @@ final class AppModel {
 	var selected: (machine: Machine, conversation: ConversationStore)? {
 		guard let selection, let machine = machine(selection.machine) else { return nil }
 		return (machine, machine.store.conversation(selection.conversation))
+	}
+
+	/// Opens an empty conversation for `project`; nothing is created on the host until the first message.
+	func openDraft(on machine: UUID, project: ProjectInfo) {
+		selection = nil
+		draft = Draft(machine: machine, project: project)
 	}
 
 	/// Starts a conversation in `project` with `text` as its first message, and selects it.

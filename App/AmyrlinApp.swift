@@ -40,6 +40,9 @@ struct MainView: View {
 					showInspector: $model.showInspector
 				)
 				.id(model.selection)
+			} else if let draft = model.draft, let machine = model.machine(draft.machine) {
+				DraftView(model: model, machine: machine, project: draft.project)
+					.id(draft.project.dir)
 			} else if model.machines.isEmpty {
 				VStack(spacing: 10) {
 					Text("No machines yet")
