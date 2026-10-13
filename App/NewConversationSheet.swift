@@ -32,6 +32,13 @@ struct NewConversationSheet: View {
 
 	private var flat: [ProjectCatalog.Entry] { shown.flatMap(\.entries) }
 
+	/// The "no project" row's selection ID: project rows use their directory, never empty.
+	private static let noProjectID = ""
+	/// "No project" heads the list, unless a search clearly means something else.
+	private var showNoProject: Bool { !searching || "no project".contains(query.trimmingCharacters(in: .whitespaces).lowercased()) }
+	/// Every row's ID in order, for the arrow keys.
+	private var rowIDs: [String] { (showNoProject ? [Self.noProjectID] : []) + flat.map(\.id) }
+
 	var body: some View {
 		VStack(spacing: 0) {
 			HStack(spacing: 10) {
@@ -40,10 +47,10 @@ struct NewConversationSheet: View {
 					.textFieldStyle(.plain)
 					.font(Typography.ui)
 					.focused($searchFocused)
-					.onSubmit { open(selected.flatMap { id in flat.first { $0.id == id }?.project } ?? flat.first?.project) }
+					.onSubmit { openRow(selected ?? rowIDs.first) }
 					.onKeyPress(.downArrow) { move(1) }
 					.onKeyPress(.upArrow) { move(-1) }
-					.onChange(of: query) { _, _ in selected = flat.first?.id }
+					.onChange(of: query) { _, _ in selected = rowIDs.first }
 			}
 			.padding(.horizontal, 16)
 			.padding(.vertical, 13)
@@ -62,7 +69,7 @@ struct NewConversationSheet: View {
 				Button("esc cancel") { dismiss() }
 					.buttonStyle(QuietButton())
 					.keyboardShortcut(.cancelAction)
-				Button("↵ open") { open(selected.flatMap { id in flat.first { $0.id == id }?.project }) }
+				Button("↵ open") { openRow(selected) }
 					.buttonStyle(QuietButton(fill: Palette.accent, ink: Palette.accentInk))
 					.keyboardShortcut(.defaultAction)
 					.disabled(selected == nil)
@@ -74,7 +81,7 @@ struct NewConversationSheet: View {
 		.background(Palette.paper)
 		.onAppear {
 			searchFocused = true
-			selected = flat.first?.id
+			selected = rowIDs.first
 		}
 	}
 
@@ -116,7 +123,13 @@ struct NewConversationSheet: View {
 		ScrollViewReader { proxy in
 			ScrollView {
 				LazyVStack(alignment: .leading, spacing: 0) {
-					if flat.isEmpty {
+					if showNoProject {
+						NoProjectRow(selected: selected == Self.noProjectID)
+							.id(Self.noProjectID)
+							.onTapGesture(count: 2) { openRow(Self.noProjectID) }
+							.onTapGesture { selected = Self.noProjectID }
+					}
+					if flat.isEmpty && !showNoProject {
 						Text(searching ? "No project matches \u{201C}\(query)\u{201D}" : "No projects")
 							.font(Typography.ui)
 							.foregroundStyle(Palette.ink3)
@@ -149,7 +162,7 @@ struct NewConversationSheet: View {
 	}
 
 	private func move(_ step: Int) -> KeyPress.Result {
-		let ids = flat.map(\.id)
+		let ids = rowIDs
 		guard !ids.isEmpty else { return .ignored }
 		let index = selected.flatMap { ids.firstIndex(of: $0) } ?? (step > 0 ? -1 : ids.count)
 		selected = ids[min(max(index + step, 0), ids.count - 1)]
@@ -160,6 +173,35 @@ struct NewConversationSheet: View {
 		guard let project else { return }
 		model.openDraft(on: machine.id, project: project)
 		dismiss()
+	}
+
+	/// Opens the row `id` names: "no project", or a project by its directory.
+	private func openRow(_ id: String?) {
+		guard let id else { return }
+		if id == Self.noProjectID {
+			model.openDraft(on: machine.id, project: nil)
+			dismiss()
+		} else {
+			open(flat.first { $0.id == id }?.project)
+		}
+	}
+}
+
+/// The picker's first row: a session in no project, in a scratch directory of its own on the host.
+private struct NoProjectRow: View {
+	let selected: Bool
+
+	var body: some View {
+		HStack(spacing: 10) {
+			Circle().strokeBorder(Palette.ink3, lineWidth: 1.5).frame(width: 8, height: 8)
+			Text("no project").font(Typography.ui).foregroundStyle(Palette.ink)
+			Text("a scratch directory of its own").font(Typography.uiSmall).foregroundStyle(Palette.ink3)
+			Spacer(minLength: 8)
+		}
+		.padding(.horizontal, 12)
+		.padding(.vertical, 8)
+		.background(selected ? Palette.paper3 : .clear)
+		.contentShape(Rectangle())
 	}
 }
 
@@ -204,7 +246,8 @@ private struct ProjectRow: View {
 struct DraftView: View {
 	let model: AppModel
 	let machine: AppModel.Machine
-	let project: ProjectInfo
+	/// Nil for a no-project session.
+	let project: ProjectInfo?
 	@State private var text = ""
 	@State private var sending = false
 	@FocusState private var focused: Bool
@@ -212,10 +255,10 @@ struct DraftView: View {
 	var body: some View {
 		VStack(spacing: 0) {
 			VStack(spacing: 6) {
-				Text(project.name)
+				Text(project?.name ?? "no project")
 					.font(Typography.uiStrong)
-					.foregroundStyle(Palette.project(project.name))
-				Text(project.dir)
+					.foregroundStyle(project.map { Palette.project($0.name) } ?? Palette.ink2)
+				Text(project.map { ConversationView.shortPath($0.dir) } ?? "a scratch directory of its own, on \(machine.store.state.host?.name ?? "the host")")
 					.font(Typography.code)
 					.foregroundStyle(Palette.tertiaryText)
 			}
@@ -253,7 +296,7 @@ struct DraftView: View {
 		guard !message.isEmpty, !sending else { return }
 		sending = true
 		Task {
-			if !(await model.startConversation(on: machine, project: project.dir, text: message)) { sending = false }
+			if !(await model.startConversation(on: machine, project: project?.dir, text: message)) { sending = false }
 		}
 	}
 }

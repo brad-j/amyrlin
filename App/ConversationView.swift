@@ -55,7 +55,11 @@ private struct ConversationHeader: View {
 
 	var body: some View {
 		HStack(spacing: 0) {
-			if let dir {
+			if project == nil {
+				// A no-project session: its dir is a scratch directory, which says less than this does.
+				Text("no project").foregroundStyle(Palette.ink3)
+				Text("  ").foregroundStyle(Palette.ink3)
+			} else if let dir {
 				let short = ConversationView.shortPath(dir)
 				let parent = project.map { short.hasSuffix($0) ? String(short.dropLast($0.count)) : short + "/" } ?? short
 				Text(parent).foregroundStyle(Palette.ink3)

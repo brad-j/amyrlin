@@ -116,7 +116,7 @@ private struct MachineSection: View {
 					let collapsed = model.collapsedBinding(machine: machine.id, project: group.project)
 					VStack(alignment: .leading, spacing: 0) {
 						ProjectRow(
-							name: group.project.isEmpty ? "sessions" : group.project,
+							name: group.project.isEmpty ? "no project" : group.project,
 							color: group.project.isEmpty ? Palette.ink3 : Palette.project(group.project),
 							collapsed: collapsed,
 							note: collapsed.wrappedValue ? foldedNote(group.sessions) : nil

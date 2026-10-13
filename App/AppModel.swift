@@ -12,7 +12,8 @@ struct ConversationKey: Hashable {
 /// A conversation not created yet: a project picked, no message sent. The first message creates it on the host.
 struct Draft: Equatable {
 	let machine: UUID
-	let project: ProjectInfo
+	/// Nil for a no-project session: the host gives it a scratch directory of its own.
+	let project: ProjectInfo?
 }
 
 /// The machines the app knows, persisted as URLs, and the current selection.
@@ -129,9 +130,18 @@ final class AppModel {
 	}
 
 	/// Opens an empty conversation for `project`; nothing is created on the host until the first message.
-	func openDraft(on machine: UUID, project: ProjectInfo) {
+	func openDraft(on machine: UUID, project: ProjectInfo?) {
 		selection = nil
 		draft = Draft(machine: machine, project: project)
+	}
+
+	/// Opens the project picker on the first connected machine (⌘N).
+	func newSession() {
+		guard let machine = machines.first(where: { $0.store.isConnected }) ?? machines.first else {
+			isAddingMachine = true
+			return
+		}
+		newConversationMachine = machine.id
 	}
 
 	/// Starts a conversation in `project` with `text` as its first message, and selects it.

@@ -13,7 +13,10 @@ struct AmyrlinApp: App {
 		}
 		.windowToolbarStyle(.unifiedCompact)
 		.commands {
-			CommandGroup(after: .newItem) {
+			// One window: ⌘N starts a session instead of opening another window.
+			CommandGroup(replacing: .newItem) {
+				Button("New Session…") { model.newSession() }
+					.keyboardShortcut("n", modifiers: .command)
 				Button("Add Machine…") { model.isAddingMachine = true }
 					.keyboardShortcut("n", modifiers: [.command, .shift])
 			}
@@ -95,7 +98,7 @@ struct MainView: View {
 				.id(model.selection)
 			} else if let draft = model.draft, let machine = model.machine(draft.machine) {
 				DraftView(model: model, machine: machine, project: draft.project)
-					.id(draft.project.dir)
+					.id(draft.project?.dir ?? "no project")
 			} else if model.machines.isEmpty {
 				VStack(spacing: 10) {
 					Text("No machines yet")

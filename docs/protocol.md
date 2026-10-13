@@ -276,7 +276,7 @@ Params: `{"includeArchived":false}`. Result: `{"conversations":[ConversationSumm
 
 ### `conversations.create`
 
-Params: `{"requestId":"…","title":"…","settings":{"model":…,"thinkingLevel":…,"cwd":…,"tools":[…]},"project":"/dir","text":"…"}`. Everything except `requestId` is optional, but a server with projects needs `project` (a `dir` from `host.info`, or `settings.cwd` naming one). `text` is submitted as the first message, with request ID `<requestId>:first`, and titles the conversation. Result: `{"conversation":ConversationSummary,"duplicate":false}`.
+Params: `{"requestId":"…","title":"…","settings":{"model":…,"thinkingLevel":…,"cwd":…,"tools":[…]},"project":"/dir","text":"…"}`. Everything except `requestId` is optional. On a server with projects, `project` (a `dir` from `host.info`, or `settings.cwd` naming one) picks one; without either, the server may make a no-project conversation in a scratch directory of its own (aludra does), whose summary has no `project`. `text` is submitted as the first message, with request ID `<requestId>:first`, and titles the conversation. Result: `{"conversation":ConversationSummary,"duplicate":false}`.
 
 [`harness.createConversation({ownership:{kind:"ownerless"}, agent, init})`; `init` writes `amyrlin.meta` with the title, `createdAt` and `requestId`.] pi-durable does not deduplicate creation. The server keeps a `requestId` → conversation index, rebuilt from `amyrlin.meta` at startup, and returns the existing conversation with `duplicate: true` for a repeated `requestId`.
 
@@ -553,7 +553,7 @@ Accepted:
 
 Added 2026-10-12, as optional fields within v1:
 
-6. **Projects.** aludra's host serves v1 at `/amyrlin` and ties each conversation to a project: `host.info` lists `projects`, summaries carry `workspace`, `project` and `dir`, `conversations.create` takes `project` and a first message `text`, and `configure` refuses `cwd` and `tools`. Forks and archiving answer `unsupported` there. Approvals carry an extra `summary` ("git push").
+6. **Projects.** aludra's host serves v1 at `/amyrlin` and ties each conversation to a project: `host.info` lists `projects`, summaries carry `workspace`, `project` and `dir`, `conversations.create` takes `project` and a first message `text`, and `configure` refuses `cwd` and `tools`. Forks and archiving answer `unsupported` there. Approvals carry an extra `summary` ("git push"). A create without a project makes a no-project session (T3 Code's no-project threads): its own scratch directory, no `project` in its summary.
 
 Deferred, not in v1:
 
