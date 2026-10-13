@@ -74,6 +74,9 @@ struct MainView: View {
 		.sheet(isPresented: $model.isAddingMachine) {
 			AddMachineSheet(model: model)
 		}
+		.sheet(item: Binding(get: { model.newConversationMachine.flatMap(model.machine) .map(MachineRef.init) }, set: { model.newConversationMachine = $0?.id })) { ref in
+			NewConversationSheet(model: model, machine: ref.machine)
+		}
 		.alert("Something went wrong", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
 			Button("OK") { model.error = nil }
 		} message: {
@@ -102,7 +105,7 @@ struct AddMachineSheet: View {
 				.font(Typography.code)
 				.frame(width: 380)
 				.onSubmit(add)
-			Text("The server's tailscale serve address, for example wss://egwene.example.ts.net/amyrlin.")
+			Text("The host's tailscale serve address, for example wss://aludra.example.ts.net/amyrlin.")
 				.font(Typography.readingSmall)
 				.foregroundStyle(Palette.secondaryText)
 			HStack {

@@ -21,6 +21,8 @@ final class AppModel {
 	var selection: ConversationKey?
 	var showInspector = true
 	var isAddingMachine = false
+	/// The machine a new conversation is being started on, while its sheet is open.
+	var newConversationMachine: UUID?
 	/// A failed app-level action, shown once in the window.
 	var error: String?
 
@@ -69,12 +71,15 @@ final class AppModel {
 		return (machine, machine.store.conversation(selection.conversation))
 	}
 
-	func newConversation(on machine: Machine) async {
+	/// Starts a conversation in `project` with `text` as its first message, and selects it.
+	func startConversation(on machine: Machine, project: String?, text: String) async -> Bool {
 		do {
-			let summary = try await machine.store.createConversation()
+			let summary = try await machine.store.createConversation(project: project, text: text)
 			selection = ConversationKey(machine: machine.id, conversation: summary.id)
+			return true
 		} catch {
 			self.error = (error as? ProtocolError)?.message ?? String(describing: error)
+			return false
 		}
 	}
 

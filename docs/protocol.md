@@ -51,6 +51,7 @@ Error codes:
 | `already_resolved` | `approval.answer` for an approval that was already answered differently or cancelled. |
 | `invalid_settings` | `configure` named an unknown model, thinking level or tool. |
 | `unavailable` | The Harness is restarting (for example after a storage failure). `retryable: true`. |
+| `unsupported` | The server doesn't offer this method, such as forks or archiving on a host without them. |
 | `internal` | Anything else. |
 
 ### 2.2 Subscriptions
@@ -248,6 +249,7 @@ See section 8.
 - `updatedAt` is the newest item's `at`, or `createdAt`.
 - Title, `archived` and `createdAt` live in a server-owned conversation document (`amyrlin.meta`, defined with `defineDoc`) and are written in the commit that creates the conversation. pi-durable has no titles or archiving.
 - Conversations owned by a task, such as subagents, are not listed in v1. They can still be watched by ID.
+- Servers that tie conversations to projects add `workspace`, `project` (its name) and `dir` (its directory). The snapshot's `conversation` carries `project` and `dir` too.
 
 ## 5. Commands
 
@@ -266,7 +268,7 @@ Params: none. Result:
  "defaults":{"model":{…},"thinkingLevel":"medium"}}
 ```
 
-[`models.getModels()` with `getAvailable()` for `available`, the registry snapshot's tools, and the server's approval policy.] `thinkingLevels` lists the levels the model supports, from its `thinkingLevelMap`. Safe to retry.
+[`models.getModels()` with `getAvailable()` for `available`, the registry snapshot's tools, and the server's approval policy.] A server whose conversations live in projects adds `"projects":[{"workspace":"egwene","name":"amyrlin","path":"Software/amyrlin","dir":"/home/brad/westwood/Projects/Software/amyrlin"}]`; new conversations must name one. `thinkingLevels` lists the levels the model supports, from its `thinkingLevelMap`. Safe to retry.
 
 ### `conversations.list`
 
@@ -274,7 +276,7 @@ Params: `{"includeArchived":false}`. Result: `{"conversations":[ConversationSumm
 
 ### `conversations.create`
 
-Params: `{"requestId":"…","title":"…","settings":{"model":…,"thinkingLevel":…,"cwd":…,"tools":[…]}}`. Everything except `requestId` is optional. Result: `{"conversation":ConversationSummary,"duplicate":false}`.
+Params: `{"requestId":"…","title":"…","settings":{"model":…,"thinkingLevel":…,"cwd":…,"tools":[…]},"project":"/dir","text":"…"}`. Everything except `requestId` is optional, but a server with projects needs `project` (a `dir` from `host.info`, or `settings.cwd` naming one). `text` is submitted as the first message, with request ID `<requestId>:first`, and titles the conversation. Result: `{"conversation":ConversationSummary,"duplicate":false}`.
 
 [`harness.createConversation({ownership:{kind:"ownerless"}, agent, init})`; `init` writes `amyrlin.meta` with the title, `createdAt` and `requestId`.] pi-durable does not deduplicate creation. The server keeps a `requestId` → conversation index, rebuilt from `amyrlin.meta` at startup, and returns the existing conversation with `duplicate: true` for a repeated `requestId`.
 
@@ -548,6 +550,10 @@ Accepted:
 3. **Approval restart and abort behaviour.** Recorded after review as fixtures 15 and 16. `beforeTool` reruns after a crash, and `conversation.abort()` aborts a waiting hook (section 8).
 4. **Reset and compact are not deduplicated in v1.** The client never retries them automatically.
 5. **Tailscale is required.** There is no token or pairing mode.
+
+Added 2026-10-12, as optional fields within v1:
+
+6. **Projects.** aludra's host serves v1 at `/amyrlin` and ties each conversation to a project: `host.info` lists `projects`, summaries carry `workspace`, `project` and `dir`, `conversations.create` takes `project` and a first message `text`, and `configure` refuses `cwd` and `tools`. Forks and archiving answer `unsupported` there. Approvals carry an extra `summary` ("git push").
 
 Deferred, not in v1:
 

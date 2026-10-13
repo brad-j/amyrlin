@@ -59,6 +59,15 @@ private func decode<T: Decodable>(_ type: T.Type, _ json: String) throws -> T {
 		#expect(b.diagnostics == .set([]))
 	}
 
+	@Test func projectsAndProjectFieldsDecodeWhenPresent() throws {
+		let info = try decode(Commands.HostInfo.Result.self, #"{"host":{"hostId":"h","name":"aludra"},"models":[],"tools":[],"projects":[{"workspace":"egwene","name":"amyrlin","path":"Software/amyrlin","dir":"/home/brad/westwood/Projects/Software/amyrlin"}]}"#)
+		#expect(info.projects?.map(\.name) == ["amyrlin"])
+		let summary = try decode(ConversationSummary.self, #"{"id":7,"title":"t","project":"amyrlin","dir":"/x","workspace":"egwene"}"#)
+		#expect(summary.project == "amyrlin")
+		let bare = try decode(ConversationSummary.self, #"{"id":7,"title":"t"}"#)
+		#expect(bare.project == nil)
+	}
+
 	@Test func settingsChangeEncodesTriState() throws {
 		let change = SettingsChange(model: .set(ModelRef(provider: "p", modelId: "m")), thinkingLevel: .cleared)
 		let encoder = JSONEncoder()

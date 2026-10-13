@@ -1,6 +1,6 @@
 # amyrlin
 
-A native macOS client for pi-durable agents. Each machine runs its own server; the app connects to each over one WebSocket on the tailnet. The wire format is in `docs/protocol.md`.
+A native macOS client for pi-durable agents. The app connects to each host over one WebSocket on the tailnet and speaks protocol v1 (`docs/protocol.md`). The host it's built for is [aludra](https://github.com/brad-j/aludra), which serves v1 at `wss://aludra.<tailnet>.ts.net/amyrlin` next to its phone app, so the same sessions show on both.
 
 ## Layout
 
@@ -12,8 +12,8 @@ A native macOS client for pi-durable agents. Each machine runs its own server; t
 | `docs/protocol.md` | Protocol v1, the contract the server implements. |
 | `fixtures/durable-1.1.0/` | Recorded pi-durable event streams, with a README on how each was made. |
 | `fixtures/wire-v1/` | The same streams translated to protocol v1 by `server/src/translate.mjs`. |
-| `server/` | The real server: pi-durable 1.1.0, protocol v1, approvals, behind `tailscale serve`. |
-| `fixtures/server-v1/` | A session recorded from the real server with the faux model, checked by a Swift test. |
+| `server/` | A standalone v1 server on pi-durable with an API key. Superseded by aludra's endpoint; kept for the translator, `export-wire` and its tests. |
+| `fixtures/server-v1/` | A session recorded from aludra's `/amyrlin` endpoint with a faux model (aludra's `scripts/amyrlin-capture.ts`), checked by a Swift test. |
 | `scratch/recorder/` | The fixture recorder. |
 
 ## Commands

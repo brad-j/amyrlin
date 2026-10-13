@@ -2,8 +2,9 @@ import Foundation
 import Testing
 @testable import AmyrlinCore
 
-/// Frames recorded from the real server (`server/test/capture.mjs`, faux model): a plain answer, an approved bash call
-/// with a queued follow-up, a settings change, an approval cancelled by abort, and a reset.
+/// Frames recorded from aludra's /amyrlin endpoint with a faux model (aludra's `scripts/amyrlin-capture.ts`): a plain
+/// answer, a slow tool with a follow-up queued behind it, a settings change, an approved `git push`, an approval
+/// cancelled by abort, and a reset.
 @Suite struct ServerCaptureTests {
 	static let file = Fixtures.directory.deletingLastPathComponent().appending(path: "server-v1/session.jsonl")
 
@@ -28,13 +29,13 @@ import Testing
 		#expect(!state.isBusy)
 		#expect(state.approvals.isEmpty)
 		#expect(state.tools.isEmpty)
-		#expect(state.settings?.stored.thinkingLevel == .high)
+		#expect(state.settings?.stored.thinkingLevel == .low)
 		#expect(state.settings?.effective.tools.contains("bash") == true)
 		#expect(state.contextStart != nil, "the reset moved the context start")
 		let results = state.items.compactMap { item -> ToolResultItem? in
 			if case .toolResult(let result) = item.body { result } else { nil }
 		}
-		#expect(results.map(\.isError) == [false, true])
+		#expect(results.map(\.isError) == [false, false, true])
 		#expect(results.last?.diagnostics.first?.code == "aborted")
 		#expect(state.spend.total > 0)
 	}

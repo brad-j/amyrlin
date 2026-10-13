@@ -24,6 +24,8 @@ public enum Commands {
 			public var models: [ModelInfo]
 			public var tools: [ToolInfo]
 			public var defaults: Defaults?
+			/// Where new conversations can start; servers that tie conversations to projects list them (aludra does).
+			public var projects: [ProjectInfo]?
 		}
 		public let params = Params()
 		public init() {}
@@ -50,11 +52,15 @@ public enum Commands {
 			public var requestId: String
 			public var title: String?
 			public var settings: SettingsChange?
+			/// A project directory from `host.info`.
+			public var project: String?
+			/// A first message, submitted with the conversation.
+			public var text: String?
 		}
 		public typealias Result = CreatedResult
 		public let params: Params
-		public init(requestId: String = UUID().uuidString, title: String? = nil, settings: SettingsChange? = nil) {
-			params = Params(requestId: requestId, title: title, settings: settings)
+		public init(requestId: String = UUID().uuidString, title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil) {
+			params = Params(requestId: requestId, title: title, settings: settings, project: project, text: text)
 		}
 	}
 

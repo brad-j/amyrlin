@@ -41,9 +41,6 @@ private struct MachineSection: View {
 			ForEach(store.state.active) { summary in
 				ConversationRow(summary: summary)
 					.tag(ConversationKey(machine: machine.id, conversation: summary.id))
-					.contextMenu {
-						Button("Archive") { Task { try? await store.setArchived(summary.id, true) } }
-					}
 			}
 			if store.state.hasSnapshot, store.state.active.isEmpty {
 				Text("No conversations")
@@ -57,7 +54,7 @@ private struct MachineSection: View {
 					.lineLimit(1)
 				Spacer()
 				Button {
-					Task { await model.newConversation(on: machine) }
+					model.newConversationMachine = machine.id
 				} label: {
 					Image(systemName: "square.and.pencil")
 				}
@@ -89,9 +86,17 @@ private struct ConversationRow: View {
 	var body: some View {
 		HStack(spacing: 8) {
 			StatusDot(color: Palette.color(for: summary.status), pulsing: summary.status == .busy || summary.status == .needsApproval)
-			Text(summary.title)
-				.lineLimit(1)
-				.truncationMode(.tail)
+			VStack(alignment: .leading, spacing: 1) {
+				Text(summary.title)
+					.lineLimit(1)
+					.truncationMode(.tail)
+				if let project = summary.project {
+					Text(project)
+						.font(Typography.label)
+						.foregroundStyle(Palette.tertiaryText)
+						.lineLimit(1)
+				}
+			}
 			Spacer(minLength: 4)
 			if summary.pendingApprovals > 0 {
 				Text("\(summary.pendingApprovals)")

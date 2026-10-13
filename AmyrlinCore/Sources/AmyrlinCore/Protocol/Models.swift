@@ -453,6 +453,10 @@ public struct ConversationSummary: Decodable, Sendable, Hashable, Identifiable {
 	public var pendingApprovals: Int
 	public var spend: Spend
 	public var stuck: StuckInfo?
+	/// The project a conversation works in, for servers that have projects.
+	public var workspace: String?
+	public var project: String?
+	public var dir: String?
 
 	public init(from decoder: any Decoder) throws {
 		let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -467,10 +471,13 @@ public struct ConversationSummary: Decodable, Sendable, Hashable, Identifiable {
 		pendingApprovals = try c.decodeIfPresent(Int.self, forKey: .pendingApprovals) ?? 0
 		spend = try c.decodeIfPresent(Spend.self, forKey: .spend) ?? .zero
 		stuck = try c.decodeIfPresent(StuckInfo.self, forKey: .stuck)
+		workspace = try c.decodeIfPresent(String.self, forKey: .workspace)
+		project = try c.decodeIfPresent(String.self, forKey: .project)
+		dir = try c.decodeIfPresent(String.self, forKey: .dir)
 	}
 
 	private enum CodingKeys: String, CodingKey {
-		case id, title, status, archived, parent, model, createdAt, updatedAt, pendingApprovals, spend, stuck
+		case id, title, status, archived, parent, model, createdAt, updatedAt, pendingApprovals, spend, stuck, workspace, project, dir
 	}
 }
 
@@ -487,6 +494,17 @@ public struct ModelInfo: Decodable, Sendable, Hashable, Identifiable {
 
 	public var ref: ModelRef { ModelRef(provider: provider, modelId: modelId) }
 	public var id: String { ref.key }
+}
+
+/// A directory new conversations can start in.
+public struct ProjectInfo: Decodable, Sendable, Hashable, Identifiable {
+	public var workspace: String
+	public var name: String
+	/// Relative to the workspace root, such as `Software/aludra`.
+	public var path: String
+	public var dir: String
+
+	public var id: String { dir }
 }
 
 public struct ToolInfo: Decodable, Sendable, Hashable, Identifiable {
