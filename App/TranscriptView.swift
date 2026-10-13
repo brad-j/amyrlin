@@ -408,7 +408,7 @@ private struct OutputBlock: View {
 				.foregroundStyle(Palette.ink2)
 				.lineSpacing(2)
 				.textSelection(.enabled)
-				.frame(maxWidth: .infinity, minHeight: minLines.map { CGFloat($0) * 15.5 }, alignment: .topLeading)
+				.frame(maxWidth: .infinity, minHeight: minLines.map { CGFloat($0) * Typography.codeSmallLine }, alignment: .topLeading)
 		}
 		.padding(10)
 		.background(Palette.paper2, in: RoundedRectangle(cornerRadius: Metrics.radius))

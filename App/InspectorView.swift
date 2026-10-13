@@ -16,7 +16,7 @@ struct InspectorView: View {
 	var body: some View {
 		ScrollView {
 			VStack(alignment: .leading, spacing: 0) {
-				InspectorGroup("Agent") {
+				PanelSection("Agent") {
 					Row("Model") {
 					Menu {
 						ForEach(models) { model in
@@ -48,7 +48,7 @@ struct InspectorView: View {
 					}
 				}
 				if let dir = settings?.effective.cwd ?? settings?.stored.cwd {
-					InspectorGroup("Project") {
+					PanelSection("Project") {
 						Text(ConversationView.shortPath(dir))
 							.font(Typography.codeSmall)
 							.foregroundStyle(Palette.ink2)
@@ -56,7 +56,7 @@ struct InspectorView: View {
 							.lineLimit(3)
 					}
 				}
-				InspectorGroup("Context") {
+				PanelSection("Context") {
 					if let used = contextUsed, let window = currentInfo?.contextWindow, window > 0 {
 						let fraction = min(1, Double(used) / Double(window))
 						VStack(alignment: .leading, spacing: 6) {
@@ -80,14 +80,14 @@ struct InspectorView: View {
 						Text("Nothing sent yet").font(Typography.readingSmall).foregroundStyle(Palette.ink3)
 					}
 				}
-				InspectorGroup("Usage") {
+				PanelSection("Usage") {
 					let spend = store.state.spend
 					Row("Tokens") { Value(spend.total.formatted()) }
 					Row("Output") { Value(spend.output.formatted()) }
 					Row("Cached") { Value(spend.cacheRead.formatted()) }
 					if spend.cost > 0 { Row("Cost") { Value(spend.costText) } }
 				}
-				InspectorGroup("Context actions") {
+				PanelSection("Context actions") {
 					HStack(spacing: 8) {
 						Button("Compact") { Task { await store.compact() } }
 							.buttonStyle(QuietButton())
@@ -111,29 +111,6 @@ struct InspectorView: View {
 			}
 		}
 		return nil
-	}
-}
-
-private struct InspectorGroup<Content: View>: View {
-	let title: String
-	@ViewBuilder let content: Content
-
-	init(_ title: String, @ViewBuilder content: () -> Content) {
-		self.title = title
-		self.content = content()
-	}
-
-	var body: some View {
-		VStack(alignment: .leading, spacing: 9) {
-			Text(title)
-				.font(Typography.label)
-				.foregroundStyle(Palette.ink3)
-				.textCase(.uppercase)
-			content
-		}
-		.frame(maxWidth: .infinity, alignment: .leading)
-		.padding(.vertical, 14)
-		.overlay(alignment: .bottom) { Rectangle().fill(Palette.rule).frame(height: 1) }
 	}
 }
 

@@ -6,17 +6,25 @@ import SwiftUI
 // Colour lives in state marks and the one accent; everything else is near-black, barely cool neutrals.
 
 /// Every typeface the app uses. Reading text is Fira Sans (bundled, App/Fonts); code is SF Mono.
+/// Every size goes through `scale`, so all text grows or shrinks together (a font-size setting can set it later).
 enum Typography {
-	static let reading = Font.custom("Fira Sans", size: 15)
-	static let readingSmall = Font.custom("Fira Sans", size: 13)
-	static let readingStrong = Font.custom("Fira Sans", size: 15).weight(.semibold)
+	static let scale: CGFloat = 1.15
+	private static func fira(_ size: CGFloat) -> Font { .custom("Fira Sans", size: size * scale) }
+	private static func mono(_ size: CGFloat) -> Font { .system(size: size * scale, design: .monospaced) }
+
+	static let reading = fira(15)
+	static let readingSmall = fira(13)
+	static let readingStrong = fira(15).weight(.semibold)
 	static func heading(_ level: Int) -> Font {
-		Font.custom("Fira Sans", size: [20, 17.5, 16, 15][min(max(level, 1), 4) - 1]).weight(.semibold)
+		fira([20, 17.5, 16, 15][min(max(level, 1), 4) - 1]).weight(.semibold)
 	}
-	static let code = Font.system(size: 12.5, design: .monospaced)
-	static let codeSmall = Font.system(size: 11.5, design: .monospaced)
-	static let label = Font.system(size: 11, weight: .medium)
-	static let projectHeader = Font.custom("Fira Sans", size: 13.5).weight(.semibold)
+	static let code = mono(12.5)
+	static let codeSmall = mono(11.5)
+	static let inlineCode = mono(13)
+	static let label = Font.system(size: 11 * scale, weight: .medium)
+	static let projectHeader = fira(13.5).weight(.semibold)
+	/// Line height of `codeSmall`, for blocks that keep a fixed number of lines.
+	static let codeSmallLine: CGFloat = 15.5 * scale
 }
 
 enum Palette {
@@ -28,8 +36,11 @@ enum Palette {
 	static let ink = Color(red: 0.904, green: 0.909, blue: 0.917)
 	static let ink2 = Color(red: 0.724, green: 0.732, blue: 0.744)
 	static let ink3 = Color(red: 0.541, green: 0.550, blue: 0.564)
-	static let accent = Color(red: 0.454, green: 0.876, blue: 0.975)
-	static let accentInk = Color(red: 0.010, green: 0.068, blue: 0.104)
+	/// Violet at aludra's accent lightness: oklch(80% 0.13 300).
+	static let accent = Color(red: 0.795, green: 0.666, blue: 1.0)
+	static let accentInk = Color(red: 0.070, green: 0.045, blue: 0.111)
+	/// The selected row: paper with a trace of the accent, oklch(25% 0.035 300).
+	static let selection = Color(red: 0.142, green: 0.117, blue: 0.188)
 	static let wait = Color(red: 0.960, green: 0.760, blue: 0.371)
 	static let waitInk = Color(red: 0.121, green: 0.078, blue: 0.002)
 	static let bad = Color(red: 0.957, green: 0.479, blue: 0.476)
@@ -65,8 +76,8 @@ enum Palette {
 }
 
 enum Metrics {
-	/// The reading column: about 70 characters of Fira Sans at 15 pt.
-	static let measure: CGFloat = 720
+	/// The reading column: about 70 characters of reading text.
+	static let measure: CGFloat = 720 * Typography.scale
 	static let radiusSmall: CGFloat = 5
 	static let radius: CGFloat = 8
 	static let radiusLarge: CGFloat = 14
@@ -159,5 +170,32 @@ extension Date {
 		case ..<86_400: return "\(seconds / 3600)h"
 		default: return "\(seconds / 86_400)d"
 		}
+	}
+}
+
+/// A group in a side panel (sidebar and inspector): a small-caps label, its content, a hairline under it.
+struct PanelSection<Content: View>: View {
+	let title: String
+	var titleColor: Color = Palette.ink3
+	@ViewBuilder let content: Content
+
+	init(_ title: String, titleColor: Color = Palette.ink3, @ViewBuilder content: () -> Content) {
+		self.title = title
+		self.titleColor = titleColor
+		self.content = content()
+	}
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 9) {
+			Text(title)
+				.font(Typography.label)
+				.foregroundStyle(titleColor)
+				.textCase(.uppercase)
+				.lineLimit(1)
+			content
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.padding(.vertical, 14)
+		.overlay(alignment: .bottom) { Rectangle().fill(Palette.rule).frame(height: 1) }
 	}
 }

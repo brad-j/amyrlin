@@ -92,7 +92,7 @@ private struct Inline: View {
 		let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
 		var attributed = (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
 		for run in attributed.runs where run.inlinePresentationIntent?.contains(.code) == true {
-			attributed[run.range].font = Font.system(size: 13, design: .monospaced)
+			attributed[run.range].font = Typography.inlineCode
 			attributed[run.range].foregroundColor = Palette.ink
 			attributed[run.range].backgroundColor = Palette.paper3
 		}

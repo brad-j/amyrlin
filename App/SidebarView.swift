@@ -1,20 +1,29 @@
 import AmyrlinCore
 import SwiftUI
 
-/// Machines, and on each its sessions grouped by project: the most urgent project first, project names in the accent,
-/// each row a state mark, a title and an age (aludra's drawer, on a Mac sidebar).
+/// Machines, and on each its sessions grouped by project, in the inspector's style: small-caps labels, hairlines,
+/// quiet rows. The project needing attention comes first; each row is a state mark, a title and an age.
+/// ↑ and ↓ move between sessions while the sidebar has focus.
 struct SidebarView: View {
 	@Bindable var model: AppModel
+	@FocusState private var focused: Bool
 
 	var body: some View {
-		List(selection: $model.selection) {
-			ForEach(model.machines) { machine in
-				MachineSection(machine: machine, model: model)
+		ScrollView {
+			VStack(alignment: .leading, spacing: 0) {
+				ForEach(model.machines) { machine in
+					MachineSection(machine: machine, model: model)
+				}
 			}
+			.padding(.horizontal, 16)
+			.padding(.top, 4)
 		}
-		.listStyle(.sidebar)
-		.scrollContentBackground(.hidden)
-		.background(Palette.paper2)
+		.background(Palette.paper)
+		.focusable()
+		.focusEffectDisabled()
+		.focused($focused)
+		.onKeyPress(.downArrow) { move(1) }
+		.onKeyPress(.upArrow) { move(-1) }
 		.safeAreaInset(edge: .bottom, spacing: 0) {
 			HStack {
 				Button {
@@ -27,11 +36,26 @@ struct SidebarView: View {
 				.foregroundStyle(Palette.ink3)
 				Spacer()
 			}
-			.padding(.horizontal, 14)
-			.padding(.vertical, 9)
-			.background(Palette.paper2)
+			.padding(.horizontal, 16)
+			.padding(.vertical, 10)
+			.background(Palette.paper)
 			.overlay(alignment: .top) { Rectangle().fill(Palette.rule).frame(height: 1) }
 		}
+	}
+
+	/// Every session in the order the sidebar shows them.
+	private var ordered: [ConversationKey] {
+		model.machines.flatMap { machine in
+			MachineSection.groups(machine.store).flatMap { $0.sessions.map { ConversationKey(machine: machine.id, conversation: $0.id) } }
+		}
+	}
+
+	private func move(_ step: Int) -> KeyPress.Result {
+		let keys = ordered
+		guard !keys.isEmpty else { return .ignored }
+		let index = model.selection.flatMap { keys.firstIndex(of: $0) } ?? (step > 0 ? -1 : keys.count)
+		model.selection = keys[min(max(index + step, 0), keys.count - 1)]
+		return .handled
 	}
 }
 
@@ -42,7 +66,7 @@ private struct MachineSection: View {
 	private var store: HostStore { machine.store }
 
 	/// Sessions by project, the project needing attention first, then the most recently active.
-	private var groups: [(project: String, sessions: [ConversationSummary])] {
+	static func groups(_ store: HostStore) -> [(project: String, sessions: [ConversationSummary])] {
 		let byProject = Dictionary(grouping: store.state.active) { $0.project ?? "" }
 		func urgency(_ sessions: [ConversationSummary]) -> Int {
 			sessions.contains { $0.status == .needsApproval } ? 0 : sessions.contains { $0.status == .busy } ? 1 : 2
@@ -57,27 +81,7 @@ private struct MachineSection: View {
 	}
 
 	var body: some View {
-		Section {
-			ForEach(groups, id: \.project) { group in
-				if !group.project.isEmpty {
-					Text(group.project)
-						.font(Typography.projectHeader)
-						.foregroundStyle(Palette.accent)
-						.padding(.top, 10)
-						.padding(.bottom, 1)
-						.selectionDisabled()
-				}
-				ForEach(group.sessions) { summary in
-					SessionRow(summary: summary)
-						.tag(ConversationKey(machine: machine.id, conversation: summary.id))
-				}
-			}
-			if store.state.hasSnapshot, store.state.active.isEmpty {
-				Text("No sessions yet")
-					.font(Typography.readingSmall)
-					.foregroundStyle(Palette.ink3)
-			}
-		} header: {
+		VStack(alignment: .leading, spacing: 0) {
 			HStack(spacing: 7) {
 				StatusDot(color: Palette.color(for: store.status), pulsing: !store.isConnected)
 				Text(store.state.host?.name ?? store.info?.host.name ?? machine.url.host() ?? machine.url.absoluteString)
@@ -90,16 +94,39 @@ private struct MachineSection: View {
 					model.newConversationMachine = machine.id
 				} label: {
 					Image(systemName: "plus")
-						.font(.system(size: 12, weight: .medium))
+						.font(.system(size: 13, weight: .medium))
 						.foregroundStyle(Palette.ink2)
+						.frame(width: 22, height: 22)
+						.contentShape(Rectangle())
 				}
-				.buttonStyle(.borderless)
+				.buttonStyle(.plain)
 				.help("New session (pick a project)")
 				.disabled(!store.isConnected)
 			}
+			.padding(.vertical, 12)
+			.overlay(alignment: .bottom) { Rectangle().fill(Palette.rule).frame(height: 1) }
 			.help(statusHelp)
 			.contextMenu {
 				Button("Remove Machine", role: .destructive) { model.removeMachine(machine.id) }
+			}
+
+			ForEach(Self.groups(store), id: \.project) { group in
+				PanelSection(group.project.isEmpty ? "Sessions" : group.project, titleColor: Palette.accent) {
+					VStack(spacing: 2) {
+						ForEach(group.sessions) { summary in
+							let key = ConversationKey(machine: machine.id, conversation: summary.id)
+							SessionRow(summary: summary, selected: model.selection == key) {
+								model.selection = key
+							}
+						}
+					}
+				}
+			}
+			if store.state.hasSnapshot, store.state.active.isEmpty {
+				Text("No sessions yet")
+					.font(Typography.readingSmall)
+					.foregroundStyle(Palette.ink3)
+					.padding(.vertical, 14)
 			}
 		}
 	}
@@ -117,22 +144,33 @@ private struct MachineSection: View {
 
 private struct SessionRow: View {
 	let summary: ConversationSummary
+	let selected: Bool
+	let select: () -> Void
+	@State private var hovering = false
 
 	var body: some View {
-		HStack(spacing: 9) {
-			StateMark(summary.status, size: 11)
-			Text(summary.title)
-				.font(Typography.readingSmall)
-				.foregroundStyle(Palette.ink)
-				.lineLimit(1)
-				.truncationMode(.tail)
-			Spacer(minLength: 6)
-			Text(Date(timeIntervalSince1970: TimeInterval(summary.updatedAt) / 1000).shortAge)
-				.font(Typography.label)
-				.foregroundStyle(Palette.ink3)
-				.monospacedDigit()
+		Button(action: select) {
+			HStack(spacing: 9) {
+				StateMark(summary.status, size: 11)
+				Text(summary.title)
+					.font(Typography.readingSmall)
+					.foregroundStyle(selected ? Palette.ink : Palette.ink2)
+					.lineLimit(1)
+					.truncationMode(.tail)
+				Spacer(minLength: 6)
+				Text(Date(timeIntervalSince1970: TimeInterval(summary.updatedAt) / 1000).shortAge)
+					.font(Typography.label)
+					.foregroundStyle(Palette.ink3)
+					.monospacedDigit()
+			}
+			.padding(.horizontal, 8)
+			.padding(.vertical, 6)
+			.background(selected ? Palette.selection : hovering ? Palette.paper2 : .clear, in: RoundedRectangle(cornerRadius: 6))
+			.contentShape(Rectangle())
 		}
-		.padding(.vertical, 2)
+		.buttonStyle(.plain)
+		.padding(.horizontal, -8)
+		.onHover { hovering = $0 }
 		.help(summary.title)
 	}
 }
