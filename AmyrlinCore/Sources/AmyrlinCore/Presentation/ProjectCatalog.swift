@@ -3,7 +3,7 @@ import Foundation
 /// The projects a new session can start in, grouped for the picker: "Recent" (projects with sessions, newest first),
 /// then each folder ("Software", "Fabrication", ...), largest first. A search ranks name prefixes over other name
 /// matches over path matches, keeping folder groups. aludra's web picker follows the same rules
-/// (aludra/app/projects.ts).
+/// (aludra/app/lib/projects.ts).
 public enum ProjectCatalog {
 	public struct Entry: Sendable, Hashable, Identifiable {
 		public let project: ProjectInfo
