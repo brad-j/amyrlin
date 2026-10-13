@@ -181,7 +181,7 @@ private struct SessionRow: View {
 			}
 			.padding(.horizontal, 8)
 			.padding(.vertical, 6)
-			.background(selected ? (summary.project.map(Palette.projectWash) ?? Palette.selection) : hovering ? Palette.paper2 : .clear, in: RoundedRectangle(cornerRadius: 6))
+			.background(selected ? (summary.project.map(Palette.projectWash) ?? Palette.selection) : hovering ? Palette.paper2 : .clear, in: RoundedRectangle(cornerRadius: Metrics.radiusRow))
 			.contentShape(Rectangle())
 		}
 		.buttonStyle(.plain)

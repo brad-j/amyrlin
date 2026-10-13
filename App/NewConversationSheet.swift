@@ -100,7 +100,7 @@ struct NewConversationSheet: View {
 						}
 						.padding(.horizontal, 10)
 						.padding(.vertical, 7)
-						.background(current ? Palette.paper3 : .clear, in: RoundedRectangle(cornerRadius: 6))
+						.background(current ? Palette.paper3 : .clear, in: RoundedRectangle(cornerRadius: Metrics.radiusRow))
 						.contentShape(Rectangle())
 					}
 					.buttonStyle(.plain)
@@ -189,7 +189,7 @@ private struct ProjectRow: View {
 		}
 		.padding(.horizontal, 12)
 		.padding(.vertical, 8)
-		.background(selected ? Palette.projectWash(entry.project.name) : .clear, in: RoundedRectangle(cornerRadius: 6))
+		.background(selected ? Palette.projectWash(entry.project.name) : .clear, in: RoundedRectangle(cornerRadius: Metrics.radiusRow))
 		.contentShape(Rectangle())
 	}
 
@@ -233,8 +233,8 @@ struct DraftView: View {
 						return .handled
 					}
 					.padding(10)
-					.background(Palette.surface, in: RoundedRectangle(cornerRadius: 8))
-					.overlay(RoundedRectangle(cornerRadius: 8).stroke(focused ? Palette.accent.opacity(0.5) : Palette.hairline))
+					.background(Palette.surface, in: RoundedRectangle(cornerRadius: Metrics.radius))
+					.overlay(RoundedRectangle(cornerRadius: Metrics.radius).stroke(focused ? Palette.accent.opacity(0.5) : Palette.hairline))
 				Text(sending ? "Starting…" : "Return starts the conversation · ⌥Return new line")
 					.font(Typography.label)
 					.foregroundStyle(Palette.tertiaryText)

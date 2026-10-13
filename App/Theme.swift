@@ -92,9 +92,13 @@ enum Palette {
 enum Metrics {
 	/// The reading column: about 70 characters of reading text.
 	static let measure: CGFloat = 720 * Typography.scale
-	static let radiusSmall: CGFloat = 5
-	static let radius: CGFloat = 8
-	static let radiusLarge: CGFloat = 14
+	/// Every corner radius scales by this: 35% less rounding than aludra's milestone-2 tokens (2026-10-12).
+	static let rounding: CGFloat = 0.65
+	static let radiusSmall: CGFloat = 5 * rounding
+	/// Rows in the sidebar and the picker.
+	static let radiusRow: CGFloat = 6 * rounding
+	static let radius: CGFloat = 8 * rounding
+	static let radiusLarge: CGFloat = 14 * rounding
 }
 
 /// A state mark: shape and colour together, as in aludra (spinner, amber diamond, red cross, check, square).
