@@ -1,6 +1,5 @@
 packages:
   - scratch/*
-  - server
 
 # Pin every @earendil-works package, including transitive ones, to 1.1.0.
 overrides:

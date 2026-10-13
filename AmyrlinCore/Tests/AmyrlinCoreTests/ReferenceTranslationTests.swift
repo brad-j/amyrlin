@@ -2,8 +2,9 @@ import Foundation
 import Testing
 @testable import AmyrlinCore
 
-/// `server/src/translate.mjs` is the server's translation. Its output for every fixture, written to `fixtures/wire-v1/`
-/// by `pnpm run export-wire` in `server/`, must equal the Swift test mapper's output frame by frame.
+/// aludra's `src/amyrlin/translate.ts` is the server's translation. Its output for every fixture, written to
+/// `fixtures/wire-v1/` by aludra's `scripts/amyrlin-export-wire.ts`, must equal the Swift test mapper's output frame by
+/// frame.
 @Suite struct ReferenceTranslationTests {
 	static let wireDirectory = Fixtures.directory.deletingLastPathComponent().appending(path: "wire-v1")
 

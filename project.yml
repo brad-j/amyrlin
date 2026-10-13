@@ -31,7 +31,7 @@ targets:
         # Fira Sans (SIL OFL 1.1, App/Fonts) is copied flat into Resources and registered from there.
         ATSApplicationFontsPath: "."
         NSHumanReadableCopyright: ""
-        # Plain ws:// is allowed only to localhost, for the dev server (server/: pnpm run dev). Real hosts use wss://.
+        # Plain ws:// is allowed only to localhost, for a host on this Mac; real hosts use wss:// through tailscale serve.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     entitlements:

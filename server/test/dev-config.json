@@ -1,8 +1,0 @@
-{
-  "name": "dev (faux)",
-  "port": 8421,
-  "store": "/tmp/amyrlin-dev/store.sqlite",
-  "provider": "faux",
-  "allowAnonymous": true,
-  "cwd": "~/1-code/amyrlin"
-}
