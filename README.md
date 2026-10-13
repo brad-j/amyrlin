@@ -33,4 +33,6 @@ open build/DerivedData/Build/Products/Debug/Amyrlin.app
 cd scratch/recorder && pnpm run record
 python3 -I ../tools/check_fixtures.py ../../fixtures/durable-1.1.0
 python3 -I ../tools/check_citations.py ../../docs/protocol.md ../../fixtures/durable-1.1.0
+# then, from an aludra checkout beside this repo, regenerate fixtures/wire-v1
+node --no-warnings scripts/amyrlin-export-wire.ts ../amyrlin/fixtures
 ```
