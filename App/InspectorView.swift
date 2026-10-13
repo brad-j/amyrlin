@@ -6,6 +6,7 @@ import SwiftUI
 struct InspectorView: View {
 	let store: ConversationStore
 	let host: HostStore
+	var hide: () -> Void = {}
 
 	private var settings: ConversationSettings? { store.state.settings }
 	private var models: [ModelInfo] { host.info?.models ?? [] }
@@ -16,6 +17,19 @@ struct InspectorView: View {
 	var body: some View {
 		ScrollView {
 			VStack(alignment: .leading, spacing: 0) {
+				HStack {
+					Spacer()
+					Button(action: hide) {
+						Image(systemName: "sidebar.right")
+							.font(.system(size: 14))
+							.foregroundStyle(Palette.ink3)
+							.frame(width: 28, height: 28)
+							.contentShape(Rectangle())
+					}
+					.buttonStyle(.plain)
+					.help("Hide the inspector (⌥⌘I)")
+				}
+				.padding(.top, 6)
 				PanelSection("Agent") {
 					Row("Model") {
 					Menu {

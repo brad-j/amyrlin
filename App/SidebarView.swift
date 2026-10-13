@@ -16,7 +16,8 @@ struct SidebarView: View {
 				}
 			}
 			.padding(.horizontal, 16)
-			.padding(.top, 4)
+			// Clear of the window's controls, which sit over the sidebar's top.
+			.padding(.top, 44)
 		}
 		.background(Palette.panel)
 		.focusable()

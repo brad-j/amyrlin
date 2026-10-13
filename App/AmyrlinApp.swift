@@ -18,6 +18,8 @@ struct AmyrlinApp: App {
 					.keyboardShortcut("n", modifiers: [.command, .shift])
 			}
 			CommandGroup(after: .sidebar) {
+				Button(model.showSidebar ? "Hide Sidebar" : "Show Sidebar") { model.showSidebar.toggle() }
+					.keyboardShortcut("s", modifiers: [.command, .control])
 				Button(model.showInspector ? "Hide Inspector" : "Show Inspector") { model.showInspector.toggle() }
 					.keyboardShortcut("i", modifiers: [.command, .option])
 			}
@@ -29,10 +31,61 @@ struct MainView: View {
 	@Bindable var model: AppModel
 
 	var body: some View {
-		NavigationSplitView {
-			SidebarView(model: model)
-				.navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 360)
-		} detail: {
+		// A plain row instead of NavigationSplitView, whose sidebar floats as a separate panel on macOS 26. This one
+		// is flush, like the inspector, runs under the title bar, and resizes from its edge.
+		HStack(spacing: 0) {
+			if model.showSidebar {
+				SidebarView(model: model)
+					.frame(width: model.sidebarWidth)
+					.overlay(alignment: .trailing) { SidebarEdge(width: $model.sidebarWidth) }
+					.ignoresSafeArea(.container, edges: .top)
+					.transition(.move(edge: .leading))
+			}
+			detail
+				.frame(maxWidth: .infinity, maxHeight: .infinity)
+		}
+		.background(Palette.paper)
+		.toolbar(removing: .title)
+		.toolbar {
+			ToolbarItem(placement: .navigation) {
+				Button {
+					withAnimation(.easeInOut(duration: 0.2)) { model.showSidebar.toggle() }
+				} label: {
+					Label("Sidebar", systemImage: "sidebar.left")
+				}
+				.help("Show or hide the sidebar (⌃⌘S)")
+			}
+		}
+		// On the row, not the detail: the detail is rebuilt per selection, which dropped the inspector.
+		.inspector(isPresented: $model.showInspector) {
+			Group {
+				if let selected = model.selected {
+					InspectorView(store: selected.conversation, host: selected.machine.store) { model.showInspector = false }
+						.id(model.selection)
+				} else {
+					Text("No conversation selected")
+						.font(Typography.readingSmall)
+						.foregroundStyle(Palette.tertiaryText)
+						.frame(maxWidth: .infinity, maxHeight: .infinity)
+						.background(Palette.panel)
+				}
+			}
+			.inspectorColumnWidth(min: 240, ideal: 280, max: 380)
+		}
+		.sheet(isPresented: $model.isAddingMachine) {
+			AddMachineSheet(model: model)
+		}
+		.sheet(item: Binding(get: { model.newConversationMachine.flatMap(model.machine) .map(MachineRef.init) }, set: { model.newConversationMachine = $0?.id })) { ref in
+			NewConversationSheet(model: model, machine: ref.machine)
+		}
+		.alert("Something went wrong", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
+			Button("OK") { model.error = nil }
+		} message: {
+			Text(model.error ?? "")
+		}
+	}
+
+	@ViewBuilder private var detail: some View {
 			if let selected = model.selected {
 				ConversationView(
 					store: selected.conversation,
@@ -59,34 +112,38 @@ struct MainView: View {
 					.frame(maxWidth: .infinity, maxHeight: .infinity)
 					.background(Palette.background)
 			}
-		}
-		// On the split view, not the detail: the detail is rebuilt per selection, which dropped the inspector.
-		.inspector(isPresented: $model.showInspector) {
-			Group {
-				if let selected = model.selected {
-					InspectorView(store: selected.conversation, host: selected.machine.store)
-						.id(model.selection)
-				} else {
-					Text("No conversation selected")
-						.font(Typography.readingSmall)
-						.foregroundStyle(Palette.tertiaryText)
-						.frame(maxWidth: .infinity, maxHeight: .infinity)
-						.background(Palette.panel)
-				}
+	}
+}
+
+/// The sidebar's right edge: a hairline that resizes the sidebar when dragged.
+private struct SidebarEdge: View {
+	@Binding var width: CGFloat
+	@State private var start: CGFloat?
+	@State private var hovering = false
+
+	var body: some View {
+		Rectangle()
+			.fill(hovering || start != nil ? Palette.rule2 : Palette.rule)
+			.frame(width: 1)
+			.frame(maxHeight: .infinity)
+			.overlay {
+				Color.clear
+					.frame(width: 8)
+					.contentShape(Rectangle())
+					.onHover { inside in
+						hovering = inside
+						if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+					}
+					.gesture(
+						DragGesture(minimumDistance: 1, coordinateSpace: .global)
+							.onChanged { value in
+								let origin = start ?? width
+								start = origin
+								width = min(max(origin + value.translation.width, 220), 420)
+							}
+							.onEnded { _ in start = nil }
+					)
 			}
-			.inspectorColumnWidth(min: 240, ideal: 280, max: 380)
-		}
-		.sheet(isPresented: $model.isAddingMachine) {
-			AddMachineSheet(model: model)
-		}
-		.sheet(item: Binding(get: { model.newConversationMachine.flatMap(model.machine) .map(MachineRef.init) }, set: { model.newConversationMachine = $0?.id })) { ref in
-			NewConversationSheet(model: model, machine: ref.machine)
-		}
-		.alert("Something went wrong", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
-			Button("OK") { model.error = nil }
-		} message: {
-			Text(model.error ?? "")
-		}
 	}
 }
 

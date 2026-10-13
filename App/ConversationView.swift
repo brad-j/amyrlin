@@ -16,6 +16,7 @@ struct ConversationView: View {
 			} else if store.isResyncing || !host.isConnected {
 				Banner(text: host.isConnected ? "Catching up" : "Reconnecting to \(host.url.host() ?? "the host")", color: Palette.wait)
 			}
+			ConversationHeader(title: summary?.title ?? store.state.conversation?.title ?? "Conversation", project: summary?.project, dir: summary?.dir, busy: store.state.isBusy, showInspector: $showInspector)
 			TranscriptView(store: store)
 			VStack(spacing: 8) {
 				ForEach(store.state.approvals) { approval in
@@ -29,18 +30,6 @@ struct ConversationView: View {
 			.frame(maxWidth: .infinity)
 		}
 		.background(Palette.paper)
-		.navigationTitle(summary?.title ?? store.state.conversation?.title ?? "Conversation")
-		.navigationSubtitle(summary?.dir.map(Self.shortPath) ?? "")
-		.toolbar {
-			ToolbarItemGroup(placement: .primaryAction) {
-				Button {
-					showInspector.toggle()
-				} label: {
-					Label("Inspector", systemImage: "sidebar.right")
-				}
-				.help("Show or hide the inspector (⌥⌘I)")
-			}
-		}
 		.alert("Command failed", isPresented: Binding(get: { store.lastError != nil }, set: { if !$0 { store.lastError = nil } })) {
 			Button("OK") { store.lastError = nil }
 		} message: {
@@ -52,6 +41,53 @@ struct ConversationView: View {
 	/// `~/westwood/Projects/Software/aludra` for `/home/brad/westwood/...`.
 	static func shortPath(_ dir: String) -> String {
 		dir.replacingOccurrences(of: #"^/(home|Users)/[^/]+"#, with: "~", options: .regularExpression)
+	}
+}
+
+/// The conversation's title and project above the transcript, centred on the reading column.
+private struct ConversationHeader: View {
+	let title: String
+	let project: String?
+	let dir: String?
+	let busy: Bool
+	@Binding var showInspector: Bool
+
+	var body: some View {
+		ZStack(alignment: .trailing) {
+		HStack(spacing: 10) {
+			if busy { StateMark(.running, size: 11) }
+			Text(title)
+				.font(Typography.readingStrong)
+				.foregroundStyle(Palette.ink)
+				.lineLimit(1)
+			if let project {
+				Text(project)
+					.font(Typography.code)
+					.foregroundStyle(Palette.project(project))
+					.help(dir.map(ConversationView.shortPath) ?? project)
+			}
+			Spacer(minLength: 0)
+		}
+		.frame(maxWidth: Metrics.measure)
+		.padding(.horizontal, 24)
+		.frame(maxWidth: .infinity)
+			if !showInspector {
+				Button {
+					showInspector = true
+				} label: {
+					Image(systemName: "sidebar.right")
+						.font(.system(size: 14))
+						.foregroundStyle(Palette.ink3)
+						.frame(width: 28, height: 28)
+						.contentShape(Rectangle())
+				}
+				.buttonStyle(.plain)
+				.padding(.trailing, 14)
+				.help("Show the inspector (⌥⌘I)")
+			}
+		}
+		.padding(.vertical, 10)
+		.overlay(alignment: .bottom) { Rectangle().fill(Palette.rule).frame(height: 1) }
 	}
 }
 

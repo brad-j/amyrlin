@@ -57,6 +57,10 @@ final class AppModel {
 		collapsedProjects.contains("\(machine.uuidString)/\(project)")
 	}
 	var showInspector = true
+	var showSidebar = true
+	var sidebarWidth: CGFloat = CGFloat(UserDefaults.standard.object(forKey: "sidebarWidth") as? Double ?? 280) {
+		didSet { UserDefaults.standard.set(Double(sidebarWidth), forKey: "sidebarWidth") }
+	}
 	var isAddingMachine = false
 	/// The machine a new conversation is being started on, while its sheet is open.
 	var newConversationMachine: UUID?

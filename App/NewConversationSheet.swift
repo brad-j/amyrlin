@@ -130,8 +130,6 @@ struct DraftView: View {
 			.padding(.bottom, 10)
 		}
 		.background(Palette.background)
-		.navigationTitle("New conversation")
-		.navigationSubtitle(project.path)
 		.onAppear { focused = true }
 	}
 
