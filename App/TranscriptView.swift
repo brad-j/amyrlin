@@ -159,7 +159,7 @@ private struct UserBlock: View {
 	}
 }
 
-/// An answer: Markdown in Fira Sans after a `●` mark, with `[copy]` on hover once it's finished.
+/// An answer: Markdown in IBM Plex Sans after a `●` mark, with `[copy]` on hover once it's finished.
 private struct AnswerBlock: View {
 	let text: String
 	let streaming: Bool

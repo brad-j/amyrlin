@@ -28,7 +28,7 @@ targets:
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         LSApplicationCategoryType: public.app-category.developer-tools
-        # Fira Sans (SIL OFL 1.1, App/Fonts) is copied flat into Resources and registered from there.
+        # IBM Plex Sans and Mono (SIL OFL 1.1, App/Fonts) is copied flat into Resources and registered from there.
         ATSApplicationFontsPath: "."
         NSHumanReadableCopyright: ""
         # Plain ws:// is allowed only to localhost, for a host on this Mac; real hosts use wss:// through tailscale serve.

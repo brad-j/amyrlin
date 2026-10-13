@@ -85,11 +85,19 @@ private struct MachineSection: View {
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 0) {
-			HStack(spacing: 7) {
-				StatusDot(color: Palette.color(for: store.status), pulsing: !store.isConnected)
-				Text(store.state.host?.name ?? store.info?.host.name ?? machine.url.host() ?? machine.url.absoluteString)
-					.font(Typography.uiStrong)
+			HStack(spacing: 9) {
+				Image(systemName: "desktopcomputer")
+					.font(.system(size: 15 * Typography.scale, weight: .medium))
 					.foregroundStyle(Palette.ink2)
+					.overlay(alignment: .bottomTrailing) {
+						StatusDot(color: Palette.color(for: store.status), pulsing: !store.isConnected)
+							.padding(1.5)
+							.background(Circle().fill(Palette.panel))
+							.offset(x: 4, y: 3)
+					}
+				Text(store.state.host?.name ?? store.info?.host.name ?? machine.url.host() ?? machine.url.absoluteString)
+					.font(Typography.machineHeader)
+					.foregroundStyle(Palette.ink)
 					.lineLimit(1)
 				Spacer()
 				Button {
@@ -105,7 +113,7 @@ private struct MachineSection: View {
 				.disabled(!store.isConnected)
 			}
 			.padding(.vertical, 12)
-			.overlay(alignment: .bottom) { Rectangle().fill(Palette.rule).frame(height: 1) }
+			.overlay(alignment: .bottom) { Rectangle().fill(Palette.rule2).frame(height: 1) }
 			.help(statusHelp)
 			.contextMenu {
 				Button("Remove Machine", role: .destructive) { model.removeMachine(machine.id) }
