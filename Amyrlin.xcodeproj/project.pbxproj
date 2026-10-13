@@ -15,6 +15,7 @@
 		414F2D7917FAB38273814515 /* IBMPlex-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = F9F1EDA367D84F1E12969C30 /* IBMPlex-OFL.txt */; };
 		56CE6422E3B3831193FF9A23 /* IBMPlexSans-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 13F17275495AE76F72E4E16A /* IBMPlexSans-Regular.ttf */; };
 		64AF8D8A16667DA8AC293491 /* AmyrlinCore in Frameworks */ = {isa = PBXBuildFile; productRef = D81DEB64327AF2DB380257AB /* AmyrlinCore */; };
+		69C6F996831A0BD3655E6F57 /* TextSize.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5E0486C01575E9101504707 /* TextSize.swift */; };
 		701C56D4979C4B1DDCDDA1E1 /* NewConversationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4607A3DCCB13BC46E7BFEE87 /* NewConversationSheet.swift */; };
 		7A73813C52844C39E18EAFB6 /* IBMPlexMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = DFF2CAC8723A9AFF68FD4BC3 /* IBMPlexMono-Italic.ttf */; };
 		85512BAEA1E94D90F28128D2 /* IBMPlexSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3E255489E001362E5060D2BF /* IBMPlexSans-SemiBold.ttf */; };
@@ -61,6 +62,7 @@
 		DFF2CAC8723A9AFF68FD4BC3 /* IBMPlexMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Italic.ttf"; sourceTree = "<group>"; };
 		E098E2DEA603F2E95964E60C /* IBMPlexMono-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Medium.ttf"; sourceTree = "<group>"; };
 		E43E677CA5F20DE603B53B9F /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		F5E0486C01575E9101504707 /* TextSize.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextSize.swift; sourceTree = "<group>"; };
 		F5FE85A895879393A37D7CB0 /* IBMPlexMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Bold.ttf"; sourceTree = "<group>"; };
 		F9F1EDA367D84F1E12969C30 /* IBMPlex-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "IBMPlex-OFL.txt"; sourceTree = "<group>"; };
 		FACC027B3134DED45C50F173 /* IBMPlexMono-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-SemiBold.ttf"; sourceTree = "<group>"; };
@@ -131,6 +133,7 @@
 				683EB059DBE7F4081E821D7B /* MarkdownView.swift */,
 				4607A3DCCB13BC46E7BFEE87 /* NewConversationSheet.swift */,
 				C93A86000CFBD344D169CBB4 /* SidebarView.swift */,
+				F5E0486C01575E9101504707 /* TextSize.swift */,
 				0987027DBAEEDC51353D4ADB /* Theme.swift */,
 				400DB9A82C252E1F657E8D41 /* TranscriptView.swift */,
 				4E922853EB57DE092B86E7BB /* Fonts */,
@@ -243,6 +246,7 @@
 				A72E7A31DF98C83FA8A34DCE /* MarkdownView.swift in Sources */,
 				701C56D4979C4B1DDCDDA1E1 /* NewConversationSheet.swift in Sources */,
 				2C96991DCF40CF1BD5BD099E /* SidebarView.swift in Sources */,
+				69C6F996831A0BD3655E6F57 /* TextSize.swift in Sources */,
 				EF49776FA13371AF809A8701 /* Theme.swift in Sources */,
 				07A9818150EB8F9E60EC74B8 /* TranscriptView.swift in Sources */,
 			);

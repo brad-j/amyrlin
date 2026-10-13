@@ -32,10 +32,13 @@ struct NewConversationSheet: View {
 
 	private var flat: [ProjectCatalog.Entry] { shown.flatMap(\.entries) }
 
-	/// The "no project" row's selection ID: project rows use their directory, never empty.
+	/// The scratch row's selection ID: project rows use their directory, never empty.
 	private static let noProjectID = ""
-	/// "No project" heads the list, unless a search clearly means something else.
-	private var showNoProject: Bool { !searching || "no project".contains(query.trimmingCharacters(in: .whitespaces).lowercased()) }
+	/// Scratch heads the list, unless a search clearly means something else ("no project" still finds it).
+	private var showNoProject: Bool {
+		let query = query.trimmingCharacters(in: .whitespaces).lowercased()
+		return !searching || "scratch".contains(query) || "no project".contains(query)
+	}
 	/// Every row's ID in order, for the arrow keys.
 	private var rowIDs: [String] { (showNoProject ? [Self.noProjectID] : []) + flat.map(\.id) }
 
@@ -175,7 +178,7 @@ struct NewConversationSheet: View {
 		dismiss()
 	}
 
-	/// Opens the row `id` names: "no project", or a project by its directory.
+	/// Opens the row `id` names: scratch, or a project by its directory.
 	private func openRow(_ id: String?) {
 		guard let id else { return }
 		if id == Self.noProjectID {
@@ -187,15 +190,15 @@ struct NewConversationSheet: View {
 	}
 }
 
-/// The picker's first row: a session in no project, in a scratch directory of its own on the host.
+/// The picker's first row: scratch, a session in no project, in a scratch directory of its own on the host.
 private struct NoProjectRow: View {
 	let selected: Bool
 
 	var body: some View {
 		HStack(spacing: 10) {
 			Circle().strokeBorder(Palette.ink3, lineWidth: 1.5).frame(width: 8, height: 8)
-			Text("no project").font(Typography.ui).foregroundStyle(Palette.ink)
-			Text("a scratch directory of its own").font(Typography.uiSmall).foregroundStyle(Palette.ink3)
+			Text("scratch").font(Typography.ui).foregroundStyle(Palette.ink)
+			Text("no project, a directory of its own").font(Typography.uiSmall).foregroundStyle(Palette.ink3)
 			Spacer(minLength: 8)
 		}
 		.padding(.horizontal, 12)
@@ -218,7 +221,7 @@ private struct ProjectRow: View {
 				.foregroundStyle(Palette.ink)
 				.lineLimit(1)
 			Text(entry.project.path)
-				.font(Typography.codeSmall)
+				.font(Typography.uiSmall)
 				.foregroundStyle(Palette.ink3)
 				.lineLimit(1)
 				.truncationMode(.head)
@@ -266,11 +269,11 @@ struct DraftView: View {
 				Spacer(minLength: 8)
 			}
 			VStack(spacing: 6) {
-				Text(project?.name ?? "no project")
+				Text(project?.name ?? "scratch")
 					.font(Typography.uiStrong)
 					.foregroundStyle(project.map { Palette.project($0.name, in: machine.store.state.projectColors) } ?? Palette.ink2)
 				Text(project.map { ConversationView.shortPath($0.dir) } ?? "a scratch directory of its own, on \(machine.store.state.host?.name ?? "the host")")
-					.font(Typography.code)
+					.font(Typography.ui)
 					.foregroundStyle(Palette.ink3)
 				Text(sending ? "starting…" : "↵ starts the session · ⌥↵ new line")
 					.font(Typography.uiSmall)

@@ -56,9 +56,9 @@ struct InspectorView: View {
 						}
 					}
 					if let dir = settings?.effective.cwd ?? settings?.stored.cwd {
-						PanelSection(store.state.conversation?.project ?? "no project · scratch", titleColor: store.state.conversation?.project.map { Palette.project($0, in: host.state.projectColors) } ?? Palette.ink3) {
+						PanelSection(store.state.conversation?.project ?? "scratch", titleColor: store.state.conversation?.project.map { Palette.project($0, in: host.state.projectColors) } ?? Palette.ink3) {
 							Text(ConversationView.shortPath(dir))
-								.font(Typography.codeSmall)
+								.font(Typography.uiSmall)
 								.foregroundStyle(Palette.ink2)
 								.textSelection(.enabled)
 								.lineLimit(3)

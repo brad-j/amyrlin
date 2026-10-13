@@ -57,7 +57,8 @@ private struct MachineSection: View {
 
 	private var store: HostStore { machine.store }
 
-	/// Sessions by project, the project needing attention first, then the most recently active.
+	/// Sessions by project: scratch (sessions in no project) pinned first, then the project needing attention, then the
+	/// most recently active.
 	static func groups(_ store: HostStore) -> [(project: String, sessions: [ConversationSummary])] {
 		let byProject = Dictionary(grouping: store.state.active) { $0.project ?? "" }
 		func urgency(_ sessions: [ConversationSummary]) -> Int {
@@ -66,6 +67,7 @@ private struct MachineSection: View {
 		return byProject
 			.map { (project: $0.key, sessions: $0.value.sorted { $0.updatedAt > $1.updatedAt }) }
 			.sorted { a, b in
+				if a.project.isEmpty != b.project.isEmpty { return a.project.isEmpty }
 				let (ua, ub) = (urgency(a.sessions), urgency(b.sessions))
 				if ua != ub { return ua < ub }
 				return (a.sessions.first?.updatedAt ?? 0) > (b.sessions.first?.updatedAt ?? 0)
@@ -116,7 +118,7 @@ private struct MachineSection: View {
 					let collapsed = model.collapsedBinding(machine: machine.id, project: group.project)
 					VStack(alignment: .leading, spacing: 0) {
 						ProjectRow(
-							name: group.project.isEmpty ? "no project" : group.project,
+							name: group.project.isEmpty ? "scratch" : group.project,
 							color: group.project.isEmpty ? Palette.ink3 : Palette.project(group.project, in: store.state.projectColors),
 							collapsed: collapsed,
 							note: collapsed.wrappedValue ? foldedNote(group.sessions) : nil

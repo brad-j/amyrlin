@@ -77,7 +77,7 @@ private struct ConversationHeader: View {
 }
 
 /// Where a session runs, as a console path: `~/1-code/` dim, then the project in its colour, then a gap before what
-/// follows. A no-project session says so: its directory is a scratch one, which says less.
+/// follows. A session in no project says "scratch": its directory is a scratch one, which says less.
 struct PathLabel: View {
 	let project: String?
 	let dir: String?
@@ -86,7 +86,7 @@ struct PathLabel: View {
 	var body: some View {
 		HStack(spacing: 0) {
 			if project == nil {
-				Text("no project").foregroundStyle(Palette.ink3)
+				Text("scratch").foregroundStyle(Palette.ink3)
 			} else if let dir {
 				let short = ConversationView.shortPath(dir)
 				let parent = project.map { short.hasSuffix($0) ? String(short.dropLast($0.count)) : short + "/" } ?? short

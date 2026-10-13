@@ -12,38 +12,44 @@ import SwiftUI
 
 /// Every typeface the app uses, both bundled in App/Fonts under the SIL OFL. The transcript reads in IBM Plex Sans;
 /// every other surface, from the sidebar to the status line, is IBM Plex Mono, its monospaced sibling.
-/// Every size goes through `scale`, so all text grows or shrinks together (a font-size setting can set it later).
-/// Text is light and emphasis is regular; light text on the dark paper reads as heavy as regular does on white.
-enum Typography {
-	static let scale: CGFloat = 1.15
+/// Sizes come in two sets that the Text Size settings scale apart: the transcript's (reading, headings and code, scaled
+/// by `textScale`) and the chrome's (`ui` and the rest, scaled by `scale`). Both read TextSize, so a view redraws when
+/// either changes. Text is light and emphasis is regular; light text on the dark paper reads as heavy as regular does
+/// on white.
+@MainActor enum Typography {
+	/// The chrome's scale: 1.15 at 100%.
+	static var scale: CGFloat { TextSize.base * TextSize.shared.interfaceZoom }
+	/// The transcript's scale: 1.15 at 100%.
+	static var textScale: CGFloat { TextSize.base * TextSize.shared.textZoom }
 	/// Both families ship one file per weight; `.weight(_:)` picks among the bundled ones, light to bold.
 	private static func sans(_ size: CGFloat, _ weight: Font.Weight = .light) -> Font {
-		.custom("IBM Plex Sans", size: size * scale).weight(weight)
+		.custom("IBM Plex Sans", size: size * textScale).weight(weight)
 	}
-	private static func mono(_ size: CGFloat, _ weight: Font.Weight = .light) -> Font {
+	private static func mono(_ size: CGFloat, _ weight: Font.Weight = .light, scale: CGFloat = scale) -> Font {
 		.custom("IBM Plex Mono", size: size * scale).weight(weight)
 	}
 
-	static let reading = sans(15)
-	static let readingSmall = sans(13)
-	static let readingStrong = sans(15, .medium)
-	static let readingSmallStrong = sans(13, .medium)
+	static var reading: Font { sans(15) }
+	static var readingSmall: Font { sans(13) }
+	static var readingStrong: Font { sans(15, .medium) }
+	static var readingSmallStrong: Font { sans(13, .medium) }
 	static func heading(_ level: Int) -> Font {
 		sans([20, 17.5, 16, 15][min(max(level, 1), 4) - 1], .regular)
 	}
-	static let code = mono(12.5)
-	static let codeSmall = mono(11.5)
-	static let inlineCode = mono(13)
+	/// The transcript's code: blocks, tool calls and their output.
+	static var code: Font { mono(12.5, scale: textScale) }
+	static var codeSmall: Font { mono(11.5, scale: textScale) }
+	static var inlineCode: Font { mono(13, scale: textScale) }
 	/// Chrome: sidebar rows, the inspector, the picker, the composer, the header.
-	static let ui = mono(12.5)
-	static let uiSmall = mono(11.5)
-	static let uiStrong = mono(12.5, .regular)
-	static let label = mono(10.5, .regular)
-	static let projectHeader = mono(12.5, .regular)
+	static var ui: Font { mono(12.5) }
+	static var uiSmall: Font { mono(11.5) }
+	static var uiStrong: Font { mono(12.5, .regular) }
+	static var label: Font { mono(10.5, .regular) }
+	static var projectHeader: Font { mono(12.5, .regular) }
 	/// A machine's name is a row's size; the computer icon and full ink set it apart.
-	static let machineHeader = mono(12.5, .regular)
+	static var machineHeader: Font { mono(12.5, .regular) }
 	/// Line height of `codeSmall`, for blocks that keep a fixed number of lines.
-	static let codeSmallLine: CGFloat = 15.5 * scale
+	static var codeSmallLine: CGFloat { 15.5 * textScale }
 }
 
 enum Palette {
@@ -121,9 +127,9 @@ enum Palette {
 	}
 }
 
-enum Metrics {
+@MainActor enum Metrics {
 	/// The reading column: about 70 characters of reading text.
-	static let measure: CGFloat = 720 * Typography.scale
+	static var measure: CGFloat { 720 * Typography.textScale }
 	/// Every corner radius scales by this. Square since the console redesign (2026-10-12); 0.65 before.
 	static let rounding: CGFloat = 0
 	static let radiusSmall: CGFloat = 5 * rounding
@@ -131,10 +137,11 @@ enum Metrics {
 	static let radiusRow: CGFloat = 6 * rounding
 	static let radius: CGFloat = 8 * rounding
 	static let radiusLarge: CGFloat = 14 * rounding
-	/// The header band every column starts with, under the title bar: one height, so their rules make one line.
-	static let bar: CGFloat = 36
+	/// The header band every column starts with, under the title bar: one height, so their rules make one line. It
+	/// grows and shrinks with the chrome's text.
+	static var bar: CGFloat { (36 * TextSize.shared.interfaceZoom).rounded() }
 	/// The status line across the foot of the window.
-	static let statusBar: CGFloat = 28
+	static var statusBar: CGFloat { (28 * TextSize.shared.interfaceZoom).rounded() }
 }
 
 /// A column's header band (`Metrics.bar` tall, a rule under it). The sidebar, the conversation and the inspector each

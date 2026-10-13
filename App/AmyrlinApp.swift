@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct AmyrlinApp: App {
 	@State private var model = AppModel()
+	@State private var textSize = TextSize.shared
 
 	var body: some Scene {
 		WindowGroup("Amyrlin") {
@@ -26,6 +27,10 @@ struct AmyrlinApp: App {
 				Button(model.showInspector ? "Hide Inspector" : "Show Inspector") { model.showInspector.toggle() }
 					.keyboardShortcut("i", modifiers: [.command, .option])
 			}
+			TextSizeCommands(size: textSize)
+		}
+		Settings {
+			SettingsView(size: textSize)
 		}
 	}
 }
@@ -237,7 +242,7 @@ struct SetupGuide: View {
 						}
 					}
 				}
-				.font(Typography.code)
+				.font(Typography.ui)
 				.textSelection(.enabled)
 				.padding(14)
 				.frame(maxWidth: .infinity, alignment: .leading)
