@@ -40,6 +40,7 @@ struct NewConversationSheet: View {
 				.onKeyPress(.upArrow) { move(-1) }
 			List(filtered, selection: $selected) { item in
 				HStack {
+					Circle().fill(Palette.project(item.name)).frame(width: 7, height: 7)
 					Text(item.name).font(Typography.reading)
 					Spacer()
 					Text(item.path).font(Typography.label).foregroundStyle(Palette.tertiaryText)
@@ -98,6 +99,7 @@ struct DraftView: View {
 			VStack(spacing: 6) {
 				Text(project.name)
 					.font(Typography.reading.weight(.semibold))
+					.foregroundStyle(Palette.project(project.name))
 				Text(project.dir)
 					.font(Typography.code)
 					.foregroundStyle(Palette.tertiaryText)

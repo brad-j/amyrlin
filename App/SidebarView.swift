@@ -111,7 +111,7 @@ private struct MachineSection: View {
 			}
 
 			ForEach(Self.groups(store), id: \.project) { group in
-				PanelSection(group.project.isEmpty ? "Sessions" : group.project, titleColor: Palette.accent) {
+				PanelSection(group.project.isEmpty ? "Sessions" : group.project, titleColor: group.project.isEmpty ? Palette.ink3 : Palette.project(group.project)) {
 					VStack(spacing: 2) {
 						ForEach(group.sessions) { summary in
 							let key = ConversationKey(machine: machine.id, conversation: summary.id)
@@ -165,7 +165,7 @@ private struct SessionRow: View {
 			}
 			.padding(.horizontal, 8)
 			.padding(.vertical, 6)
-			.background(selected ? Palette.selection : hovering ? Palette.paper2 : .clear, in: RoundedRectangle(cornerRadius: 6))
+			.background(selected ? (summary.project.map(Palette.projectWash) ?? Palette.selection) : hovering ? Palette.paper2 : .clear, in: RoundedRectangle(cornerRadius: 6))
 			.contentShape(Rectangle())
 		}
 		.buttonStyle(.plain)

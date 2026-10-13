@@ -82,6 +82,9 @@ public struct ConversationRef: Decodable, Sendable, Hashable {
 	public var title: String?
 	public var archived: Bool?
 	public var parent: ParentRef?
+	/// Set by servers that tie conversations to projects.
+	public var project: String?
+	public var dir: String?
 }
 
 /// The first event of every `conversation.watch` frame stream (protocol section 6.1).

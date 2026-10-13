@@ -56,6 +56,18 @@ enum Palette {
 	static let failure = bad
 	static let success = add
 
+	/// Each project's own colour (AmyrlinCore's ProjectColor), the same everywhere it appears.
+	static func project(_ name: String) -> Color {
+		let c = ProjectColor.rgb(for: name)
+		return Color(red: c.red, green: c.green, blue: c.blue)
+	}
+
+	/// The selected row's wash in a project's hue: dark paper with a trace of it.
+	static func projectWash(_ name: String) -> Color {
+		let c = ProjectColor.oklchToSRGB(lightness: 0.25, chroma: 0.035, hue: ProjectColor.hues[ProjectColor.index(for: name)])
+		return Color(red: c.red, green: c.green, blue: c.blue)
+	}
+
 	static func color(for status: ConversationStatus) -> Color {
 		switch status {
 		case .busy: accent
