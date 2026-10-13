@@ -70,6 +70,8 @@ struct MainView: View {
 					Text("No conversation selected")
 						.font(Typography.readingSmall)
 						.foregroundStyle(Palette.tertiaryText)
+						.frame(maxWidth: .infinity, maxHeight: .infinity)
+						.background(Palette.panel)
 				}
 			}
 			.inspectorColumnWidth(min: 240, ideal: 280, max: 380)

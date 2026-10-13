@@ -18,7 +18,7 @@ struct SidebarView: View {
 			.padding(.horizontal, 16)
 			.padding(.top, 4)
 		}
-		.background(Palette.paper)
+		.background(Palette.panel)
 		.focusable()
 		.focusEffectDisabled()
 		.focused($focused)
@@ -38,15 +38,17 @@ struct SidebarView: View {
 			}
 			.padding(.horizontal, 16)
 			.padding(.vertical, 10)
-			.background(Palette.paper)
+			.background(Palette.panel)
 			.overlay(alignment: .top) { Rectangle().fill(Palette.rule).frame(height: 1) }
 		}
 	}
 
-	/// Every session in the order the sidebar shows them.
+	/// Every session the sidebar shows, in order; folded projects are skipped.
 	private var ordered: [ConversationKey] {
 		model.machines.flatMap { machine in
-			MachineSection.groups(machine.store).flatMap { $0.sessions.map { ConversationKey(machine: machine.id, conversation: $0.id) } }
+			MachineSection.groups(machine.store)
+				.filter { !model.isCollapsed(machine: machine.id, project: $0.project) }
+				.flatMap { $0.sessions.map { ConversationKey(machine: machine.id, conversation: $0.id) } }
 		}
 	}
 
@@ -111,7 +113,13 @@ private struct MachineSection: View {
 			}
 
 			ForEach(Self.groups(store), id: \.project) { group in
-				PanelSection(group.project.isEmpty ? "Sessions" : group.project, titleColor: group.project.isEmpty ? Palette.ink3 : Palette.project(group.project)) {
+				let collapsed = model.collapsedBinding(machine: machine.id, project: group.project)
+				PanelSection(
+					group.project.isEmpty ? "Sessions" : group.project,
+					titleColor: group.project.isEmpty ? Palette.ink3 : Palette.project(group.project),
+					collapsed: collapsed,
+					trailing: collapsed.wrappedValue ? foldedNote(group.sessions) : nil
+				) {
 					VStack(spacing: 2) {
 						ForEach(group.sessions) { summary in
 							let key = ConversationKey(machine: machine.id, conversation: summary.id)
@@ -129,6 +137,13 @@ private struct MachineSection: View {
 					.padding(.vertical, 14)
 			}
 		}
+	}
+
+	/// What a folded project still says: how many sessions, and whether one needs you or is working.
+	private func foldedNote(_ sessions: [ConversationSummary]) -> String {
+		if sessions.contains(where: { $0.status == .needsApproval }) { return "needs you" }
+		if sessions.contains(where: { $0.status == .busy }) { return "working" }
+		return "\(sessions.count)"
 	}
 
 	private var statusHelp: String {

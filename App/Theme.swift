@@ -29,6 +29,8 @@ enum Typography {
 
 enum Palette {
 	static let paper = Color(red: 0.053, green: 0.056, blue: 0.061)
+	/// The side panels (sidebar and inspector), a step darker than the transcript: #0a0a0a.
+	static let panel = Color(red: 10 / 255, green: 10 / 255, blue: 10 / 255)
 	static let paper2 = Color(red: 0.091, green: 0.095, blue: 0.103)
 	static let paper3 = Color(red: 0.131, green: 0.137, blue: 0.146)
 	static let rule = Color(red: 0.146, green: 0.151, blue: 0.158)
@@ -186,28 +188,64 @@ extension Date {
 }
 
 /// A group in a side panel (sidebar and inspector): a small-caps label, its content, a hairline under it.
+/// Given `collapsed`, the label becomes a button with a chevron that folds the content away; `trailing` shows
+/// beside the label (a count while folded).
 struct PanelSection<Content: View>: View {
 	let title: String
 	var titleColor: Color = Palette.ink3
+	var collapsed: Binding<Bool>?
+	var trailing: String?
 	@ViewBuilder let content: Content
+	@State private var hovering = false
 
-	init(_ title: String, titleColor: Color = Palette.ink3, @ViewBuilder content: () -> Content) {
+	init(_ title: String, titleColor: Color = Palette.ink3, collapsed: Binding<Bool>? = nil, trailing: String? = nil, @ViewBuilder content: () -> Content) {
 		self.title = title
 		self.titleColor = titleColor
+		self.collapsed = collapsed
+		self.trailing = trailing
 		self.content = content()
 	}
 
+	private var isCollapsed: Bool { collapsed?.wrappedValue ?? false }
+
 	var body: some View {
 		VStack(alignment: .leading, spacing: 9) {
-			Text(title)
-				.font(Typography.label)
-				.foregroundStyle(titleColor)
-				.textCase(.uppercase)
-				.lineLimit(1)
-			content
+			if let collapsed {
+				Button {
+					withAnimation(.easeInOut(duration: 0.2)) { collapsed.wrappedValue.toggle() }
+				} label: {
+					HStack(spacing: 6) {
+						label
+						Spacer(minLength: 6)
+						if let trailing {
+							Text(trailing).font(Typography.label).foregroundStyle(Palette.ink3).monospacedDigit()
+						}
+						Image(systemName: "chevron.down")
+							.font(.system(size: 9 * Typography.scale, weight: .semibold))
+							.foregroundStyle(Palette.ink3)
+							.rotationEffect(.degrees(isCollapsed ? -90 : 0))
+							.opacity(hovering || isCollapsed ? 1 : 0.5)
+					}
+					.contentShape(Rectangle())
+				}
+				.buttonStyle(.plain)
+				.onHover { hovering = $0 }
+				.help(isCollapsed ? "Show \(title)" : "Hide \(title)")
+			} else {
+				label
+			}
+			if !isCollapsed { content }
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.padding(.vertical, 14)
 		.overlay(alignment: .bottom) { Rectangle().fill(Palette.rule).frame(height: 1) }
+	}
+
+	private var label: some View {
+		Text(title)
+			.font(Typography.label)
+			.foregroundStyle(titleColor)
+			.textCase(.uppercase)
+			.lineLimit(1)
 	}
 }

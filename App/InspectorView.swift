@@ -101,7 +101,7 @@ struct InspectorView: View {
 			.padding(.horizontal, 16)
 			.padding(.vertical, 8)
 		}
-		.background(Palette.paper)
+		.background(Palette.panel)
 	}
 
 	private var contextUsed: Int? {

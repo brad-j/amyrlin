@@ -1,6 +1,7 @@
 import AmyrlinCore
 import Foundation
 import Observation
+import SwiftUI
 
 /// Identifies a conversation across machines: conversation IDs are unique only within one host.
 struct ConversationKey: Hashable {
@@ -37,6 +38,24 @@ final class AppModel {
 	}
 	/// Shown in place of a conversation until its first message is sent.
 	var draft: Draft?
+	/// Folded project groups in the sidebar, as "machine/project", kept across launches.
+	var collapsedProjects: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "collapsedProjects") ?? []) {
+		didSet { UserDefaults.standard.set(collapsedProjects.sorted(), forKey: "collapsedProjects") }
+	}
+
+	func collapsedBinding(machine: UUID, project: String) -> Binding<Bool> {
+		let key = "\(machine.uuidString)/\(project)"
+		return Binding(
+			get: { self.collapsedProjects.contains(key) },
+			set: { folded in
+				if folded { self.collapsedProjects.insert(key) } else { self.collapsedProjects.remove(key) }
+			}
+		)
+	}
+
+	func isCollapsed(machine: UUID, project: String) -> Bool {
+		collapsedProjects.contains("\(machine.uuidString)/\(project)")
+	}
 	var showInspector = true
 	var isAddingMachine = false
 	/// The machine a new conversation is being started on, while its sheet is open.
