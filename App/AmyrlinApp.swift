@@ -150,39 +150,98 @@ private struct SidebarEdge: View {
 	}
 }
 
+/// Adds a host by its tailscale serve address. Type a full URL, or just the host (`aludra`, or its full tailnet name):
+/// the line under the field shows the exact address it will connect to, or why it can't.
 struct AddMachineSheet: View {
 	let model: AppModel
 	@Environment(\.dismiss) private var dismiss
-	@State private var address = "wss://"
+	@State private var address = ""
+	@FocusState private var focused: Bool
 
-	private var url: URL? {
-		guard let url = URL(string: address.trimmingCharacters(in: .whitespaces)),
-			let scheme = url.scheme, ["ws", "wss"].contains(scheme), url.host() != nil
-		else { return nil }
-		return url.path().isEmpty || url.path() == "/" ? url.appending(path: "amyrlin") : url
+	/// The address to connect to, or why there isn't one.
+	private var parsed: Result<URL, AddressProblem> {
+		let text = address.trimmingCharacters(in: .whitespaces)
+		guard !text.isEmpty else { return .failure(.empty) }
+		let full = text.contains("://") ? text : "wss://\(text)"
+		guard let url = URL(string: full), let scheme = url.scheme, url.host() != nil else { return .failure(.unreadable) }
+		guard ["ws", "wss"].contains(scheme) else { return .failure(.scheme(scheme)) }
+		let withPath = url.path().isEmpty || url.path() == "/" ? url.appending(path: "amyrlin") : url
+		if model.machines.contains(where: { $0.url == withPath }) { return .failure(.duplicate) }
+		return .success(withPath)
 	}
 
+	private enum AddressProblem: Error {
+		case empty, unreadable, scheme(String), duplicate
+
+		var isEmpty: Bool {
+			if case .empty = self { true } else { false }
+		}
+
+		var text: String {
+			switch self {
+			case .empty: "the host's tailscale serve name, or a full ws:// or wss:// address"
+			case .unreadable: "that isn't an address"
+			case .scheme(let scheme): "\(scheme):// isn't a WebSocket address; use wss://"
+			case .duplicate: "that machine is already in the sidebar"
+			}
+		}
+	}
+
+	private var url: URL? { try? parsed.get() }
+
 	var body: some View {
-		VStack(alignment: .leading, spacing: 12) {
-			Text("Add Machine").font(.headline)
-			TextField("wss://machine.tailnet.ts.net/amyrlin", text: $address)
-				.textFieldStyle(.roundedBorder)
-				.font(Typography.code)
-				.frame(width: 380)
-				.onSubmit(add)
-			Text("The host's tailscale serve address, for example wss://aludra.example.ts.net/amyrlin.")
-				.font(Typography.ui)
-				.foregroundStyle(Palette.secondaryText)
-			HStack {
+		VStack(alignment: .leading, spacing: 0) {
+			HStack(spacing: 10) {
+				Text("+").font(Typography.uiStrong).foregroundStyle(Palette.accent)
+				TextField("", text: $address, prompt: Text("machine.tailnet.ts.net").foregroundStyle(Palette.ink3))
+					.textFieldStyle(.plain)
+					.font(Typography.ui)
+					.foregroundStyle(Palette.ink)
+					.focused($focused)
+					.onSubmit(add)
+			}
+			.padding(.horizontal, 16)
+			.padding(.vertical, 13)
+			Rectangle().fill(Palette.rule).frame(height: 1)
+			VStack(alignment: .leading, spacing: 8) {
+				switch parsed {
+				case .success(let url):
+					HStack(spacing: 8) {
+						Text("→").foregroundStyle(Palette.accent)
+						Text(url.absoluteString).foregroundStyle(Palette.ink).textSelection(.enabled)
+					}
+				case .failure(let problem):
+					HStack(spacing: 8) {
+						Text(problem.isEmpty ? "·" : "!").foregroundStyle(problem.isEmpty ? Palette.ink3 : Palette.bad)
+						Text(problem.text).foregroundStyle(problem.isEmpty ? Palette.ink3 : Palette.bad)
+					}
+				}
+				Text("wss:// and the /amyrlin path are filled in when you leave them out. Tailscale says who you are, so there's nothing to sign in to.")
+					.foregroundStyle(Palette.ink3)
+					.fixedSize(horizontal: false, vertical: true)
+			}
+			.font(Typography.uiSmall)
+			.padding(16)
+			.frame(maxWidth: .infinity, alignment: .leading)
+			.background(Palette.panel)
+			Rectangle().fill(Palette.rule).frame(height: 1)
+			HStack(spacing: 8) {
+				Text("add machine").font(Typography.label).foregroundStyle(Palette.ink3).textCase(.uppercase)
 				Spacer()
-				Button("Cancel", role: .cancel) { dismiss() }
+				Button("esc cancel") { dismiss() }
+					.buttonStyle(QuietButton())
 					.keyboardShortcut(.cancelAction)
-				Button("Add", action: add)
+				Button("↵ add", action: add)
+					.buttonStyle(QuietButton(fill: url == nil ? nil : Palette.accent, ink: url == nil ? Palette.ink3 : Palette.accentInk))
 					.keyboardShortcut(.defaultAction)
 					.disabled(url == nil)
 			}
+			.padding(.horizontal, 16)
+			.padding(.vertical, 10)
 		}
-		.padding(20)
+		.frame(width: 560 * Typography.scale)
+		.background(Palette.paper)
+		.onAppear { focused = true }
 	}
 
 	private func add() {

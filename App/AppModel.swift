@@ -93,6 +93,13 @@ final class AppModel {
 			selection = ConversationKey(machine: machine, conversation: conversation)
 		}
 		#if DEBUG
+		// `--args -openAddMachine` shows the Add Machine sheet at launch, for screenshots.
+		if ProcessInfo.processInfo.arguments.contains("-openAddMachine") {
+			Task {
+				try? await Task.sleep(for: .seconds(2))
+				isAddingMachine = true
+			}
+		}
 		// `open Amyrlin.app --args -openPicker` shows the project picker at launch, for screenshots.
 		if ProcessInfo.processInfo.arguments.contains("-openPicker"), let first = machines.first {
 			Task {
