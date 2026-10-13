@@ -91,6 +91,15 @@ final class AppModel {
 		{
 			selection = ConversationKey(machine: machine, conversation: conversation)
 		}
+		#if DEBUG
+		// `open Amyrlin.app --args -openPicker` shows the project picker at launch, for screenshots.
+		if ProcessInfo.processInfo.arguments.contains("-openPicker"), let first = machines.first {
+			Task {
+				try? await Task.sleep(for: .seconds(2))
+				newConversationMachine = first.id
+			}
+		}
+		#endif
 	}
 
 	func addMachine(_ url: URL) {

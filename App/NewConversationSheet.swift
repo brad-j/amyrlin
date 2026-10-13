@@ -7,81 +7,196 @@ struct MachineRef: Identifiable {
 	var id: UUID { machine.id }
 }
 
-/// Picks a project. Return or a double-click opens an empty conversation for it in the main pane.
+/// Picks a project: a rail of groups (Recent, then each folder) and the group's projects; typing searches them all.
+/// ↑↓ move, Return or a double-click opens an empty conversation for the project in the main pane.
 struct NewConversationSheet: View {
 	let model: AppModel
 	let machine: AppModel.Machine
 	@Environment(\.dismiss) private var dismiss
 	@State private var query = ""
+	@State private var group: String?
 	@State private var selected: String?
 	@FocusState private var searchFocused: Bool
 
 	private var projects: [ProjectInfo] { machine.store.info?.projects ?? [] }
+	private var sessions: [ConversationSummary] { Array(machine.store.state.conversations.values) }
+	private var groups: [ProjectCatalog.Group] { ProjectCatalog.groups(projects: projects, sessions: sessions) }
+	private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
 
-	private var filtered: [ProjectInfo] {
-		let words = query.lowercased().split(separator: " ")
-		guard !words.isEmpty else { return projects }
-		return projects.filter { project in
-			let haystack = "\(project.path) \(project.workspace)".lowercased()
-			return words.allSatisfy { haystack.contains($0) }
-		}
+	/// What the list shows: the search's groups, or the picked group.
+	private var shown: [ProjectCatalog.Group] {
+		if searching { return ProjectCatalog.search(query, projects: projects, sessions: sessions) }
+		let id = group ?? groups.first?.id
+		return groups.filter { $0.id == id }
 	}
 
+	private var flat: [ProjectCatalog.Entry] { shown.flatMap(\.entries) }
+
 	var body: some View {
-		VStack(alignment: .leading, spacing: 12) {
-			Text("New conversation on \(machine.store.state.host?.name ?? machine.url.host() ?? "this machine")")
-				.font(.headline)
-			TextField("Find a project", text: $query)
-				.textFieldStyle(.roundedBorder)
-				.focused($searchFocused)
-				.onSubmit { open(selected ?? filtered.first?.dir) }
-				.onChange(of: query) { _, _ in selected = filtered.first?.dir }
-				.onKeyPress(.downArrow) { move(1) }
-				.onKeyPress(.upArrow) { move(-1) }
-			List(filtered, selection: $selected) { item in
-				HStack {
-					Circle().fill(Palette.project(item.name)).frame(width: 7, height: 7)
-					Text(item.name).font(Typography.reading)
-					Spacer()
-					Text(item.path).font(Typography.label).foregroundStyle(Palette.tertiaryText)
-				}
-				.tag(item.dir)
-				.contentShape(Rectangle())
-				.simultaneousGesture(TapGesture(count: 2).onEnded { open(item.dir) })
+		VStack(spacing: 0) {
+			HStack(spacing: 10) {
+				Image(systemName: "magnifyingglass").foregroundStyle(Palette.ink3)
+				TextField("Find a project on \(machine.store.state.host?.name ?? "this machine")", text: $query)
+					.textFieldStyle(.plain)
+					.font(Typography.reading)
+					.focused($searchFocused)
+					.onSubmit { open(selected.flatMap { id in flat.first { $0.id == id }?.project } ?? flat.first?.project) }
+					.onKeyPress(.downArrow) { move(1) }
+					.onKeyPress(.upArrow) { move(-1) }
+					.onChange(of: query) { _, _ in selected = flat.first?.id }
 			}
-			.frame(height: 320)
-			HStack {
-				Text("Return opens it · the conversation starts when you send")
+			.padding(.horizontal, 16)
+			.padding(.vertical, 13)
+			Rectangle().fill(Palette.rule).frame(height: 1)
+			HStack(spacing: 0) {
+				rail
+				Rectangle().fill(Palette.rule).frame(width: 1)
+				list
+			}
+			Rectangle().fill(Palette.rule).frame(height: 1)
+			HStack(spacing: 8) {
+				Text("↑↓ to move · Return opens · the session starts when you send")
 					.font(Typography.label)
-					.foregroundStyle(Palette.tertiaryText)
+					.foregroundStyle(Palette.ink3)
 				Spacer()
-				Button("Cancel", role: .cancel) { dismiss() }
+				Button("Cancel") { dismiss() }
+					.buttonStyle(QuietButton())
 					.keyboardShortcut(.cancelAction)
-				Button("Open") { open(selected) }
+				Button("Open") { open(selected.flatMap { id in flat.first { $0.id == id }?.project }) }
+					.buttonStyle(QuietButton(fill: Palette.accent, ink: Palette.accentInk))
 					.keyboardShortcut(.defaultAction)
 					.disabled(selected == nil)
 			}
+			.padding(.horizontal, 16)
+			.padding(.vertical, 10)
 		}
-		.padding(20)
-		.frame(width: 560)
+		.frame(width: 700 * Typography.scale, height: 460 * Typography.scale)
+		.background(Palette.paper)
 		.onAppear {
 			searchFocused = true
-			selected = filtered.first?.dir
+			selected = flat.first?.id
+		}
+	}
+
+	private var rail: some View {
+		ScrollView {
+			VStack(alignment: .leading, spacing: 2) {
+				ForEach(groups) { item in
+					let current = !searching && (group ?? groups.first?.id) == item.id
+					Button {
+						group = item.id
+						query = ""
+						selected = item.entries.first?.id
+					} label: {
+						HStack {
+							Text(item.title)
+								.font(Typography.readingSmall)
+								.foregroundStyle(current ? Palette.ink : Palette.ink2)
+							Spacer()
+							Text("\(item.entries.count)")
+								.font(Typography.label)
+								.foregroundStyle(Palette.ink3)
+								.monospacedDigit()
+						}
+						.padding(.horizontal, 10)
+						.padding(.vertical, 7)
+						.background(current ? Palette.paper3 : .clear, in: RoundedRectangle(cornerRadius: 6))
+						.contentShape(Rectangle())
+					}
+					.buttonStyle(.plain)
+				}
+			}
+			.padding(8)
+		}
+		.frame(width: 190 * Typography.scale)
+		.background(Palette.panel)
+	}
+
+	private var list: some View {
+		ScrollViewReader { proxy in
+			ScrollView {
+				LazyVStack(alignment: .leading, spacing: 0) {
+					if flat.isEmpty {
+						Text(searching ? "No project matches \u{201C}\(query)\u{201D}" : "No projects")
+							.font(Typography.readingSmall)
+							.foregroundStyle(Palette.ink3)
+							.padding(16)
+					}
+					ForEach(shown) { section in
+						if searching || shown.count > 1 {
+							Text(section.title)
+								.font(Typography.label)
+								.foregroundStyle(Palette.ink3)
+								.textCase(.uppercase)
+								.padding(.horizontal, 12)
+								.padding(.top, 12)
+								.padding(.bottom, 4)
+						}
+						ForEach(section.entries) { entry in
+							ProjectRow(entry: entry, selected: selected == entry.id)
+								.id(entry.id)
+								.onTapGesture(count: 2) { open(entry.project) }
+								.onTapGesture { selected = entry.id }
+						}
+					}
+				}
+				.padding(8)
+			}
+			.onChange(of: selected) { _, id in
+				if let id { proxy.scrollTo(id) }
+			}
 		}
 	}
 
 	private func move(_ step: Int) -> KeyPress.Result {
-		let dirs = filtered.map(\.dir)
-		guard !dirs.isEmpty else { return .ignored }
-		let index = selected.flatMap { dirs.firstIndex(of: $0) } ?? (step > 0 ? -1 : dirs.count)
-		selected = dirs[min(max(index + step, 0), dirs.count - 1)]
+		let ids = flat.map(\.id)
+		guard !ids.isEmpty else { return .ignored }
+		let index = selected.flatMap { ids.firstIndex(of: $0) } ?? (step > 0 ? -1 : ids.count)
+		selected = ids[min(max(index + step, 0), ids.count - 1)]
 		return .handled
 	}
 
-	private func open(_ dir: String?) {
-		guard let dir, let project = projects.first(where: { $0.dir == dir }) else { return }
+	private func open(_ project: ProjectInfo?) {
+		guard let project else { return }
 		model.openDraft(on: machine.id, project: project)
 		dismiss()
+	}
+}
+
+private struct ProjectRow: View {
+	let entry: ProjectCatalog.Entry
+	let selected: Bool
+
+	var body: some View {
+		HStack(spacing: 10) {
+			Circle().fill(Palette.project(entry.project.name)).frame(width: 8, height: 8)
+			Text(entry.project.name)
+				.font(Typography.reading)
+				.foregroundStyle(Palette.ink)
+				.lineLimit(1)
+			Text(entry.project.path)
+				.font(Typography.codeSmall)
+				.foregroundStyle(Palette.ink3)
+				.lineLimit(1)
+				.truncationMode(.head)
+			Spacer(minLength: 8)
+			if entry.sessions > 0 {
+				Text(sessionsText)
+					.font(Typography.label)
+					.foregroundStyle(Palette.ink3)
+					.monospacedDigit()
+			}
+		}
+		.padding(.horizontal, 12)
+		.padding(.vertical, 8)
+		.background(selected ? Palette.projectWash(entry.project.name) : .clear, in: RoundedRectangle(cornerRadius: 6))
+		.contentShape(Rectangle())
+	}
+
+	private var sessionsText: String {
+		let count = entry.sessions == 1 ? "1 session" : "\(entry.sessions) sessions"
+		guard let last = entry.lastActive else { return count }
+		return "\(count) · \(Date(timeIntervalSince1970: TimeInterval(last) / 1000).shortAge)"
 	}
 }
 
