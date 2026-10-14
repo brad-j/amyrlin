@@ -52,6 +52,7 @@ struct MainView: View {
 				}
 				detail
 					.frame(maxWidth: .infinity, maxHeight: .infinity)
+					.environment(\.sidebarShown, $model.showSidebar)
 				if model.showInspector, let selected = model.selected {
 					InspectorView(store: selected.conversation, host: selected.machine.store) { model.showInspector = false }
 						.id(model.selection)
@@ -64,19 +65,10 @@ struct MainView: View {
 		}
 		.background(Palette.paper)
 		.animation(.easeInOut(duration: 0.2), value: model.showInspector)
+		.animation(.easeInOut(duration: 0.2), value: model.showSidebar)
 		.toolbar(removing: .title)
 		// Each column's colour runs up under the title bar, as before the header bands; the bar draws nothing of its own.
 		.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-		.toolbar {
-			ToolbarItem(placement: .navigation) {
-				Button {
-					withAnimation(.easeInOut(duration: 0.2)) { model.showSidebar.toggle() }
-				} label: {
-					Label("Sidebar", systemImage: "sidebar.left")
-				}
-				.help("Show or hide the sidebar (⌃⌘S)")
-			}
-		}
 		.sheet(isPresented: $model.isAddingMachine) {
 			AddMachineSheet(model: model)
 		}
@@ -110,6 +102,7 @@ struct MainView: View {
 				HeaderBar()
 				SetupGuide { model.isAddingMachine = true }
 			}
+			.overlay(alignment: .bottomLeading) { SidebarToggle().padding(10) }
 		} else {
 			VStack(spacing: 0) {
 				HeaderBar()
@@ -119,6 +112,7 @@ struct MainView: View {
 					.frame(maxWidth: .infinity, maxHeight: .infinity)
 			}
 			.background(Palette.paper)
+			.overlay(alignment: .bottomLeading) { SidebarToggle().padding(10) }
 		}
 	}
 }

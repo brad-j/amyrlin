@@ -144,6 +144,24 @@ enum Palette {
 	static var statusBar: CGFloat { (28 * TextSize.shared.interfaceZoom).rounded() }
 }
 
+extension EnvironmentValues {
+	/// Whether the sidebar shows; set on the middle column, whose foot holds the button that toggles it.
+	@Entry var sidebarShown: Binding<Bool>?
+}
+
+/// The sidebar's toggle, at the foot of the middle column left of the composer, where it stays whether the sidebar
+/// shows or not.
+struct SidebarToggle: View {
+	@Environment(\.sidebarShown) private var shown
+
+	var body: some View {
+		if let shown {
+			IconButton("sidebar.left") { shown.wrappedValue.toggle() }
+				.help(shown.wrappedValue ? "Hide the sidebar (⌃⌘S)" : "Show the sidebar (⌃⌘S)")
+		}
+	}
+}
+
 /// A column's header band (`Metrics.bar` tall, a rule under it). The sidebar, the conversation and the inspector each
 /// start with one, so the window reads as one grid.
 struct HeaderBar<Content: View>: View {

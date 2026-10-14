@@ -131,9 +131,10 @@ final class AppModel {
 				newConversationMachine = first.id
 			}
 		}
-		// `--args -showInspector` opens the inspector, which starts closed, and `-openDraft` a no-project draft on the
-		// first machine, for screenshots.
+		// `--args -showInspector` opens the inspector, which starts closed, `-hideSidebar` closes the sidebar, and
+		// `-openDraft` opens a no-project draft on the first machine, for screenshots.
 		if ProcessInfo.processInfo.arguments.contains("-showInspector") { showInspector = true }
+		if ProcessInfo.processInfo.arguments.contains("-hideSidebar") { showSidebar = false }
 		if ProcessInfo.processInfo.arguments.contains("-openDraft"), let first = machines.first {
 			openDraft(on: first.id, project: nil)
 		}

@@ -24,11 +24,16 @@ struct ConversationView: View {
 			VStack(spacing: 8) {
 				ForEach(store.state.approvals) { approval in
 					ApprovalCard(approval: approval, store: store)
+						.frame(maxWidth: Metrics.measure + 48)
+						.padding(.horizontal, 40)
 				}
+				// The sidebar's toggle sits in the margin at the column's edge, level with the composer.
 				ComposerView(store: store, host: host)
+					.frame(maxWidth: Metrics.measure + 48)
+					.padding(.horizontal, 40)
+					.frame(maxWidth: .infinity)
+					.overlay(alignment: .leading) { SidebarToggle().padding(.leading, 10) }
 			}
-			.frame(maxWidth: Metrics.measure + 48)
-			.padding(.horizontal, 24)
 			.padding(.top, 8)
 			.padding(.bottom, 12)
 			.frame(maxWidth: .infinity)
@@ -48,7 +53,7 @@ struct ConversationView: View {
 	}
 }
 
-/// The session as a console path: `~/westwood/Projects/Software/` dim, the project in its colour, then the title.
+/// The session as a console path: `../` dim, the project in its colour, then the title.
 private struct ConversationHeader: View {
 	let title: String
 	let project: String?
@@ -76,25 +81,33 @@ private struct ConversationHeader: View {
 	}
 }
 
-/// Where a session runs, as a console path: `~/1-code/` dim, then the project in its colour, then a gap before what
-/// follows. A session in no project says "scratch": its directory is a scratch one, which says less.
+/// Where a session runs, as a console path: `../` dim, then the project in its colour, then a gap before what follows.
+/// Under the pointer, the dots open to the whole path. A session in no project says "scratch": its directory is a
+/// scratch one, which says less.
 struct PathLabel: View {
 	let project: String?
 	let dir: String?
 	let colors: [String: Int]
+	@State private var hovering = false
 
 	var body: some View {
 		HStack(spacing: 0) {
 			if project == nil {
 				Text("scratch").foregroundStyle(Palette.ink3)
-			} else if let dir {
-				let short = ConversationView.shortPath(dir)
-				let parent = project.map { short.hasSuffix($0) ? String(short.dropLast($0.count)) : short + "/" } ?? short
-				Text(parent).foregroundStyle(Palette.ink3)
-				if let project { Text(project).foregroundStyle(Palette.project(project, in: colors)) }
+			} else if let project, let dir {
+				Text(hovering ? parent(dir, project) : "../").foregroundStyle(Palette.ink3)
+				Text(project).foregroundStyle(Palette.project(project, in: colors))
 			}
 			Text("  ")
 		}
+		.onHover { hovering = $0 }
+	}
+
+	/// The directory up to the project, `~/westwood/Projects/Software/`; all of it, then a slash, if it doesn't end in
+	/// the project's name.
+	private func parent(_ dir: String, _ project: String) -> String {
+		let short = ConversationView.shortPath(dir)
+		return short.hasSuffix(project) ? String(short.dropLast(project.count)) : short + "/"
 	}
 }
 

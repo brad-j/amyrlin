@@ -313,9 +313,10 @@ struct DraftView: View {
 			.acceptsImages(attachments, focused: focused)
 			// The conversation's composer column, so nothing moves when the session opens.
 			.frame(maxWidth: Metrics.measure + 48)
-			.padding(.horizontal, 24)
-			.padding(.bottom, 12)
+			.padding(.horizontal, 40)
 			.frame(maxWidth: .infinity)
+			.overlay(alignment: .leading) { SidebarToggle().padding(.leading, 10) }
+			.padding(.bottom, 12)
 		}
 		.background(Palette.paper)
 		.onAppear { focused = true }
