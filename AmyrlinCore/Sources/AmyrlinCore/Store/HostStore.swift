@@ -69,6 +69,11 @@ public final class HostStore {
 		return result.conversation
 	}
 
+	/// Reconnects now rather than when the wait after a failed try is over.
+	public func reconnect() async {
+		await connection.retryNow()
+	}
+
 	public func rename(_ id: ConversationID, to title: String) async throws {
 		let result = try await connection.send(Commands.RenameConversation(conversationId: id, title: title))
 		state.upsert(result.conversation)

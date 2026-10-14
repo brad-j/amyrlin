@@ -78,6 +78,19 @@ struct MainView: View {
 		.sheet(item: Binding(get: { model.newConversationMachine.flatMap(model.machine) .map(MachineRef.init) }, set: { model.newConversationMachine = $0?.id })) { ref in
 			NewConversationSheet(model: model, machine: ref.machine)
 		}
+		.alert(
+			"Remove \(model.removingMachine.flatMap(model.machine).map(model.name) ?? "this machine") from this Mac?",
+			isPresented: Binding(get: { model.removingMachine != nil }, set: { if !$0 { model.removingMachine = nil } })
+		) {
+			Button("Cancel", role: .cancel) { model.removingMachine = nil }
+			Button("Remove", role: .destructive) {
+				if let id = model.removingMachine { model.removeMachine(id) }
+				model.removingMachine = nil
+			}
+		} message: {
+			let name = model.removingMachine.flatMap(model.machine).map(model.name) ?? "the machine"
+			Text("Its sessions stay on \(name). Add it again any time with its address.")
+		}
 		.alert("Something went wrong", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
 			Button("OK") { model.error = nil }
 		} message: {

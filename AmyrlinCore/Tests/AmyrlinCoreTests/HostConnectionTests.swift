@@ -83,6 +83,34 @@ struct HostConnectionTests {
 		await #expect(throws: ConnectionError.unsupportedProtocol(serverSpeaks: [2])) { try await connection.send(Commands.HostInfo()) }
 	}
 
+	/// Reconnect in the machine's menu: the wait after a failed try is cut short.
+	@Test func retryNowSkipsTheWait() async throws {
+		let slow = HostConnection(
+			url: URL(string: "wss://egwene.example.ts.net/amyrlin")!,
+			transport: transport,
+			client: ClientInfo(name: "amyrlin-tests", version: "0"),
+			policy: { var policy = ReconnectPolicy(); policy.keepalive = nil; return policy }(),
+			sleep: { _ in try await Task.sleep(for: .seconds(3600)) },
+			random: { 0.5 }
+		)
+		await slow.start()
+		let first = try await transport.nextConnection()
+		try await first.acceptHello()
+		first.drop()
+		for _ in 0..<1000 {
+			if case .waiting = await slow.status { break }
+			await Task.yield()
+		}
+		guard case .waiting = await slow.status else {
+			Issue.record("expected to be waiting to reconnect")
+			return
+		}
+		await slow.retryNow()
+		let second = try await transport.nextConnection()
+		try await second.acceptHello()
+		await slow.stop()
+	}
+
 	@Test func subscriptionResumesWithAFreshSnapshotAfterReconnect() async throws {
 		let server = try await connected()
 		let subscription = await connection.watchConversation(1)

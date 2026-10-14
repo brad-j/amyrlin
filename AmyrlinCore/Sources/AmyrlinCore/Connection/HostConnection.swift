@@ -108,6 +108,8 @@ public actor HostConnection {
 	private let log = Logger(subsystem: "io.bradjohnson.amyrlin", category: "connection")
 
 	private var runTask: Task<Void, Never>?
+	/// The wait before the next reconnect; cancelling it reconnects at once.
+	private var backoff: Task<Void, any Error>?
 	private var connection: (any WebSocketConnection)?
 	private var connectionID = 0
 	private var lastFrameAt = ContinuousClock.now
@@ -147,6 +149,7 @@ public actor HostConnection {
 	public func stop() async {
 		runTask?.cancel()
 		runTask = nil
+		backoff?.cancel()
 		await connection?.close()
 		connection = nil
 		for request in pending.values { request.continuation.resume(throwing: ConnectionError.stopped) }
@@ -182,8 +185,17 @@ public actor HostConnection {
 			let delay = policy.delay(attempt: attempt, random: random())
 			status = .waiting(retryIn: delay, lastError: reason)
 			log.info("reconnecting to \(self.url, privacy: .public) in \(delay, privacy: .public): \(reason, privacy: .public)")
-			do { try await sleep(delay) } catch { return }
+			let wait = Task { [sleep] in try await sleep(delay) }
+			backoff = wait
+			_ = try? await wait.value
+			backoff = nil
+			if Task.isCancelled { return }
 		}
+	}
+
+	/// Reconnects now instead of at the end of the wait, while the connection is waiting to retry.
+	public func retryNow() {
+		backoff?.cancel()
 	}
 
 	/// Connects, handshakes, restores subscriptions and pending requests, then reads frames until the socket fails.

@@ -85,6 +85,8 @@ final class AppModel {
 	var isAddingMachine = false
 	/// The conversation whose title is being changed.
 	var renaming: ConversationKey?
+	/// The machine whose removal is being confirmed.
+	var removingMachine: UUID?
 	/// The machine a new conversation is being started on, while its sheet is open.
 	var newConversationMachine: UUID?
 	/// A failed app-level action, shown once in the window.
@@ -147,6 +149,13 @@ final class AppModel {
 				newConversationMachine = first.id
 			}
 		}
+		// `--args -confirmRemoveMachine` asks to remove the first machine at launch, for screenshots.
+		if ProcessInfo.processInfo.arguments.contains("-confirmRemoveMachine"), let first = machines.first {
+			Task {
+				try? await Task.sleep(for: .seconds(2))
+				removingMachine = first.id
+			}
+		}
 		// `--args -showInspector` opens the inspector, which starts closed, `-hideSidebar` closes the sidebar, and
 		// `-openDraft` opens a no-project draft on the first machine, for screenshots.
 		if ProcessInfo.processInfo.arguments.contains("-showInspector") { showInspector = true }
@@ -175,6 +184,11 @@ final class AppModel {
 
 	func machine(_ id: UUID) -> Machine? {
 		machines.first { $0.id == id }
+	}
+
+	/// The machine's name: the host's, or its address until it has connected.
+	func name(of machine: Machine) -> String {
+		machine.store.state.host?.name ?? machine.store.info?.host.name ?? machine.url.host() ?? machine.url.absoluteString
 	}
 
 	/// The selected conversation's machine and store.

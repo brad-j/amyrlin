@@ -1,4 +1,5 @@
 import AmyrlinCore
+import AppKit
 import SwiftUI
 
 /// Machines, and on each its sessions grouped by project, in the inspector's style: small-caps labels, hairlines,
@@ -57,6 +58,7 @@ struct SidebarView: View {
 private struct MachineSection: View {
 	let machine: AppModel.Machine
 	let model: AppModel
+	@State private var hovering = false
 
 	private var store: HostStore { machine.store }
 
@@ -89,7 +91,7 @@ private struct MachineSection: View {
 							.background(Circle().fill(Palette.panel))
 							.offset(x: 4, y: 3)
 					}
-				Text(store.state.host?.name ?? store.info?.host.name ?? machine.url.host() ?? machine.url.absoluteString)
+				Text(model.name(of: machine))
 					.font(Typography.machineHeader)
 					.foregroundStyle(Palette.ink)
 					.lineLimit(1)
@@ -102,6 +104,20 @@ private struct MachineSection: View {
 						.lineLimit(1)
 						.help("What OpenRouter charged this calendar month on this machine. Claude Code and ChatGPT plans aren't counted.")
 				}
+				// Shown while the pointer is over the machine, so the header stays quiet otherwise.
+				Menu { machineMenu } label: {
+					Image(systemName: "ellipsis")
+						.font(.system(size: 13 * Typography.scale, weight: .light))
+						.foregroundStyle(Palette.ink3)
+						.frame(minWidth: 18 * Typography.scale, minHeight: 18 * Typography.scale)
+						.contentShape(Rectangle())
+				}
+				.menuStyle(.button)
+				.buttonStyle(.plain)
+				.menuIndicator(.hidden)
+				.fixedSize()
+				.opacity(hovering ? 1 : 0)
+				.help("Machine")
 				IconButton("square.and.pencil", color: store.isConnected ? Palette.accent : Palette.ink3) {
 					model.newConversationMachine = machine.id
 				}
@@ -111,10 +127,10 @@ private struct MachineSection: View {
 			// No rule: the icon and full ink mark a machine, and space separates one from the next.
 			.padding(.top, 18)
 			.padding(.bottom, 8)
+			.contentShape(Rectangle())
+			.onHover { inside in withAnimation(.state) { hovering = inside } }
 			.help(statusHelp)
-			.contextMenu {
-				Button("Remove Machine", role: .destructive) { model.removeMachine(machine.id) }
-			}
+			.contextMenu { machineMenu }
 			if let trouble {
 				Text(trouble)
 					.font(Typography.uiSmall)
@@ -147,6 +163,8 @@ private struct MachineSection: View {
 				if !archived.isEmpty {
 					let collapsed = model.archiveCollapsedBinding(machine: machine.id)
 					VStack(alignment: .leading, spacing: 0) {
+						// A hairline sets the archive apart from the projects above it.
+						Rectangle().fill(Palette.rule).frame(height: 1).padding(.bottom, 8)
 						ProjectRow(name: "archived", color: Palette.ink3, collapsed: collapsed, note: collapsed.wrappedValue ? foldedNote(archived) : nil)
 						if !collapsed.wrappedValue { sessionRows(archived) }
 					}
@@ -178,6 +196,19 @@ private struct MachineSection: View {
 				}
 			}
 		}
+	}
+
+	/// The machine's commands, in its ⋯ menu and its right-click menu.
+	@ViewBuilder private var machineMenu: some View {
+		if case .waiting = store.status {
+			Button("Reconnect Now") { Task { await store.reconnect() } }
+		}
+		Button("Copy Address") {
+			NSPasteboard.general.clearContents()
+			NSPasteboard.general.setString(machine.url.absoluteString, forType: .string)
+		}
+		Divider()
+		Button("Remove Machine…", role: .destructive) { model.removingMachine = machine.id }
 	}
 
 	/// Picks the project's colour on this machine, for names whose hashed colours clash; Automatic goes back to the name's.
