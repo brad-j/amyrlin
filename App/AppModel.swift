@@ -216,7 +216,8 @@ final class AppModel {
 	func startConversation(on machine: Machine, project: String?, text: String, images: [ImageUpload] = []) async -> Bool {
 		do {
 			let summary = try await machine.store.createConversation(project: project, text: text, images: images)
-			selection = ConversationKey(machine: machine.id, conversation: summary.id)
+			// A crossfade: the new conversation is blank for a moment while its first snapshot comes, which cut in as a flash.
+			withAnimation(.row) { selection = ConversationKey(machine: machine.id, conversation: summary.id) }
 			return true
 		} catch {
 			self.error = (error as? ProtocolError)?.message ?? String(describing: error)

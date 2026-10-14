@@ -107,9 +107,11 @@ struct MainView: View {
 				rename: { model.renaming = model.selection }
 			)
 			.id(model.selection)
+			.transition(.opacity)
 		} else if let draft = model.draft, let machine = model.machine(draft.machine) {
 			DraftView(model: model, machine: machine, project: draft.project)
 				.id(draft.project?.dir ?? "no project")
+				.transition(.opacity)
 		} else if model.machines.isEmpty {
 			VStack(spacing: 0) {
 				HeaderBar()
