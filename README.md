@@ -7,7 +7,7 @@ A native macOS client for coding agents running on your own machines. Each machi
 1. On each machine whose projects you want, install aludra and run it as a service (its README has the details):
 
    ```sh
-   git clone git@github.com:brad-j/aludra.git && cd aludra
+   git clone https://github.com/brad-j/aludra.git && cd aludra
    sh scripts/install.sh
    aludra init
    aludra service install
@@ -36,6 +36,7 @@ or run `xattr -dr com.apple.quarantine /Applications/Amyrlin.app`. Copies made w
 | `fixtures/wire-v1/` | The same streams translated to protocol v1 by aludra's `src/amyrlin/translate.ts` (its `scripts/amyrlin-export-wire.ts`). |
 | `fixtures/server-v1/` | A session recorded from aludra's `/amyrlin` endpoint with a faux model (aludra's `scripts/amyrlin-capture.ts`), checked by a Swift test. |
 | `scratch/recorder/` | The fixture recorder. |
+| `scratch/upstream-v1.1.0/` | pi-durable 1.1.0's spec and examples, which the protocol and fixtures cite. MIT, from [earendil-works/pi](https://github.com/earendil-works/pi). |
 
 ## Commands
 
@@ -58,3 +59,7 @@ python3 -I ../tools/check_citations.py ../../docs/protocol.md ../../fixtures/dur
 # then, from an aludra checkout beside this repo, regenerate fixtures/wire-v1
 node --no-warnings scripts/amyrlin-export-wire.ts ../amyrlin/fixtures
 ```
+
+## License
+
+MIT; see `LICENSE`. IBM Plex (`App/Fonts`) is under the SIL Open Font License 1.1, and `scratch/upstream-v1.1.0` is under its own MIT license.
