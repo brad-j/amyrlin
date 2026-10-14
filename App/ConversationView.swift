@@ -1,4 +1,5 @@
 import AmyrlinCore
+import AppKit
 import SwiftUI
 
 /// One conversation: transcript, an approval docked above the composer, and the composer.
@@ -192,8 +193,8 @@ struct QuietButton: ButtonStyle {
 	}
 }
 
-/// The input line: `❯` then the message, in mono. Return sends (a follow-up while busy), ⌘Return or the steer toggle
-/// steers, Esc stops. The model, thinking and context live in the status line below.
+/// The input line: `❯` then the message, in mono. Return sends (a follow-up while busy), ⇧Return adds a line,
+/// ⌘Return or the steer toggle steers, Esc stops. The model, thinking and context live in the status line below.
 struct ComposerView: View {
 	let store: ConversationStore
 	let host: HostStore
@@ -224,10 +225,13 @@ struct ComposerView: View {
 				.textFieldStyle(.plain)
 				.font(Typography.ui)
 				.foregroundStyle(Palette.ink)
-				.lineLimit(1...12)
+				.lineLimit(3...12)
 				.focused($focused)
 				.onKeyPress(.return, phases: .down) { press in
-					if press.modifiers.contains(.option) || press.modifiers.contains(.shift) { return .ignored }
+					if press.modifiers.contains(.option) || press.modifiers.contains(.shift) {
+						insertLineBreak()
+						return .handled
+					}
 					send(steer: press.modifiers.contains(.command) || steer)
 					return .handled
 				}
@@ -314,6 +318,11 @@ extension View {
 			.overlay(Rectangle().stroke(focused ? Palette.rule2 : Palette.rule))
 			.overlay(alignment: .leading) { Rectangle().fill(focused ? Palette.accent : .clear).frame(width: 2) }
 	}
+}
+
+/// ⇧Return and ⌥Return put a line break at the cursor. Left to the field editor, ⇧Return selects instead.
+@MainActor func insertLineBreak() {
+	NSApp.sendAction(#selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)), to: nil, from: nil)
 }
 
 /// The composer's ↵: accent when there's something to send.

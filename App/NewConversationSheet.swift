@@ -275,7 +275,7 @@ struct DraftView: View {
 				Text(project.map { ConversationView.shortPath($0.dir) } ?? "a scratch directory of its own, on \(machine.store.state.host?.name ?? "the host")")
 					.font(Typography.ui)
 					.foregroundStyle(Palette.ink3)
-				Text(sending ? "starting…" : "↵ starts the session · ⌥↵ new line")
+				Text(sending ? "starting…" : "↵ starts the session · ⇧↵ new line")
 					.font(Typography.uiSmall)
 					.foregroundStyle(Palette.ink3)
 					.padding(.top, 10)
@@ -291,11 +291,14 @@ struct DraftView: View {
 						.textFieldStyle(.plain)
 						.font(Typography.ui)
 						.foregroundStyle(Palette.ink)
-						.lineLimit(1...12)
+						.lineLimit(3...12)
 						.focused($focused)
 						.disabled(sending)
 						.onKeyPress(.return, phases: .down) { press in
-							if press.modifiers.contains(.option) || press.modifiers.contains(.shift) { return .ignored }
+							if press.modifiers.contains(.option) || press.modifiers.contains(.shift) {
+						insertLineBreak()
+						return .handled
+					}
 							send()
 							return .handled
 						}
