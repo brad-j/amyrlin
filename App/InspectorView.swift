@@ -26,12 +26,15 @@ struct InspectorView: View {
 							Menu {
 								ModelChoices(store: store, host: host)
 							} label: {
-								Value(currentInfo?.name ?? currentModel?.modelId ?? "—", chevron: true)
+								Value(currentModel.map { ModelNaming.name($0, in: models) } ?? "—", chevron: true)
 							}
 							.menuStyle(.button)
 							.buttonStyle(.plain)
 							.fixedSize()
 							.disabled(models.isEmpty)
+						}
+						if let currentModel, ModelNaming.needsProvider(currentModel, in: models) {
+							Row("Provider") { Value(ModelNaming.provider(currentModel.provider)) }
 						}
 						Row("Thinking") {
 							Menu {
@@ -82,7 +85,11 @@ struct InspectorView: View {
 						Row("Tokens") { Value(spend.total.formatted()) }
 						Row("Output") { Value(spend.output.formatted()) }
 						Row("Cached") { Value(spend.cacheRead.formatted()) }
-						if spend.cost > 0 { Row("Cost") { Value(spend.costText) } }
+						// What the host says was charged, never priced from the tokens: plan-paid answers cost nothing more.
+						if let cost = host.state.conversations[store.id]?.cost {
+							Row("Cost") { Value(Dollars.text(cost)) }
+								.help("What OpenRouter billed for this session. Answers on a Claude Code or ChatGPT plan aren't counted.")
+						}
 					}
 					PanelSection("Context actions") {
 						HStack(spacing: 8) {
@@ -112,15 +119,29 @@ struct InspectorView: View {
 	}
 }
 
-/// The models a session's host offers, as menu items; picking one configures the session. The inspector and the status
-/// line both use it.
+/// The models a session's host offers, as menu items, under their providers when there's more than one; picking one
+/// configures the session. The inspector and the status line both use it.
 struct ModelChoices: View {
 	let store: ConversationStore
 	let host: HostStore
 
 	var body: some View {
-		ForEach(host.info?.models ?? []) { model in
-			Button(model.name ?? model.modelId) {
+		let groups = ModelNaming.byProvider(host.info?.models ?? [])
+		let settings = store.state.settings
+		let current = settings?.stored.model ?? settings?.effective.model
+		ForEach(groups, id: \.provider) { group in
+			if groups.count > 1 {
+				Section(ModelNaming.providerHeading(group.provider)) { items(group.models, current: current) }
+			} else {
+				items(group.models, current: current)
+			}
+		}
+	}
+
+	private func items(_ models: [ModelInfo], current: ModelRef?) -> some View {
+		ForEach(models) { model in
+			let name = model.name ?? model.modelId
+			Button(model.ref == current ? "✓ \(name)" : name) {
 				Task { await store.configure(SettingsChange(model: .set(model.ref))) }
 			}
 		}

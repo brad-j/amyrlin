@@ -68,6 +68,96 @@ struct StoreTests {
 		await host.stop()
 	}
 
+	/// Archiving moves a session between the lists, from the command's result and from `host.watch`; titles follow
+	/// `conversation.updated`, as when the host's model titles a new session.
+	@Test func archivingAndRetitlingFollowTheHost() async throws {
+		host.start()
+		let server = try await transport.nextConnection()
+		try await server.acceptHello()
+		var watch: FakeServerSide.Request?
+		for _ in 0..<2 {
+			let request = try await server.nextRequest()
+			if request.method == "host.watch" { watch = request }
+		}
+		let hostWatch = try #require(watch)
+		server.respond(hostWatch, result: .object(["subscription": "h1"]))
+		server.event("h1", seq: 0, [.object([
+			"type": "host.snapshot", "host": .object(["hostId": "h", "name": "egwene"]), "spend": .object([:]),
+			"conversations": .array([
+				.object(["id": .number(1), "title": "Count to five.", "status": "busy", "updatedAt": .number(100)]),
+				.object(["id": .number(2), "title": "Old", "status": "idle", "archived": true, "updatedAt": .number(50)]),
+			]),
+		])])
+		#expect(await eventually { host.state.active.map(\.id) == [1] && host.state.archived.map(\.id) == [2] })
+
+		server.event("h1", seq: 1, [.object([
+			"type": "conversation.updated",
+			"conversation": .object(["id": .number(1), "title": "Counting to five", "status": "busy", "updatedAt": .number(100)]),
+		])])
+		#expect(await eventually { host.state.conversations[1]?.title == "Counting to five" })
+
+		let archiving = Task { try await host.setArchived(1, true) }
+		let archive = try await server.nextRequest("conversations.archive")
+		#expect(archive.params["conversationId"] == .number(1))
+		#expect(archive.params["archived"] == true)
+		server.respond(archive, result: .object([
+			"conversation": .object(["id": .number(1), "title": "Counting to five", "status": "busy", "archived": true, "updatedAt": .number(100)]),
+		]))
+		try await archiving.value
+		#expect(host.state.active.isEmpty)
+		#expect(host.state.archived.map(\.id) == [1, 2])
+		#expect(host.state.conversations[1]?.status == .busy, "archiving doesn't stop a run")
+
+		server.event("h1", seq: 2, [.object([
+			"type": "conversation.updated",
+			"conversation": .object(["id": .number(2), "title": "Old", "status": "idle", "archived": false, "updatedAt": .number(50)]),
+		])])
+		#expect(await eventually { host.state.active.map(\.id) == [2] })
+		await host.stop()
+	}
+
+	/// The month's total comes with the snapshot; when a session is charged again, `host.info` is read for the new one.
+	@Test func monthCostFollowsChargedSessions() async throws {
+		host.monthCostDelay = .zero
+		host.start()
+		let server = try await transport.nextConnection()
+		try await server.acceptHello()
+		var watch: FakeServerSide.Request?
+		for _ in 0..<2 {
+			let request = try await server.nextRequest()
+			switch request.method {
+			case "host.watch": watch = request
+			case "host.info":
+				server.respond(request, result: .object([
+					"host": .object(["hostId": "h", "name": "egwene"]), "models": .array([]), "tools": .array([]), "monthCost": .number(12.3),
+				]))
+			default: Issue.record("unexpected \(request.method)")
+			}
+		}
+		let hostWatch = try #require(watch)
+		server.respond(hostWatch, result: .object(["subscription": "h1"]))
+		server.event("h1", seq: 0, [.object([
+			"type": "host.snapshot", "host": .object(["hostId": "h", "name": "egwene"]), "spend": .object([:]), "monthCost": .number(12.3),
+			"conversations": .array([
+				.object(["id": .number(1), "title": "Routed", "status": "busy", "cost": .number(0.4), "updatedAt": .number(100)]),
+				.object(["id": .number(2), "title": "Planned", "status": "idle", "spend": .object(["cost": .number(9)]), "updatedAt": .number(50)]),
+			]),
+		])])
+		#expect(await eventually { host.state.monthCost == 12.3 })
+		#expect(host.state.conversations[2]?.cost == nil, "a plan-paid session has no cost")
+
+		server.event("h1", seq: 1, [.object([
+			"type": "conversation.updated",
+			"conversation": .object(["id": .number(1), "title": "Routed", "status": "idle", "cost": .number(0.42), "updatedAt": .number(110)]),
+		])])
+		let info = try await server.nextRequest("host.info")
+		server.respond(info, result: .object([
+			"host": .object(["hostId": "h", "name": "egwene"]), "models": .array([]), "tools": .array([]), "monthCost": .number(12.32),
+		]))
+		#expect(await eventually { host.state.monthCost == 12.32 })
+		await host.stop()
+	}
+
 	@Test func sentMessageStaysInTheOutboxUntilTheTranscriptShowsIt() async throws {
 		let store = host.conversation(1)
 		await host.connection.start()

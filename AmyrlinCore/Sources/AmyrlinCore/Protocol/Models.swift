@@ -35,6 +35,8 @@ public struct ImageRef: Sendable, Hashable {
 	}
 }
 
+/// A model by its provider and ID. The ID is opaque and may contain slashes, as OpenRouter's do
+/// ("anthropic/claude-opus-5.5"); compare refs whole rather than joining or splitting them.
 public struct ModelRef: Codable, Sendable, Hashable {
 	public var provider: String
 	public var modelId: String
@@ -43,11 +45,11 @@ public struct ModelRef: Codable, Sendable, Hashable {
 		self.provider = provider
 		self.modelId = modelId
 	}
-
-	public var key: String { "\(provider)/\(modelId)" }
 }
 
 /// Token counts and cost in US dollars (protocol section 4.2). Assistant items carry it without the breakdowns.
+/// `cost` prices every answer at API rates, also those on a flat plan (Claude Code, ChatGPT), so it isn't money
+/// charged: show `ConversationSummary.cost` and the host's `monthCost` instead.
 public struct Spend: Decodable, Sendable, Hashable {
 	public var input: Int = 0
 	public var output: Int = 0
@@ -481,6 +483,8 @@ public struct ConversationSummary: Decodable, Sendable, Hashable, Identifiable {
 	public var updatedAt: Int64
 	public var pendingApprovals: Int
 	public var spend: Spend
+	/// Dollars actually charged, by providers that bill each request (OpenRouter); nil when the session used none.
+	public var cost: Double?
 	public var stuck: StuckInfo?
 	/// The project a conversation works in, for servers that have projects.
 	public var workspace: String?
@@ -499,6 +503,7 @@ public struct ConversationSummary: Decodable, Sendable, Hashable, Identifiable {
 		updatedAt = try c.decodeIfPresent(Int64.self, forKey: .updatedAt) ?? createdAt
 		pendingApprovals = try c.decodeIfPresent(Int.self, forKey: .pendingApprovals) ?? 0
 		spend = try c.decodeIfPresent(Spend.self, forKey: .spend) ?? .zero
+		cost = try c.decodeIfPresent(Double.self, forKey: .cost)
 		stuck = try c.decodeIfPresent(StuckInfo.self, forKey: .stuck)
 		workspace = try c.decodeIfPresent(String.self, forKey: .workspace)
 		project = try c.decodeIfPresent(String.self, forKey: .project)
@@ -506,7 +511,7 @@ public struct ConversationSummary: Decodable, Sendable, Hashable, Identifiable {
 	}
 
 	private enum CodingKeys: String, CodingKey {
-		case id, title, status, archived, parent, model, createdAt, updatedAt, pendingApprovals, spend, stuck, workspace, project, dir
+		case id, title, status, archived, parent, model, createdAt, updatedAt, pendingApprovals, spend, cost, stuck, workspace, project, dir
 	}
 }
 
@@ -522,7 +527,7 @@ public struct ModelInfo: Decodable, Sendable, Hashable, Identifiable {
 	public var available: Bool?
 
 	public var ref: ModelRef { ModelRef(provider: provider, modelId: modelId) }
-	public var id: String { ref.key }
+	public var id: ModelRef { ref }
 }
 
 /// A directory new conversations can start in.

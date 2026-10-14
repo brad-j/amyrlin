@@ -28,6 +28,8 @@ public enum Commands {
 			public var projects: [ProjectInfo]?
 			/// Projects whose colour was picked, name to `ProjectColor.hues` index (aludra).
 			public var projectColors: [String: Int]?
+			/// This calendar month's charged dollars, when any session was charged (aludra).
+			public var monthCost: Double?
 		}
 		public let params = Params()
 		public init() {}

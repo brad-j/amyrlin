@@ -306,10 +306,6 @@ struct StatusDot: View {
 }
 
 extension Spend {
-	var costText: String {
-		cost.formatted(.currency(code: "USD").precision(.fractionLength(cost < 1 ? 4 : 2)))
-	}
-
 	var tokensText: String {
 		"\(input.formatted()) in · \(output.formatted()) out"
 	}

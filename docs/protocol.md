@@ -105,6 +105,8 @@ All IDs are JSON integers from pi-durable's numeric ID space. Entries, submissio
 {"provider":"anthropic","modelId":"claude-sonnet-5-5"}
 ```
 
+`modelId` is opaque to the client and may contain slashes: OpenRouter's are like `anthropic/claude-opus-5.5` and `~google/gemini-pro-latest`. Clients compare `provider` and `modelId` together and never split either.
+
 `ThinkingLevel` is one of `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` (pi-ai 1.1.0 `ModelThinkingLevel`).
 
 ### 4.2 Spend
@@ -116,6 +118,8 @@ All IDs are JSON integers from pi-durable's numeric ID space. Entries, submissio
 ```
 
 The server builds `Spend` from durable `UsageState` (`09-manual-compaction:1` snapshot `usage`). Each pi-ai `Usage` becomes `{input, output, cacheRead, cacheWrite, total: totalTokens, cost: cost.total}`. The top-level counters are sums over `byModel` and `byTool`. `cost` is in US dollars. The faux provider always reports cost 0, so every fixture has `cost: 0`.
+
+`byModel` is keyed `provider/modelId`, as pi-durable's `recordUsage` writes it. Provider IDs have no slash, so the provider runs to the first one and the rest is the model ID. pi-ai prices every answer at API rates, including answers on a flat plan (aludra's `claude-bridge` and `openai` on a ChatGPT sign-in), so `cost` is not money charged. Clients never show dollars from `Spend`; they show the charged `cost` and `monthCost` of section 10, item 10.
 
 ### 4.3 Items
 
@@ -553,14 +557,16 @@ Accepted:
 
 Added 2026-10-12, as optional fields within v1:
 
-6. **Projects.** aludra's host serves v1 at `/amyrlin` and ties each conversation to a project: `host.info` lists `projects`, summaries carry `workspace`, `project` and `dir`, `conversations.create` takes `project` and a first message `text`, and `configure` refuses `cwd` and `tools`. Forks and archiving answer `unsupported` there. Approvals carry an extra `summary` ("git push"). A create without a project makes a no-project session (T3 Code's no-project threads): its own scratch directory, no `project` in its summary.
+6. **Projects.** aludra's host serves v1 at `/amyrlin` and ties each conversation to a project: `host.info` lists `projects`, summaries carry `workspace`, `project` and `dir`, `conversations.create` takes `project` and a first message `text`, and `configure` refuses `cwd` and `tools`. Forks answer `unsupported` there. Since 2026-10-13 aludra archives as section 5 describes: `conversations.archive` is idempotent and returns the summary, `conversations.list` leaves archived conversations out unless `includeArchived` is set, and `host.watch` carries them with `archived: true`. Archiving only hides a session; a running one keeps running. Approvals carry an extra `summary` ("git push"). A create without a project makes a no-project session (T3 Code's no-project threads): its own scratch directory, no `project` in its summary.
 
 Added 2026-10-13, also optional within v1 (aludra serves them; a server without them answers `unknown_method`):
 
-7. **Renaming.** `conversations.rename {conversationId, title}` returns `{conversation}` with the new title, and watchers get `conversation.updated`. aludra folds whitespace and takes 1 to 200 characters; anything else is `bad_request`.
+7. **Renaming.** `conversations.rename {conversationId, title}` returns `{conversation}` with the new title, and watchers get `conversation.updated`. aludra folds whitespace and takes 1 to 200 characters; anything else is `bad_request`. aludra also retitles a new session itself: a second or two after the first message, a small model's title replaces the first-line one and arrives as `conversation.updated`. A rename by the user always wins over it, so clients show the summary's latest `title` and keep no title of their own.
 8. **Picked project colours.** A project's colour is hashed from its name (`ProjectColor`), and names can clash. `host.info` and `host.snapshot` carry `projectColors`, project name to an index into `ProjectColor.hues`; `projects.setColor {project, color}` sets one (`color: null` clears it, so the name's hue is back) and returns `{projectColors}`; `host.watch` sends `{"type":"host.projectColors","projectColors":{…}}` when they change. A client that doesn't know the event resyncs once.
 
 9. **Images.** `submit` and `conversations.create` take `images: [{mimeType, data}]` (base64) beside `text`, which may then be empty. aludra takes PNG, JPEG, GIF and WebP, at most 8 a message and 5 MB each, and checks the bytes are the type named; the Mac app scales each to 1568 px on the long side first. Image blocks in items still carry only `mimeType`; `conversation.image {conversationId, entryId, index}` returns `{mimeType, data}` for block `index` of item `entryId`, a user message's or a tool result's.
+
+10. **Charged cost.** A `ConversationSummary` carries `cost`, the dollars providers that bill each request (OpenRouter) charged for it, only when it used one. `host.info` and `host.snapshot` carry `monthCost`, this calendar month's charged total, only when something was charged. No event carries `monthCost`, so the Mac app reads `host.info` again (at most once a second) when a summary's `cost` changes. It writes amounts as `<$0.01`, `$0.42`, `$12.30`, `$140`.
 
 Deferred, not in v1:
 

@@ -68,6 +68,36 @@ private func decode<T: Decodable>(_ type: T.Type, _ json: String) throws -> T {
 		#expect(bare.project == nil)
 	}
 
+	/// Money comes only from `cost` and `monthCost`; `spend` prices plan-paid answers too.
+	@Test func chargedCostDecodesOnlyWhenPresent() throws {
+		let charged = try decode(ConversationSummary.self, #"{"id":1,"title":"t","cost":0.42,"spend":{"cost":3.1}}"#)
+		#expect(charged.cost == 0.42)
+		let plan = try decode(ConversationSummary.self, #"{"id":2,"title":"t","spend":{"cost":3.1}}"#)
+		#expect(plan.cost == nil)
+		let info = try decode(Commands.HostInfo.Result.self, #"{"host":{"hostId":"h","name":"egwene"},"models":[],"tools":[],"monthCost":12.3}"#)
+		#expect(info.monthCost == 12.3)
+		let snapshot = try decode(HostEvent.self, #"{"type":"host.snapshot","host":{"hostId":"h","name":"egwene"},"spend":{},"conversations":[]}"#)
+		guard case .snapshot(let bare) = snapshot else {
+			Issue.record("expected host.snapshot")
+			return
+		}
+		#expect(bare.monthCost == nil)
+	}
+
+	@Test func dollarsAreWrittenAsAmountsNotPrices() {
+		#expect(Dollars.text(0.004) == "<$0.01")
+		#expect(Dollars.text(0.0099) == "<$0.01")
+		#expect(Dollars.text(0) == "$0.00")
+		#expect(Dollars.text(0.42) == "$0.42")
+		#expect(Dollars.text(0.416) == "$0.42")
+		#expect(Dollars.text(12.3) == "$12.30")
+		#expect(Dollars.text(99.99) == "$99.99")
+		#expect(Dollars.text(99.996) == "$100")
+		#expect(Dollars.text(140) == "$140")
+		#expect(Dollars.text(140.4) == "$140")
+		#expect(Dollars.text(1400) == "$1,400")
+	}
+
 	@Test func settingsChangeEncodesTriState() throws {
 		let change = SettingsChange(model: .set(ModelRef(provider: "p", modelId: "m")), thinkingLevel: .cleared)
 		let encoder = JSONEncoder()

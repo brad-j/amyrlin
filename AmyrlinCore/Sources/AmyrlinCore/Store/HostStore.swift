@@ -14,6 +14,9 @@ public final class HostStore {
 	@ObservationIgnored public let connection: HostConnection
 	@ObservationIgnored private var tasks: [Task<Void, Never>] = []
 	@ObservationIgnored private var stores: [ConversationID: ConversationStore] = [:]
+	/// How long to gather cost changes before reading the month's total again.
+	@ObservationIgnored var monthCostDelay: Duration = .seconds(1)
+	@ObservationIgnored private var monthCostTask: Task<Void, Never>?
 
 	public init(url: URL, client: ClientInfo, transport: any WebSocketTransport = URLSessionTransport(), policy: ReconnectPolicy = .standard) {
 		self.url = url
@@ -45,6 +48,8 @@ public final class HostStore {
 	public func stop() async {
 		for task in tasks { task.cancel() }
 		tasks = []
+		monthCostTask?.cancel()
+		monthCostTask = nil
 		for store in stores.values { store.stop() }
 		await connection.stop()
 	}
@@ -80,7 +85,20 @@ public final class HostStore {
 	}
 
 	private func refreshInfo() async {
-		info = try? await connection.send(Commands.HostInfo())
+		guard let result = try? await connection.send(Commands.HostInfo()) else { return }
+		info = result
+		state.monthCost = result.monthCost
+	}
+
+	/// Reads the month's total again shortly, once for any number of cost changes in the meantime.
+	private func refreshMonthCost() {
+		guard monthCostTask == nil else { return }
+		monthCostTask = Task {
+			try? await Task.sleep(for: monthCostDelay)
+			monthCostTask = nil
+			guard !Task.isCancelled else { return }
+			await refreshInfo()
+		}
 	}
 
 	private func watchHost() async {
@@ -89,9 +107,14 @@ public final class HostStore {
 			switch update {
 			case .events(let events):
 				watchProblem = nil
+				let costs = state.costs
+				let hadSnapshot = state.hasSnapshot
 				if case .needsResync(let reason) = state.apply(events) {
 					await subscription.resync(reason: reason)
 				}
+				// A snapshot brings its own monthCost; a session charged since needs host.info's.
+				let snapshot = events.contains { if case .snapshot = $0 { true } else { false } }
+				if hadSnapshot, !snapshot, state.costs != costs { refreshMonthCost() }
 			case .resyncing:
 				// Keep showing the last list until the fresh snapshot replaces it.
 				break

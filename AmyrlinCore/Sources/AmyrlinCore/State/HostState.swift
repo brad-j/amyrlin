@@ -4,6 +4,9 @@ import Foundation
 public struct HostState: Sendable, Hashable {
 	public var host: HostIdentity?
 	public var spend: Spend = .zero
+	/// This calendar month's charged dollars, nil when nothing was charged. Only `host.snapshot` and `host.info` carry
+	/// it, so `HostStore` reads `host.info` again when a session's `cost` changes.
+	public var monthCost: Double?
 	/// Projects whose colour was picked on this host: name to `ProjectColor.hues` index.
 	public var projectColors: [String: Int] = [:]
 	public private(set) var conversations: [ConversationID: ConversationSummary] = [:]
@@ -18,6 +21,11 @@ public struct HostState: Sendable, Hashable {
 
 	public var archived: [ConversationSummary] {
 		conversations.values.filter(\.archived).sorted(by: Self.newestFirst)
+	}
+
+	/// Each charged session's cost, to notice when one changes.
+	public var costs: [ConversationID: Double] {
+		conversations.compactMapValues(\.cost)
 	}
 
 	private static func newestFirst(_ a: ConversationSummary, _ b: ConversationSummary) -> Bool {
@@ -47,6 +55,7 @@ public struct HostState: Sendable, Hashable {
 		case .snapshot(let snapshot):
 			host = snapshot.host
 			spend = snapshot.spend
+			monthCost = snapshot.monthCost
 			projectColors = snapshot.projectColors ?? [:]
 			conversations = Dictionary(snapshot.conversations.map { ($0.id, $0) }) { _, last in last }
 			hasSnapshot = true

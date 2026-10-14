@@ -260,13 +260,14 @@ struct ComposerView: View {
 		!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
 	}
 
-	/// "opus 5.5 · high · ctx 38k/1M".
-	/// The session's model as the status line names it, lowercased: `opus 5.5`.
+	/// The session's model as the status line names it, lowercased: `opus 5.5`, or `opus 5.5 via claude code` when the
+	/// host offers models from more than one provider.
 	@MainActor static func modelName(store: ConversationStore, host: HostStore) -> String? {
 		let settings = store.state.settings
 		guard let ref = settings?.stored.model ?? settings?.effective.model else { return nil }
-		let info = host.info?.models.first { $0.ref == ref }
-		return (info?.name ?? ref.modelId).lowercased()
+		let models = host.info?.models ?? []
+		let name = ModelNaming.name(ref, in: models).lowercased()
+		return ModelNaming.needsProvider(ref, in: models) ? "\(name) via \(ModelNaming.provider(ref.provider).lowercased())" : name
 	}
 
 	/// How full the context is, as the status line says it: `ctx 24k/1M`.

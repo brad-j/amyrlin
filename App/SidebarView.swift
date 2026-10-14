@@ -2,7 +2,8 @@ import AmyrlinCore
 import SwiftUI
 
 /// Machines, and on each its sessions grouped by project, in the inspector's style: small-caps labels, hairlines,
-/// quiet rows. The project needing attention comes first; each row is a state mark, a title and an age.
+/// quiet rows. The project needing attention comes first, and archived sessions fold away at the end; each row is a
+/// state mark, a title and an age.
 /// ↑ and ↓ move between sessions while the sidebar has focus.
 struct SidebarView: View {
 	@Bindable var model: AppModel
@@ -36,9 +37,11 @@ struct SidebarView: View {
 	/// Every session the sidebar shows, in order; folded projects are skipped.
 	private var ordered: [ConversationKey] {
 		model.machines.flatMap { machine in
-			MachineSection.groups(machine.store)
+			let projects = MachineSection.groups(machine.store)
 				.filter { !model.isCollapsed(machine: machine.id, project: $0.project) }
-				.flatMap { $0.sessions.map { ConversationKey(machine: machine.id, conversation: $0.id) } }
+				.flatMap(\.sessions)
+			let archived = model.openArchives.contains(machine.id) ? machine.store.state.archived : []
+			return (projects + archived).map { ConversationKey(machine: machine.id, conversation: $0.id) }
 		}
 	}
 
@@ -91,6 +94,14 @@ private struct MachineSection: View {
 					.foregroundStyle(Palette.ink)
 					.lineLimit(1)
 				Spacer()
+				if let month = store.state.monthCost {
+					Text("\(Dollars.text(month)) this month")
+						.font(Typography.uiSmall)
+						.foregroundStyle(Palette.ink3)
+						.monospacedDigit()
+						.lineLimit(1)
+						.help("What OpenRouter charged this calendar month on this machine. Claude Code and ChatGPT plans aren't counted.")
+				}
 				IconButton("square.and.pencil", color: store.isConnected ? Palette.accent : Palette.ink3) {
 					model.newConversationMachine = machine.id
 				}
@@ -127,25 +138,44 @@ private struct MachineSection: View {
 							if !group.project.isEmpty, store.isConnected { colourMenu(group.project) }
 						}
 						if !collapsed.wrappedValue {
-							ForEach(Array(group.sessions.enumerated()), id: \.element.id) { index, summary in
-								let key = ConversationKey(machine: machine.id, conversation: summary.id)
-								SessionRow(summary: summary, last: index == group.sessions.count - 1, selected: model.selection == key, colors: store.state.projectColors) {
-									model.selection = key
-								}
-								.contextMenu {
-									Button("Rename…") { model.renaming = key }.disabled(!store.isConnected)
-								}
-							}
+							sessionRows(group.sessions)
 						}
+					}
+				}
+				// Archived sessions last, folded until opened; a session needing approval still shows in the fold.
+				let archived = store.state.archived
+				if !archived.isEmpty {
+					let collapsed = model.archiveCollapsedBinding(machine: machine.id)
+					VStack(alignment: .leading, spacing: 0) {
+						ProjectRow(name: "archived", color: Palette.ink3, collapsed: collapsed, note: collapsed.wrappedValue ? foldedNote(archived) : nil)
+						if !collapsed.wrappedValue { sessionRows(archived) }
 					}
 				}
 			}
 			.padding(.bottom, 6)
-			if store.state.hasSnapshot, store.state.active.isEmpty {
+			if store.state.hasSnapshot, store.state.conversations.isEmpty {
 				Text("No sessions yet")
 					.font(Typography.ui)
 					.foregroundStyle(Palette.ink3)
 					.padding(.vertical, 6)
+			}
+		}
+	}
+
+	private func sessionRows(_ sessions: [ConversationSummary]) -> some View {
+		ForEach(Array(sessions.enumerated()), id: \.element.id) { index, summary in
+			let key = ConversationKey(machine: machine.id, conversation: summary.id)
+			SessionRow(summary: summary, last: index == sessions.count - 1, selected: model.selection == key, colors: store.state.projectColors) {
+				model.selection = key
+			}
+			.contextMenu {
+				Button("Rename…") { model.renaming = key }.disabled(!store.isConnected)
+				// Archiving only hides the session; a running one keeps running.
+				if summary.archived {
+					Button("Bring Back from the Archive") { model.setArchived(key, false) }.disabled(!store.isConnected)
+				} else {
+					Button("Archive") { model.setArchived(key, true) }.disabled(!store.isConnected)
+				}
 			}
 		}
 	}
@@ -226,7 +256,7 @@ private struct ProjectRow: View {
 	}
 }
 
-/// A session in the tree: a guide (├ or └), its state mark, its title and age.
+/// A session in the tree: a guide (├ or └), its state mark, its title, what it was charged if anything, and its age.
 private struct SessionRow: View {
 	let summary: ConversationSummary
 	let last: Bool
@@ -246,6 +276,11 @@ private struct SessionRow: View {
 					.lineLimit(1)
 					.truncationMode(.tail)
 				Spacer(minLength: 6)
+				if let cost = summary.cost {
+					Text(Dollars.text(cost))
+						.foregroundStyle(Palette.ink3)
+						.monospacedDigit()
+				}
 				Text(Date(timeIntervalSince1970: TimeInterval(summary.updatedAt) / 1000).shortAge)
 					.foregroundStyle(Palette.ink3)
 					.monospacedDigit()
@@ -262,6 +297,6 @@ private struct SessionRow: View {
 		}
 		.buttonStyle(.plain)
 		.onHover { hovering = $0 }
-		.help(summary.title)
+		.help(summary.cost.map { "\(summary.title)\n\(Dollars.text($0)) charged by OpenRouter" } ?? summary.title)
 	}
 }

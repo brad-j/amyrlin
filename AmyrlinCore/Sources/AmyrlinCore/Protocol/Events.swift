@@ -226,6 +226,8 @@ public struct HostSnapshot: Decodable, Sendable, Hashable {
 	public var conversations: [ConversationSummary]
 	/// Projects whose colour was picked (aludra).
 	public var projectColors: [String: Int]?
+	/// This calendar month's charged dollars, when any session was charged (aludra).
+	public var monthCost: Double?
 }
 
 /// Events of a `host.watch` subscription (protocol section 6.2).

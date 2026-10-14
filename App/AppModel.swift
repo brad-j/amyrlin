@@ -57,6 +57,21 @@ final class AppModel {
 	func isCollapsed(machine: UUID, project: String) -> Bool {
 		collapsedProjects.contains("\(machine.uuidString)/\(project)")
 	}
+
+	/// Machines whose Archived group is open in the sidebar. It starts folded, unlike projects, so this keeps the open ones.
+	var openArchives: Set<UUID> = Set((UserDefaults.standard.stringArray(forKey: "openArchives") ?? []).compactMap(UUID.init(uuidString:))) {
+		didSet { UserDefaults.standard.set(openArchives.map(\.uuidString).sorted(), forKey: "openArchives") }
+	}
+
+	/// Folded when true, like `collapsedBinding`.
+	func archiveCollapsedBinding(machine: UUID) -> Binding<Bool> {
+		Binding(
+			get: { !self.openArchives.contains(machine) },
+			set: { folded in
+				if folded { self.openArchives.remove(machine) } else { self.openArchives.insert(machine) }
+			}
+		)
+	}
 	/// Closed at launch; ⌥⌘I or the header's inspector button opens it.
 	var showInspector = false
 	var showSidebar = true
@@ -200,6 +215,18 @@ final class AppModel {
 		Task {
 			do {
 				try await machine.store.rename(target.conversation, to: title)
+			} catch {
+				self.error = (error as? ProtocolError)?.message ?? String(describing: error)
+			}
+		}
+	}
+
+	/// Hides a conversation from the sidebar's projects, or with false brings it back. A running one keeps running.
+	func setArchived(_ target: ConversationKey, _ archived: Bool) {
+		guard let machine = machine(target.machine) else { return }
+		Task {
+			do {
+				try await machine.store.setArchived(target.conversation, archived)
 			} catch {
 				self.error = (error as? ProtocolError)?.message ?? String(describing: error)
 			}
