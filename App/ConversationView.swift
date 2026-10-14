@@ -73,10 +73,9 @@ private struct ConversationHeader: View {
 				.onTapGesture(count: 2, perform: rename)
 				.help("Double-click to rename")
 			Spacer(minLength: 8)
-			if !showInspector {
-				IconButton("sidebar.right") { showInspector = true }
-					.help("Show the inspector (⌥⌘I)")
-			}
+			// Always here, at the column's edge, so it rides along as the inspector opens and closes.
+			IconButton("sidebar.right") { withAnimation(.panel) { showInspector.toggle() } }
+				.help(showInspector ? "Hide the inspector (⌥⌘I)" : "Show the inspector (⌥⌘I)")
 		}
 	}
 }

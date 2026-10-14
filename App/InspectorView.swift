@@ -6,7 +6,6 @@ import SwiftUI
 struct InspectorView: View {
 	let store: ConversationStore
 	let host: HostStore
-	var hide: () -> Void = {}
 
 	private var settings: ConversationSettings? { store.state.settings }
 	private var models: [ModelInfo] { host.info?.models ?? [] }
@@ -19,8 +18,6 @@ struct InspectorView: View {
 			HeaderBar {
 				Text("session").font(Typography.label).foregroundStyle(Palette.ink3).textCase(.uppercase)
 				Spacer()
-				IconButton("sidebar.right", color: Palette.ink2, action: hide)
-					.help("Hide the inspector (⌥⌘I)")
 			}
 			ScrollView {
 				VStack(alignment: .leading, spacing: 0) {

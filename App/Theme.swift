@@ -144,6 +144,11 @@ enum Palette {
 	static var statusBar: CGFloat { (28 * TextSize.shared.interfaceZoom).rounded() }
 }
 
+extension Animation {
+	/// How the sidebar and the inspector open and close, and the toggles at the middle column's edges with them.
+	static let panel = Animation.smooth(duration: 0.32)
+}
+
 extension EnvironmentValues {
 	/// Whether the sidebar shows; set on the middle column, whose foot holds the button that toggles it.
 	@Entry var sidebarShown: Binding<Bool>?
@@ -156,7 +161,7 @@ struct SidebarToggle: View {
 
 	var body: some View {
 		if let shown {
-			IconButton("sidebar.left") { shown.wrappedValue.toggle() }
+			IconButton("sidebar.left") { withAnimation(.panel) { shown.wrappedValue.toggle() } }
 				.help(shown.wrappedValue ? "Hide the sidebar (⌃⌘S)" : "Show the sidebar (⌃⌘S)")
 		}
 	}

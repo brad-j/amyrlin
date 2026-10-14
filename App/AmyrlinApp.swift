@@ -22,9 +22,9 @@ struct AmyrlinApp: App {
 					.keyboardShortcut("n", modifiers: [.command, .shift])
 			}
 			CommandGroup(after: .sidebar) {
-				Button(model.showSidebar ? "Hide Sidebar" : "Show Sidebar") { model.showSidebar.toggle() }
+				Button(model.showSidebar ? "Hide Sidebar" : "Show Sidebar") { withAnimation(.panel) { model.showSidebar.toggle() } }
 					.keyboardShortcut("s", modifiers: [.command, .control])
-				Button(model.showInspector ? "Hide Inspector" : "Show Inspector") { model.showInspector.toggle() }
+				Button(model.showInspector ? "Hide Inspector" : "Show Inspector") { withAnimation(.panel) { model.showInspector.toggle() } }
 					.keyboardShortcut("i", modifiers: [.command, .option])
 			}
 			TextSizeCommands(size: textSize)
@@ -54,7 +54,7 @@ struct MainView: View {
 					.frame(maxWidth: .infinity, maxHeight: .infinity)
 					.environment(\.sidebarShown, $model.showSidebar)
 				if model.showInspector, let selected = model.selected {
-					InspectorView(store: selected.conversation, host: selected.machine.store) { model.showInspector = false }
+					InspectorView(store: selected.conversation, host: selected.machine.store)
 						.id(model.selection)
 						.frame(width: model.inspectorWidth)
 						.overlay(alignment: .leading) { ColumnEdge(width: $model.inspectorWidth, range: 240...380, side: .leading).ignoresSafeArea(.container, edges: .top) }
@@ -64,8 +64,8 @@ struct MainView: View {
 			StatusLine(model: model)
 		}
 		.background(Palette.paper)
-		.animation(.easeInOut(duration: 0.2), value: model.showInspector)
-		.animation(.easeInOut(duration: 0.2), value: model.showSidebar)
+		.animation(.panel, value: model.showInspector)
+		.animation(.panel, value: model.showSidebar)
 		.toolbar(removing: .title)
 		// Each column's colour runs up under the title bar, as before the header bands; the bar draws nothing of its own.
 		.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
