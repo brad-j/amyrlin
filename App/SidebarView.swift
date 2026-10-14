@@ -144,13 +144,16 @@ private struct MachineSection: View {
 				ForEach(Self.groups(store), id: \.project) { group in
 					let collapsed = model.collapsedBinding(machine: machine.id, project: group.project)
 					VStack(alignment: .leading, spacing: 0) {
+						let name = group.project.isEmpty ? "scratch" : group.project
 						ProjectRow(
-							name: group.project.isEmpty ? "scratch" : group.project,
+							name: name,
 							color: group.project.isEmpty ? Palette.ink3 : Palette.project(group.project, in: store.state.projectColors),
 							collapsed: collapsed,
-							note: collapsed.wrappedValue ? foldedNote(group.sessions) : nil
+							note: collapsed.wrappedValue ? foldedNote(group.sessions) : nil,
+							newSession: store.isConnected ? { newSession(in: group) } : nil
 						)
 						.contextMenu {
+							Button("New Session in \(name)") { newSession(in: group) }.disabled(!store.isConnected)
 							if !group.project.isEmpty, store.isConnected { colourMenu(group.project) }
 						}
 						if !collapsed.wrappedValue {
@@ -195,6 +198,21 @@ private struct MachineSection: View {
 					Button("Archive") { model.setArchived(key, true) }.disabled(!store.isConnected)
 				}
 			}
+		}
+	}
+
+	/// Opens an empty session in the group's project, or scratch's; the picker when the host doesn't list the project.
+	private func newSession(in group: (project: String, sessions: [ConversationSummary])) {
+		guard !group.project.isEmpty else {
+			model.openDraft(on: machine.id, project: nil)
+			return
+		}
+		let projects = store.info?.projects ?? []
+		let dir = group.sessions.lazy.compactMap(\.dir).first
+		if let project = projects.first(where: { $0.dir == dir }) ?? projects.first(where: { $0.name == group.project }) {
+			model.openDraft(on: machine.id, project: project)
+		} else {
+			model.newConversationMachine = machine.id
 		}
 	}
 
@@ -258,32 +276,47 @@ private struct MachineSection: View {
 	}
 }
 
-/// A project in the tree: `▾ name`, folding its sessions; folded, a count or what needs attention.
+/// A project in the tree: `▾ name`, folding its sessions; folded, a count or what needs attention. With `newSession`,
+/// a new-session icon shows while the pointer is over the row.
 private struct ProjectRow: View {
 	let name: String
 	let color: Color
 	@Binding var collapsed: Bool
 	let note: String?
+	var newSession: (() -> Void)? = nil
+	@State private var hovering = false
+	/// Tracked apart from `hovering`: the icon's own hover takes the row's away, which hid it under the pointer.
+	@State private var hoveringIcon = false
 
 	var body: some View {
-		Button {
-			withAnimation(.easeInOut(duration: 0.15)) { collapsed.toggle() }
-		} label: {
-			HStack(spacing: 6) {
-				Text(collapsed ? "▸" : "▾").foregroundStyle(Palette.ink3)
-				Text(name).foregroundStyle(color).lineLimit(1)
-				Spacer(minLength: 6)
-				if let note {
-					Text(note)
-						.foregroundStyle(note == "needs you" ? Palette.wait : note == "working" ? Palette.accent : Palette.ink3)
+		HStack(spacing: 4) {
+			Button {
+				withAnimation(.easeInOut(duration: 0.15)) { collapsed.toggle() }
+			} label: {
+				HStack(spacing: 6) {
+					Text(collapsed ? "▸" : "▾").foregroundStyle(Palette.ink3)
+					Text(name).foregroundStyle(color).lineLimit(1)
+					Spacer(minLength: 6)
+					if let note {
+						Text(note)
+							.foregroundStyle(note == "needs you" ? Palette.wait : note == "working" ? Palette.accent : Palette.ink3)
+					}
 				}
+				.font(Typography.projectHeader)
+				.padding(.vertical, 3)
+				.contentShape(Rectangle())
 			}
-			.font(Typography.projectHeader)
-			.padding(.vertical, 3)
-			.contentShape(Rectangle())
+			.buttonStyle(.plain)
+			.help(collapsed ? "Show \(name)" : "Hide \(name)")
+			if let newSession {
+				IconButton("square.and.pencil", action: newSession)
+					.help("New session in \(name)")
+					.onHover { hoveringIcon = $0 }
+					.opacity(hovering || hoveringIcon ? 1 : 0)
+			}
 		}
-		.buttonStyle(.plain)
-		.help(collapsed ? "Show \(name)" : "Hide \(name)")
+		.contentShape(Rectangle())
+		.onHover { inside in withAnimation(.state) { hovering = inside } }
 	}
 }
 
