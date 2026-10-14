@@ -2,81 +2,259 @@ import AmyrlinCore
 import AppKit
 import SwiftUI
 
-/// The transcript as a SwiftUI List, which is backed by a reusing NSTableView on macOS. It follows the bottom while
-/// the user is there and stays put once they scroll up. Content sits in a centred reading column.
+/// The transcript: a stack in a scroll view, in a centred reading column. It follows the bottom while what's
+/// written grows, gliding rather than jumping, and stops following once the user scrolls away; scrolling back to the
+/// bottom, or the arrow, follows again. Rows arriving fade up into place, and streamed text reveals at `RevealPace`.
 struct TranscriptView: View {
 	let store: ConversationStore
+	@State private var ledger = RevealLedger()
+	@State private var position = ScrollPosition(edge: .bottom)
+	/// Whether the transcript keeps to the bottom as it grows. Only the user's own scrolling changes it.
+	@State private var following = true
+	@State private var userScrolling = false
 	@State private var atBottom = true
+	/// False until the first snapshot has been laid out, so opening a conversation doesn't animate its history in.
+	@State private var settled = false
+	/// True while the view is gliding down to the bottom.
+	@State private var chasing = false
+	/// The follow's working values, in a class so that changing them each frame doesn't redraw the transcript.
+	@State private var follow = FollowState()
 
-	var body: some View {
-		let rows = TranscriptLayout.rows(state: store.state, outbox: store.outbox)
-		ScrollViewReader { proxy in
-			List(rows) { row in
-				TranscriptRowView(row: row, store: store)
-					.frame(maxWidth: Metrics.measure, alignment: .leading)
-					.frame(maxWidth: .infinity)
-					.opacity(row.inContext ? 1 : 0.45)
-					.listRowSeparator(.hidden)
-					.listRowBackground(Color.clear)
-					.listRowInsets(EdgeInsets(top: 0, leading: 24, bottom: 0, trailing: 24))
-			}
-			.listStyle(.plain)
-			.scrollContentBackground(.hidden)
-			.environment(\.defaultMinListRowHeight, 1)
-			.onScrollGeometryChange(for: Bool.self) { geometry in
-				geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 48
-			} action: { _, isAtBottom in
-				atBottom = isAtBottom
-			}
-			.onChange(of: Follow(rows: rows)) { _, follow in
-				guard atBottom, let last = follow.lastID else { return }
-				proxy.scrollTo(last, anchor: .bottom)
-			}
-			.onChange(of: store.state.hasSnapshot) { _, has in
-				if has, let last = rows.last?.id { proxy.scrollTo(last, anchor: .bottom) }
-			}
-			.onAppear {
-				if let last = rows.last?.id { proxy.scrollTo(last, anchor: .bottom) }
-			}
-			.overlay(alignment: .bottom) {
-				if !atBottom, let last = rows.last?.id {
-					Button {
-						proxy.scrollTo(last, anchor: .bottom)
-					} label: {
-						Image(systemName: "arrow.down")
-							.font(.system(size: 12, weight: .semibold))
-							.foregroundStyle(Palette.ink2)
-							.frame(width: 30, height: 30)
-							.background(Palette.paper3, in: Circle())
-							.overlay(Circle().stroke(Palette.rule2))
-					}
-					.buttonStyle(.plain)
-					.padding(.bottom, 10)
-					.help("Scroll to the newest")
-				}
-			}
-		}
+	private struct Geometry: Equatable {
+		var offset: CGFloat = 0
+		var bottom: CGFloat = 0
 	}
 
-	/// What changes when the bottom of the transcript grows: a new last row, or more text or output in it.
-	private struct Follow: Equatable {
-		let lastID: String?
-		let lastSize: Int
+	private final class FollowState {
+		var geometry = Geometry()
+		var lastTick: Date?
+		/// Points a second.
+		var velocity: CGFloat = 0
+	}
 
-		init(rows: [TranscriptRow]) {
-			lastID = rows.last?.id
-			lastSize = switch rows.last?.kind {
-			case .text(let text, _), .thinking(let text, _, _): text.utf8.count
-			case .toolCall(let call): call.output.utf8.count
-			default: 0
+	var body: some View {
+		// The rows are their own view: the follow moves the scroll position every frame, and only this wrapper sees it.
+		ScrollView {
+			TranscriptRows(store: store, ledger: ledger, animated: settled) { id in
+				position.scrollTo(id: id, anchor: .top)
+			}
+			.equatable()
+		}
+		.environment(\.revealLedger, ledger)
+		.scrollPosition($position)
+		.defaultScrollAnchor(.bottom, for: .initialOffset)
+		.onScrollGeometryChange(for: Bool.self) { Self.isAtBottom($0, within: 4) } action: { _, bottom in
+			// Scrolling back down to the very bottom follows again.
+			if userScrolling, bottom { following = true }
+		}
+		.onScrollPhaseChange { _, phase, context in
+			switch phase {
+			// The follow sets positions without animating, so it makes no phases: any of these is the user, on a
+			// trackpad (interacting, then decelerating with momentum) or a mouse wheel (decelerating alone).
+			case .tracking, .interacting, .decelerating:
+				userScrolling = true
+			case .idle:
+				if userScrolling {
+					userScrolling = false
+					// Any deliberate scroll up stops following; only ending right at the bottom keeps it.
+					following = Self.isAtBottom(context.geometry, within: 4)
+				}
+			case .animating:
+				break
 			}
 		}
+		.onScrollGeometryChange(for: Bool.self) { Self.isAtBottom($0) } action: { _, bottom in
+			atBottom = bottom
+		}
+		.onScrollGeometryChange(for: Geometry.self) { g in
+			Geometry(offset: g.contentOffset.y, bottom: max(0, g.contentSize.height - g.containerSize.height + g.contentInsets.bottom))
+		} action: { old, new in
+			// While the follow glides it keeps its own offset: the scroll view reports a set position a frame late,
+			// and starting a step from that would step back.
+			follow.geometry.bottom = new.bottom
+			if !chasing { follow.geometry.offset = new.offset }
+			guard following, !userScrolling, new.bottom != old.bottom else { return }
+			if settled { chase() } else { position.scrollTo(edge: .bottom) }
+		}
+		// The follow: a spring stepped each display frame, so growth glides into view. A ScrollPosition change in
+		// withAnimation doesn't animate in a macOS scroll view; it jumps.
+		.background {
+			TimelineView(.animation(paused: !chasing)) { context in
+				Color.clear.onChange(of: context.date) { _, now in step(now) }
+			}
+		}
+		.onChange(of: store.state.hasSnapshot, initial: true) { _, has in
+			guard has, !settled else { return }
+			position.scrollTo(edge: .bottom)
+			// After this layout pass: the snapshot's rows are in place, and what follows animates.
+			Task { @MainActor in settled = true }
+		}
+		.onChange(of: store.outbox.count) { old, new in
+			// Sending a message always goes to the bottom, wherever the user was reading.
+			guard new > old else { return }
+			following = true
+			chase()
+		}
+		.overlay(alignment: .bottom) {
+			if !atBottom, !following {
+				Button {
+					following = true
+					chase()
+				} label: {
+					Image(systemName: "arrow.down")
+						.font(.system(size: 12, weight: .semibold))
+						.foregroundStyle(Palette.ink2)
+						.frame(width: 30, height: 30)
+						.background(Palette.paper3, in: Circle())
+						.overlay(Circle().stroke(Palette.rule2))
+				}
+				.buttonStyle(.plain)
+				.padding(.bottom, 10)
+				.help("Scroll to the newest")
+				.transition(.opacity.combined(with: .scale(scale: 0.85)))
+			}
+		}
+		.animation(.state, value: !atBottom && !following)
+	}
+
+	private func chase() {
+		guard !chasing else { return }
+		follow.lastTick = nil
+		follow.velocity = 0
+		chasing = true
+	}
+
+	private func stopChasing() {
+		chasing = false
+		follow.velocity = 0
+	}
+
+	/// One frame of the follow: a critically damped spring towards the bottom, so the transcript eases into motion and
+	/// settles without overshooting. A line glides in over about a quarter of a second, and a block that appears at
+	/// once (a code block, a table) accelerates into view instead of lurching.
+	private func step(_ now: Date) {
+		guard following, !userScrolling else {
+			stopChasing()
+			return
+		}
+		let elapsed = follow.lastTick.map { min(now.timeIntervalSince($0), 1.0 / 30) } ?? 1.0 / 120
+		follow.lastTick = now
+		let bottom = follow.geometry.bottom
+		let gap = bottom - follow.geometry.offset
+		guard abs(gap) > 0.5 || abs(follow.velocity) > 5 else {
+			if abs(gap) > 0 { position.scrollTo(y: bottom) }
+			follow.geometry.offset = bottom
+			stopChasing()
+			return
+		}
+		let omega: CGFloat = 22
+		follow.velocity += (omega * omega * gap - 2 * omega * follow.velocity) * elapsed
+		var next = follow.geometry.offset + follow.velocity * elapsed
+		// Never past the bottom: a spring that would overshoot lands instead.
+		if (gap > 0 && next > bottom) || (gap < 0 && next < bottom) {
+			next = bottom
+			follow.velocity = 0
+		}
+		position.scrollTo(y: next)
+		follow.geometry.offset = next
+	}
+
+	/// Near the bottom: within 48 points hides the arrow; deciding whether to follow takes `within: 4`.
+	private static func isAtBottom(_ geometry: ScrollGeometry, within slack: CGFloat = 48) -> Bool {
+		geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - slack
 	}
 }
 
-struct TranscriptRowView: View {
+/// The transcript's rows, animated as they arrive once `animated`. They're in a plain stack, laid out exactly: a lazy
+/// stack estimates the height of rows it hasn't laid out and corrects it as they come and go, which made the content
+/// jump by thousands of points while an answer streamed over a long history. To keep a plain stack cheap, it holds a
+/// window: from `window` rows before the end when the transcript opened, plus every row after. "Show earlier" at the top
+/// adds `window` older rows at a time, keeping the row that was first where it was.
+private struct TranscriptRows: View, Equatable {
+	let store: ConversationStore
+	let ledger: RevealLedger
+	let animated: Bool
+	/// Scrolls so row `id` is at the top, after earlier rows are added above it.
+	let keepAtTop: (String) -> Void
+	/// How many times "show earlier" was used.
+	@State private var pages = 0
+
+	private static let window = 60
+
+	/// The follow moves the scroll position every frame, which rebuilds the view holding this one; comparing the data
+	/// (not the closure) keeps that from rebuilding every row.
+	nonisolated static func == (a: Self, b: Self) -> Bool {
+		a.store === b.store && a.ledger === b.ledger && a.animated == b.animated
+	}
+
+	var body: some View {
+		let rows = TranscriptLayout.rows(state: store.state, outbox: store.outbox)
+		let _ = prime(rows)
+		let start = startIndex(rows)
+		VStack(spacing: 0) {
+			if start > 0 {
+				Button {
+					let first = rows[start].id
+					pages += 1
+					keepAtTop(first)
+				} label: {
+					Text("[show \(min(start, Self.window)) earlier]")
+						.font(Typography.uiSmall)
+						.foregroundStyle(Palette.ink3)
+						.frame(maxWidth: .infinity)
+						.padding(.vertical, 10)
+						.contentShape(Rectangle())
+				}
+				.buttonStyle(.plain)
+				.help("\(start) earlier rows aren't shown")
+			}
+			ForEach(rows[start...]) { row in
+				// Equatable: as one row streams, the others aren't rebuilt.
+				ReadingColumn(measure: Metrics.measure, margin: 24) {
+					TranscriptRowView(row: row, store: store).equatable()
+				}
+					.opacity(row.inContext ? 1 : 0.45)
+					.transition(row.isText ? .answerArrival : .rowArrival)
+			}
+		}
+		.scrollTargetLayout()
+		.padding(.bottom, 8)
+		.animation(animated ? .row : nil, value: rows.map(\.id))
+	}
+
+	/// The first row shown: `window` rows before the end when the transcript opened (or a fresh snapshot replaced its
+	/// rows), less a window for each "show earlier".
+	private func startIndex(_ rows: [TranscriptRow]) -> Int {
+		guard store.state.hasSnapshot, !rows.isEmpty else { return 0 }
+		let anchor: Int
+		if let id = ledger.recentStart, let index = rows.firstIndex(where: { $0.id == id }) {
+			anchor = index
+		} else {
+			anchor = max(0, rows.count - Self.window)
+			ledger.recentStart = rows[anchor].id
+		}
+		return max(0, anchor - pages * Self.window)
+	}
+
+	/// Rows already there when the snapshot first arrives show in full; the ledger reveals only what comes after.
+	private func prime(_ rows: [TranscriptRow]) {
+		guard store.state.hasSnapshot, !ledger.isPrimed else { return }
+		ledger.prime(rows.map { row in
+			switch row.kind {
+			case .text(let text, _), .thinking(let text, _, _): (row.id, text.count)
+			default: (row.id, 0)
+			}
+		})
+	}
+}
+
+struct TranscriptRowView: View, Equatable {
 	let row: TranscriptRow
 	let store: ConversationStore
+
+	nonisolated static func == (a: Self, b: Self) -> Bool {
+		a.row == b.row && a.store === b.store
+	}
 
 	var body: some View {
 		// Rows' images fetch through the conversation's store.
@@ -95,11 +273,11 @@ struct TranscriptRowView: View {
 			.padding(.vertical, 10)
 			.task { await store.loadEarlier() }
 		case .user(let text, _, let images):
-			UserBlock(text: text, images: images)
+			InputRow(text: text, images: images)
 		case .text(let text, let streaming):
-			AnswerBlock(text: text, streaming: streaming)
+			AnswerBlock(id: row.id, text: text, streaming: streaming)
 		case .thinking(let text, let redacted, let streaming):
-			ThinkingRow(text: text, redacted: redacted, streaming: streaming)
+			ThinkingRow(id: row.id, text: text, redacted: redacted, streaming: streaming)
 		case .toolCall(let call):
 			ToolCallView(call: call)
 		case .toolRound(let round):
@@ -107,9 +285,9 @@ struct TranscriptRowView: View {
 		case .notice(let notice):
 			NoticeView(notice: notice)
 		case .queued(let item):
-			UserBlock(text: item.text ?? "Queued message", tag: item.mode == .steer ? "steer" : "queued", dim: true)
+			InputRow(text: item.text ?? "Queued message", tag: item.mode == .steer ? "steer" : "queued", dim: true)
 		case .pending(let pending):
-			PendingView(pending: pending, store: store)
+			InputRow(text: pending.text, tag: pending.failure == nil ? "sending" : nil, dim: true, pendingImages: pending.images.count, pending: pending)
 		}
 	}
 }
@@ -134,21 +312,43 @@ private struct Gutter<Content: View>: View {
 	}
 }
 
-/// The user's message: a framed block with a `❯` prompt and a violet edge.
-private struct UserBlock: View {
+/// The user's message: a framed block with a `❯` prompt and a violet edge. The same row shows it sending, queued
+/// and placed (one row ID throughout), so it brightens in place as it lands; a failed send offers retry.
+private struct InputRow: View {
 	let text: String
 	var images: [ImageRef] = []
 	var tag: String?
 	var dim = false
 	/// Images not sent yet, shown as a count.
 	var pendingImages = 0
+	/// Set while it's the client's own send not yet placed.
+	var pending: PendingSend?
 	@Environment(ConversationStore.self) private var store
 
 	var body: some View {
+		VStack(alignment: .leading, spacing: 6) {
+			block
+			Disclosure(open: pending?.failure != nil) {
+				if let pending, let failure = pending.failure {
+					HStack(spacing: 10) {
+						Text(failure).foregroundStyle(Palette.bad)
+						Button("[retry]") { store.retry(pending) }.buttonStyle(.plain).foregroundStyle(Palette.accent)
+						Button("[discard]") { store.discard(pending) }.buttonStyle(.plain).foregroundStyle(Palette.ink3)
+					}
+					.font(Typography.uiSmall)
+					.padding(.leading, 24)
+				}
+			}
+		}
+		.animation(.state, value: dim)
+		.animation(.state, value: tag)
+	}
+
+	private var block: some View {
 		Gutter(glyph: "❯", color: dim ? Palette.ink3 : Palette.accent) {
 			VStack(alignment: .leading, spacing: 4) {
 				if let tag {
-					Text(tag).font(Typography.label).foregroundStyle(Palette.accent)
+					Text(tag).font(Typography.label).foregroundStyle(Palette.accent).transition(.opacity)
 				}
 				if !images.isEmpty { TranscriptImages(refs: images, store: store) }
 				if pendingImages > 0 {
@@ -174,18 +374,26 @@ private struct UserBlock: View {
 	}
 }
 
-/// An answer: Markdown in IBM Plex Sans after a `●` mark, with `[copy]` on hover once it's finished.
+/// An answer: Markdown in IBM Plex Sans after a `●` mark, with `[copy]` on hover once it's finished. Streamed text
+/// reveals smoothly, its newest words fading in; the mark is the accent until the answer is written out.
 private struct AnswerBlock: View {
+	let id: String
 	let text: String
 	let streaming: Bool
 	@State private var hovering = false
 	@State private var copied = false
 
 	var body: some View {
-		Gutter(glyph: "●", color: streaming ? Palette.accent : Palette.ink3) {
+		Revealing(id: id, text: text) { visible, revealing in
+			answer(visible, writing: streaming || revealing)
+		}
+	}
+
+	private func answer(_ visible: String, writing: Bool) -> some View {
+		Gutter(glyph: "●", color: writing ? Palette.accent : Palette.ink3) {
 			VStack(alignment: .leading, spacing: 4) {
-				MarkdownView(source: text)
-				if !streaming {
+				MarkdownView(source: visible, revealing: writing)
+				if !writing {
 					Button(copied ? "[copied]" : "[copy]") {
 						NSPasteboard.general.clearContents()
 						NSPasteboard.general.setString(text, forType: .string)
@@ -208,37 +416,54 @@ private struct AnswerBlock: View {
 	}
 }
 
+/// `∴ thinking`, with a light passing over it while the model thinks, then `∴ thought`. Opened, the thinking itself,
+/// revealed as it streams.
 private struct ThinkingRow: View {
+	let id: String
 	let text: String
 	let redacted: Bool
 	let streaming: Bool
 	@State private var expanded = false
+	@Environment(\.revealLedger) private var ledger
 
 	var body: some View {
 		Gutter(glyph: "∴") {
 			VStack(alignment: .leading, spacing: 6) {
 				Button {
-					withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
+					// A finished thought opens whole; only one still streaming reveals.
+					if !streaming { ledger?.record(id, Double(text.count)) }
+					withAnimation(.row) { expanded.toggle() }
 				} label: {
-					HStack(spacing: 8) {
-						Text(streaming ? "thinking" : "thought")
-						if streaming { StateMark(.running, size: 9) }
+					ZStack(alignment: .leading) {
+						if streaming {
+							Text("thinking").shimmer().transition(.opacity)
+						} else {
+							Text("thought").foregroundStyle(Palette.ink3).transition(.opacity)
+						}
 					}
 					.font(Typography.uiSmall)
-					.foregroundStyle(Palette.ink3)
 					.contentShape(Rectangle())
 				}
 				.buttonStyle(.plain)
-				if expanded {
-					Text(redacted ? "The provider redacted this thinking." : text)
-						.font(Typography.readingSmall)
-						.foregroundStyle(Palette.ink2)
-						.lineSpacing(3)
-						.textSelection(.enabled)
+				Disclosure(open: expanded) {
+					Group {
+						if redacted {
+							Text("The provider redacted this thinking.")
+						} else {
+							Revealing(id: id, text: text) { visible, revealing in
+								Text(visible).tailFade(revealing)
+							}
+						}
+					}
+					.font(Typography.readingSmall)
+					.foregroundStyle(Palette.ink2)
+					.lineSpacing(3)
+					.textSelection(.enabled)
 				}
 			}
 		}
 		.padding(.vertical, 4)
+		.animation(.state, value: streaming)
 	}
 }
 
@@ -257,6 +482,8 @@ private struct ConsoleBox<Header: View, Content: View>: View {
 			content
 		}
 		.background(Palette.paper2)
+		// Opening content slides out from under the header, not over the rows above.
+		.clipped()
 		.overlay(Rectangle().stroke(Palette.rule))
 	}
 }
@@ -268,22 +495,33 @@ private struct CallLine: View {
 
 	var body: some View {
 		HStack(spacing: 8) {
-			StateMark(mark, size: 11)
+			// Each state's mark replaces the last with a quick scale and fade: a call that finishes at once still reads
+			// as waiting, then done.
+			ZStack {
+				StateMark(mark, size: 11)
+					.id(mark)
+					.transition(.scale(scale: 0.4).combined(with: .opacity))
+			}
+			.frame(width: 11, height: 11)
 			Text(call.name == "bash" ? "$" : call.name)
 				.foregroundStyle(Palette.ink3)
 			Text(argument)
-				.foregroundStyle(Palette.ink)
+				.foregroundStyle(argument == "…" ? Palette.ink3 : Palette.ink)
 				.lineLimit(1)
 				.truncationMode(.tail)
+				.contentTransition(.opacity)
 			Spacer(minLength: 8)
 			Text(status)
 				.foregroundStyle(statusColor)
 				.monospacedDigit()
+				.contentTransition(.numericText())
 			Text(expanded ? "▾" : "▸").foregroundStyle(Palette.ink3)
 		}
 		.font(Typography.code)
 		.contentShape(Rectangle())
 		.help(argumentFull)
+		.animation(.state, value: mark)
+		.animation(.state, value: status)
 	}
 
 	private var mark: StateMark.State {
@@ -297,9 +535,10 @@ private struct CallLine: View {
 		}
 	}
 
-	/// The one argument worth showing: a command, a path, or the arguments as JSON.
+	/// The one argument worth showing: a command, a path, or the arguments as JSON; `…` while they're still streaming.
 	var argument: String {
 		if case .object(let object) = call.args {
+			if object.isEmpty { return "…" }
 			for key in ["command", "path", "file_path", "pattern", "url", "query"] {
 				if let value = object[key]?.stringValue { return value.replacingOccurrences(of: "\n", with: " ⏎ ") }
 			}
@@ -386,22 +625,25 @@ private struct ToolCallView: View {
 	var body: some View {
 		ConsoleBox {
 			Button {
-				withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
+				withAnimation(.row) { expanded.toggle() }
 			} label: {
 				CallLine(call: call, expanded: expanded || running)
 			}
 			.buttonStyle(.plain)
 		} content: {
-			if case .needsApproval = call.status {
-				EmptyView()
-			} else if running && !call.output.isEmpty {
-				CallDetail(call: call, tail: true)
-			} else if expanded {
-				CallDetail(call: call, tail: false)
+			// The running tail opens under the line once output starts and folds away when the call ends; it stays a
+			// tail while it folds, so it doesn't become the whole output on its way out.
+			Disclosure(open: opened) {
+				CallDetail(call: call, tail: running || !expanded)
 			}
 		}
 		.padding(.leading, 24)
 		.padding(.vertical, 3)
+	}
+
+	private var opened: Bool {
+		if case .needsApproval = call.status { return false }
+		return (running && !call.output.isEmpty) || expanded
 	}
 
 	private var running: Bool {
@@ -413,8 +655,32 @@ private struct ToolCallView: View {
 	}
 }
 
-/// A finished round folded into one box: "+ ran 3 commands". Opens to its calls, each opening to its output.
+/// A run of calls: each call and the thinking between them while the run goes on, then, once it's over, one box
+/// ("+ ran 3 commands") that opens to its calls. The fold happens in place: the calls close up as the box opens over
+/// them. Thinking after the last call stays below.
 private struct ToolRoundView: View {
+	let round: ToolRound
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 0) {
+			Disclosure(open: round.folded) { FoldedRound(round: round) }
+			Disclosure(open: !round.folded) { entries(round.body) }
+			entries(round.trailing)
+		}
+	}
+
+	private func entries(_ entries: [ToolRound.Entry]) -> some View {
+		ForEach(entries) { entry in
+			switch entry {
+			case .call(let call): ToolCallView(call: call)
+			case .thinking(let id, let text, let redacted, let streaming): ThinkingRow(id: id, text: text, redacted: redacted, streaming: streaming)
+			}
+		}
+	}
+}
+
+/// A finished round folded into one box: "+ ran 3 commands". Opens to its calls, each opening to its output.
+private struct FoldedRound: View {
 	let round: ToolRound
 	@State private var expanded = false
 	@State private var open: Set<String> = []
@@ -422,7 +688,7 @@ private struct ToolRoundView: View {
 	var body: some View {
 		ConsoleBox {
 			Button {
-				withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
+				withAnimation(.row) { expanded.toggle() }
 			} label: {
 				HStack(spacing: 8) {
 					StateMark(round.failed > 0 ? .failed : .done, size: 11)
@@ -440,20 +706,20 @@ private struct ToolRoundView: View {
 			}
 			.buttonStyle(.plain)
 		} content: {
-			if expanded {
-				VStack(alignment: .leading, spacing: 0) {
-					ForEach(round.calls, id: \.callId) { call in
-						Button {
+			Disclosure(open: expanded) {
+				ForEach(round.calls, id: \.callId) { call in
+					Button {
+						withAnimation(.row) {
 							if open.contains(call.callId) { open.remove(call.callId) } else { open.insert(call.callId) }
-						} label: {
-							CallLine(call: call, expanded: open.contains(call.callId))
-								.padding(.horizontal, 10)
-								.padding(.vertical, 6)
 						}
-						.buttonStyle(.plain)
-						.overlay(alignment: .top) { Rectangle().fill(Palette.rule).frame(height: 1) }
-						if open.contains(call.callId) { CallDetail(call: call, tail: false) }
+					} label: {
+						CallLine(call: call, expanded: open.contains(call.callId))
+							.padding(.horizontal, 10)
+							.padding(.vertical, 6)
 					}
+					.buttonStyle(.plain)
+					.overlay(alignment: .top) { Rectangle().fill(Palette.rule).frame(height: 1) }
+					Disclosure(open: open.contains(call.callId)) { CallDetail(call: call, tail: false) }
 				}
 			}
 		}
@@ -558,22 +824,54 @@ private struct NoticeView: View {
 	}
 }
 
-private struct PendingView: View {
-	let pending: PendingSend
-	let store: ConversationStore
+private extension TranscriptRow {
+	var isText: Bool {
+		if case .text = kind { true } else { false }
+	}
+}
 
-	var body: some View {
-		VStack(alignment: .leading, spacing: 6) {
-			UserBlock(text: pending.text, tag: pending.failure == nil ? "sending" : nil, dim: true, pendingImages: pending.images.count)
-			if let failure = pending.failure {
-				HStack(spacing: 10) {
-					Text(failure).foregroundStyle(Palette.bad)
-					Button("[retry]") { store.retry(pending) }.buttonStyle(.plain).foregroundStyle(Palette.accent)
-					Button("[discard]") { store.discard(pending) }.buttonStyle(.plain).foregroundStyle(Palette.ink3)
-				}
-				.font(Typography.uiSmall)
-				.padding(.leading, 24)
-			}
+/// Takes the space it's offered without asking its content, and gives the content all of it. After every update the
+/// window works out its minimum size, and a vertical scroll view asked for its size measures its whole content at that
+/// width: the transcript's every row, laid out again on each frame of a stream. It reports no alignment guides either,
+/// so a stack placing it doesn't reach into the content for them.
+struct FillSpace: Layout {
+	func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+		CGSize(width: proposal.width ?? 0, height: proposal.height ?? 0)
+	}
+
+	func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+		for subview in subviews { subview.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size)) }
+	}
+
+	func explicitAlignment(of guide: HorizontalAlignment, in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGFloat? { nil }
+	func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGFloat? { nil }
+}
+
+/// A transcript row: full width, its content in a centred column at most `measure` wide with `margin` either side.
+/// Frames and padding would do the same, but placing by alignment asks the row's content for its guides, down to
+/// each line of text, on every frame; this places it directly and reports no guides.
+struct ReadingColumn: Layout {
+	let measure: CGFloat
+	let margin: CGFloat
+
+	private func column(_ width: CGFloat) -> CGFloat {
+		max(0, min(measure, width - 2 * margin))
+	}
+
+	func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+		let width = proposal.width ?? (measure + 2 * margin)
+		let height = subviews.first?.sizeThatFits(ProposedViewSize(width: column(width), height: nil)).height ?? 0
+		return CGSize(width: width, height: height)
+	}
+
+	func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+		let width = column(bounds.width)
+		let x = bounds.minX + max(margin, (bounds.width - width) / 2)
+		for subview in subviews {
+			subview.place(at: CGPoint(x: x, y: bounds.minY), proposal: ProposedViewSize(width: width, height: nil))
 		}
 	}
+
+	func explicitAlignment(of guide: HorizontalAlignment, in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGFloat? { nil }
+	func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGFloat? { nil }
 }

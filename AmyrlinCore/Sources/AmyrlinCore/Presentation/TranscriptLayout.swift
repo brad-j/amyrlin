@@ -27,11 +27,56 @@ public struct ToolCallRow: Sendable, Hashable {
 	public var images: [ImageRef] = []
 }
 
-/// A finished round of two or more tool calls, folded into one line (aludra's design: "read 4 files · ran 2 commands").
+/// A run of tool calls and the thinking between them, from the first call to whatever the model writes next. It's one
+/// row from its first call on, so it folds in place: once the run is over, two or more finished calls fold into one
+/// line (aludra's design: "read 4 files · ran 2 commands"), and thinking after the last call stays open below it.
 public struct ToolRound: Sendable, Hashable {
-	public var calls: [ToolCallRow]
+	public enum Entry: Sendable, Hashable, Identifiable {
+		case call(ToolCallRow)
+		case thinking(id: String, text: String, redacted: Bool, streaming: Bool)
+
+		public var id: String {
+			switch self {
+			case .call(let call): "call-\(call.callId)"
+			case .thinking(let id, _, _, _): id
+			}
+		}
+	}
+
+	/// The calls and thinking in order, from the first call on.
+	public var entries: [Entry]
+	/// The run is over and its calls fold into one line.
+	public var folded: Bool
+
+	public init(entries: [Entry], folded: Bool) {
+		self.entries = entries
+		self.folded = folded
+	}
+
+	public var calls: [ToolCallRow] {
+		entries.compactMap { if case .call(let call) = $0 { call } else { nil } }
+	}
+
+	private var lastCall: Int? {
+		entries.lastIndex { if case .call = $0 { true } else { false } }
+	}
+
+	/// The calls and the thinking between them: what folds.
+	public var body: [Entry] {
+		guard let lastCall else { return [] }
+		return Array(entries[...lastCall])
+	}
+
+	/// Thinking after the last call, shown under the fold: what the model thought before it answered.
+	public var trailing: [Entry] {
+		guard let lastCall else { return entries }
+		return Array(entries[(lastCall + 1)...])
+	}
+
 	/// Thinking between the calls, shown when the round is opened.
-	public var thinking: [String]
+	public var thinking: [String] {
+		body.compactMap { if case .thinking(_, let text, _, _) = $0 { text } else { nil } }
+	}
 
 	public var failed: Int {
 		calls.filter { if case .failed = $0.status { true } else { false } }.count
@@ -106,17 +151,26 @@ public enum TranscriptLayout {
 				resultEntries[result.callId] = item.id
 			}
 		}
+		// A message keeps one row from sent to queued to in the transcript, so it changes in place instead of being
+		// replaced: its row is named by the request that sent it.
+		var requests: [EntryID: String] = [:]
+		for submission in state.submissions.values {
+			if let entry = submission.entryId, let request = submission.requestId { requests[entry] = request }
+		}
 		let lastAssistant = state.items.last { if case .assistant = $0.body { true } else { false } }?.id
 		var shownCalls: Set<String> = []
+		var previous: EntryID?
 
 		for item in state.items {
 			let inContext = state.isInContext(item.id)
+			defer { previous = item.id }
 			switch item.body {
 			case .user(let user):
-				rows.append(TranscriptRow(id: "item-\(item.id)", kind: .user(text: text(of: user.content, images: false), kind: user.kind, images: ImageRef.all(in: user.content, entryId: item.id)), inContext: inContext))
+				let id = requests[item.id].map { "input-\($0)" } ?? "item-\(item.id)"
+				rows.append(TranscriptRow(id: id, kind: .user(text: text(of: user.content, images: false), kind: user.kind, images: ImageRef.all(in: user.content, entryId: item.id)), inContext: inContext))
 			case .assistant(let assistant):
 				for (index, block) in assistant.content.enumerated() {
-					let id = "item-\(item.id)-\(index)"
+					let id = blockID(after: previous, index)
 					switch block {
 					case .text(let text) where !text.isEmpty:
 						rows.append(TranscriptRow(id: id, kind: .text(text, streaming: false), inContext: inContext))
@@ -158,13 +212,17 @@ public enum TranscriptLayout {
 		}
 
 		if let streaming = state.streaming {
+			// The ids the blocks keep once the answer is an item, so its rows aren't rebuilt when streaming ends.
+			let last = state.items.last?.id
 			for (index, block) in streaming.content.enumerated() {
-				let id = "stream-\(index)"
+				let id = blockID(after: last, index)
+				// Only the newest block is still being written; the ones before it are finished.
+				let growing = index == streaming.content.count - 1
 				switch block {
 				case .text(let text):
-					rows.append(TranscriptRow(id: id, kind: .text(text, streaming: true), inContext: true))
+					rows.append(TranscriptRow(id: id, kind: .text(text, streaming: growing), inContext: true))
 				case .thinking(let text, let redacted):
-					rows.append(TranscriptRow(id: id, kind: .thinking(text, redacted: redacted, streaming: true), inContext: true))
+					rows.append(TranscriptRow(id: id, kind: .thinking(text, redacted: redacted, streaming: growing), inContext: true))
 				case .toolCall(let call):
 					rows.append(TranscriptRow(id: "call-\(call.id)", kind: .toolCall(ToolCallRow(callId: call.id, name: call.name, args: call.args, status: .waiting, output: "", result: nil)), inContext: true))
 				default:
@@ -176,37 +234,60 @@ public enum TranscriptLayout {
 		for failure in state.failures {
 			rows.append(TranscriptRow(id: "failure-\(failure.taskId)", kind: .notice(.taskFailed(failure)), inContext: true))
 		}
-		rows = foldRounds(rows)
+		rows = foldRounds(rows, live: state.isBusy)
+		var used = Set(rows.map(\.id))
 		for item in state.inbox where item.mode != .write {
-			rows.append(TranscriptRow(id: "queued-\(item.submissionId)", kind: .queued(item), inContext: true))
+			let id = item.requestId.map { "input-\($0)" } ?? "queued-\(item.submissionId)"
+			guard used.insert(id).inserted else { continue }
+			rows.append(TranscriptRow(id: id, kind: .queued(item), inContext: true))
 		}
 		for pending in outbox {
-			rows.append(TranscriptRow(id: "pending-\(pending.id)", kind: .pending(pending), inContext: true))
+			guard used.insert("input-\(pending.id)").inserted else { continue }
+			rows.append(TranscriptRow(id: "input-\(pending.id)", kind: .pending(pending), inContext: true))
 		}
 		return rows
 	}
 
-	/// Folds each run of two or more finished calls (with any thinking between them) into one `toolRound` row.
-	static func foldRounds(_ rows: [TranscriptRow]) -> [TranscriptRow] {
+	/// A block of the assistant item after entry `previous`. Streaming blocks get the ids of the item they become,
+	/// which is added after the newest entry; ids by entry ID would change as the stream ends.
+	static func blockID(after previous: EntryID?, _ index: Int) -> String {
+		"after-\(previous.map(String.init) ?? "start")-\(index)"
+	}
+
+	/// Groups each run of calls and thinking into one `toolRound` row from its first call on; thinking before the first
+	/// call stays a row of its own, as how the model started. The round folds once the run is over (an answer, notice
+	/// or message follows it, or the conversation isn't `live`) and has two or more finished calls. A run still going
+	/// stays open, so a call that finishes at once doesn't fold the rows under the reader mid-run.
+	static func foldRounds(_ rows: [TranscriptRow], live: Bool) -> [TranscriptRow] {
 		var out: [TranscriptRow] = []
 		var run: [TranscriptRow] = []
-		func finish() {
-			let calls = run.compactMap { row -> ToolCallRow? in if case .toolCall(let call) = row.kind { call } else { nil } }
+		func isCall(_ row: TranscriptRow) -> Bool {
+			if case .toolCall = row.kind { true } else { false }
+		}
+		func finish(closed: Bool) {
+			guard let firstCall = run.firstIndex(where: isCall) else {
+				out.append(contentsOf: run)
+				run = []
+				return
+			}
+			let entries = run[firstCall...].compactMap { row -> ToolRound.Entry? in
+				switch row.kind {
+				case .toolCall(let call): .call(call)
+				case .thinking(let text, let redacted, let streaming): .thinking(id: row.id, text: text, redacted: redacted, streaming: streaming)
+				default: nil
+				}
+			}
+			let calls = entries.compactMap { if case .call(let call) = $0 { call } else { nil } }
 			let settled = calls.allSatisfy { call in
 				switch call.status {
 				case .done, .failed, .ended, .noResult: true
 				default: false
 				}
 			}
-			if calls.count >= 2, settled, let first = run.first(where: { if case .toolCall = $0.kind { true } else { false } }) {
-				// Thinking before the first call stays visible: it's how the model started.
-				let lead = run.prefix { if case .thinking = $0.kind { true } else { false } }
-				out.append(contentsOf: lead)
-				let thinking = run.dropFirst(lead.count).compactMap { row -> String? in if case .thinking(let text, _, _) = row.kind { text } else { nil } }
-				out.append(TranscriptRow(id: "round-\(first.id)", kind: .toolRound(ToolRound(calls: calls, thinking: thinking)), inContext: first.inContext))
-			} else {
-				out.append(contentsOf: run)
-			}
+			let first = run[firstCall]
+			out.append(contentsOf: run[..<firstCall])
+			let round = ToolRound(entries: entries, folded: closed && calls.count >= 2 && settled)
+			out.append(TranscriptRow(id: "round-\(first.id)", kind: .toolRound(round), inContext: first.inContext))
 			run = []
 		}
 		for row in rows {
@@ -214,11 +295,11 @@ public enum TranscriptLayout {
 			case .toolCall, .thinking:
 				run.append(row)
 			default:
-				finish()
+				finish(closed: true)
 				out.append(row)
 			}
 		}
-		finish()
+		finish(closed: !live)
 		return out
 	}
 

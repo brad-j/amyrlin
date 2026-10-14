@@ -3,49 +3,57 @@ import AppKit
 import SwiftUI
 
 /// Renders Markdown blocks from AmyrlinCore's parser; inline formatting through Foundation's inline parser.
+/// `revealing` is for text cut off mid-stream: it's settled first (`Markdown.settled`), and the end of its last block
+/// fades in.
 struct MarkdownView: View {
 	let source: String
+	var revealing = false
 
 	var body: some View {
+		let blocks = Markdown.blocks(revealing ? Markdown.settled(source) : source)
 		VStack(alignment: .leading, spacing: 10) {
-			ForEach(Array(Markdown.blocks(source).enumerated()), id: \.offset) { _, block in
-				BlockView(block: block)
+			ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+				// Equatable, so finished blocks above the one being written aren't laid out again each frame.
+				BlockView(block: block, tail: revealing && index == blocks.count - 1).equatable()
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 	}
 }
 
-private struct BlockView: View {
+private struct BlockView: View, Equatable {
 	let block: MarkdownBlock
+	/// The block's end is still being revealed.
+	var tail = false
 
 	var body: some View {
 		switch block {
 		case .paragraph(let text):
-			Inline(text)
+			Inline(text, tail: tail)
 		case .heading(let level, let text):
 			Text(Inline.attributed(text, strong: Typography.heading(level)))
 				.font(Typography.heading(level))
 				.foregroundStyle(Palette.ink)
+				.tailFade(tail)
 				.padding(.top, level <= 2 ? 6 : 2)
 				.textSelection(.enabled)
 		case .list(let items):
 			VStack(alignment: .leading, spacing: 5) {
-				ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+				ForEach(Array(items.enumerated()), id: \.offset) { index, item in
 					HStack(alignment: .firstTextBaseline, spacing: 8) {
 						marker(item)
 							.frame(minWidth: 14, alignment: .trailing)
-						Inline(item.text)
+						Inline(item.text, tail: tail && index == items.count - 1)
 					}
 					.padding(.leading, CGFloat(item.depth) * 18)
 				}
 			}
 		case .code(let language, let code, _):
-			CodeBlock(language: language, code: code)
+			CodeBlock(language: language, code: code, tail: tail)
 		case .quote(let text):
 			HStack(alignment: .top, spacing: 12) {
 				Rectangle().fill(Palette.rule2).frame(width: 2)
-				Inline(text, color: Palette.ink2)
+				Inline(text, color: Palette.ink2, tail: tail)
 			}
 			.fixedSize(horizontal: false, vertical: true)
 		case .table(let header, let rows):
@@ -72,16 +80,19 @@ private struct BlockView: View {
 private struct Inline: View {
 	let text: String
 	var color: Color = Palette.ink
+	var tail = false
 
-	init(_ text: String, color: Color = Palette.ink) {
+	init(_ text: String, color: Color = Palette.ink, tail: Bool = false) {
 		self.text = text
 		self.color = color
+		self.tail = tail
 	}
 
 	var body: some View {
 		Text(Self.attributed(text))
 			.font(Typography.reading)
 			.foregroundStyle(color)
+			.tailFade(tail)
 			.lineSpacing(4)
 			.textSelection(.enabled)
 			.fixedSize(horizontal: false, vertical: true)
@@ -107,6 +118,7 @@ private struct Inline: View {
 private struct CodeBlock: View {
 	let language: String?
 	let code: String
+	var tail = false
 	@State private var copied = false
 
 	var body: some View {
@@ -137,6 +149,7 @@ private struct CodeBlock: View {
 				Text(code)
 					.font(Typography.code)
 					.foregroundStyle(Palette.ink)
+					.tailFade(tail)
 					.lineSpacing(3)
 					.textSelection(.enabled)
 					.fixedSize()

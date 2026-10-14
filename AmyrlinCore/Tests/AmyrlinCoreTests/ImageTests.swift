@@ -54,8 +54,8 @@ import UniformTypeIdentifiers
 		}
 		#expect(text == "What's this?", "the image isn't a placeholder in the text")
 		#expect(images == [ImageRef(entryId: 7, index: 1, mimeType: "image/png")])
-		guard case .toolCall(let call)? = rows.first(where: { $0.id == "call-c1" })?.kind else {
-			Issue.record("expected the call row")
+		guard case .toolRound(let round)? = rows.first(where: { $0.id == "round-call-c1" })?.kind, let call = round.calls.first else {
+			Issue.record("expected the call's round")
 			return
 		}
 		#expect(call.output == "Read image file [image/png]")

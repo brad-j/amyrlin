@@ -20,12 +20,14 @@ struct ConversationView: View {
 			} else if store.isResyncing || !host.isConnected {
 				Banner(text: host.isConnected ? "Catching up" : "Reconnecting to \(host.url.host() ?? "the host")", color: Palette.wait)
 			}
-			TranscriptView(store: store)
+			FillSpace { TranscriptView(store: store) }
 			VStack(spacing: 8) {
+				// An approval rises in above the composer and drops away once answered, instead of popping.
 				ForEach(store.state.approvals) { approval in
 					ApprovalCard(approval: approval, store: store)
 						.frame(maxWidth: Metrics.measure + 48)
 						.padding(.horizontal, 40)
+						.transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 10)), removal: .opacity.combined(with: .offset(y: 6))))
 				}
 				// The sidebar's toggle sits in the margin at the column's edge, level with the composer.
 				ComposerView(store: store, host: host)
@@ -37,6 +39,7 @@ struct ConversationView: View {
 			.padding(.top, 8)
 			.padding(.bottom, 12)
 			.frame(maxWidth: .infinity)
+			.animation(.row, value: store.state.approvals.map(\.approvalId))
 		}
 		.background(Palette.paper)
 		.alert("Command failed", isPresented: Binding(get: { store.lastError != nil }, set: { if !$0 { store.lastError = nil } })) {

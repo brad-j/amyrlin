@@ -29,7 +29,8 @@ final class AppModel {
 	var selection: ConversationKey? {
 		didSet {
 			if selection != nil { draft = nil }
-			// Reopened at the next launch.
+			// Reopened at the next launch; not for machines given at launch, whose sessions aren't in the saved list.
+			guard !ephemeral else { return }
 			if let selection {
 				UserDefaults.standard.set(["machine": selection.machine.uuidString, "conversation": String(selection.conversation)], forKey: Self.selectionKey)
 			} else {

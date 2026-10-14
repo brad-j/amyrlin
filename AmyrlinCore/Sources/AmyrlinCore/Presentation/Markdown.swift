@@ -29,6 +29,86 @@ public enum Markdown {
 		return parser.parse()
 	}
 
+	/// Text cut off mid-stream, ready to show without flickering between two looks as it grows. A trailing line that
+	/// would change kind once it's written (a table header before its separator, a bare list marker or `#`, half a
+	/// fence) waits; an open `**` or backtick is closed; half a link shows as its label. Finished text needs none of it.
+	public static func settled(_ text: String) -> String {
+		var lines = text.components(separatedBy: "\n")
+		let fences = lines.filter { Parser.fence($0.trimmingCharacters(in: .whitespaces)) != nil }.count
+		if fences % 2 == 1 {
+			// Inside a code block: a closing fence still being typed would show as code, and an empty last line is
+			// an extra line that goes away if the fence comes next. Both wait.
+			if let last = lines.last?.trimmingCharacters(in: .whitespaces), last.count < 3, last.allSatisfy({ $0 == "`" || $0 == "~" }),
+				Parser.fence(lines.dropLast().last?.trimmingCharacters(in: .whitespaces) ?? "") == nil
+			{
+				lines.removeLast()
+			}
+			return lines.joined(separator: "\n")
+		}
+		if let last = lines.last?.trimmingCharacters(in: .whitespaces), isUnfinishedMarker(last) {
+			lines.removeLast()
+		}
+		// Trailing `|` lines are a table only once the header has its separator.
+		var start = lines.count
+		while start > 0 {
+			let line = lines[start - 1].trimmingCharacters(in: .whitespaces)
+			if line.hasPrefix("|") || (line.isEmpty && start == lines.count) { start -= 1 } else { break }
+		}
+		let pipes = lines[start...].filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+		if !pipes.isEmpty, !(pipes.count >= 2 && Parser.isTableSeparator(pipes[pipes.startIndex + 1])) {
+			lines.removeSubrange(start...)
+		} else if pipes.count > 2, let last = lines.last?.trimmingCharacters(in: .whitespaces), !last.isEmpty,
+			!last.hasSuffix("|") || last.count(where: { $0 == "|" }) < pipes[pipes.startIndex].count(where: { $0 == "|" })
+		{
+			// A body row still being written would resize the columns with each character; it shows once it has all
+			// its cells.
+			lines.removeLast()
+		}
+		if let last = lines.last, !last.isEmpty, Parser.fence(last.trimmingCharacters(in: .whitespaces)) == nil {
+			lines[lines.count - 1] = closingInline(last)
+		}
+		return lines.joined(separator: "\n")
+	}
+
+	/// `-`, `3.`, `##`, `--`: the start of a list item, heading or rule with nothing after it yet.
+	static func isUnfinishedMarker(_ trimmed: String) -> Bool {
+		guard !trimmed.isEmpty else { return false }
+		if ["-", "*", "+", "--", "**", "__", "_", ">"].contains(trimmed) { return true }
+		if trimmed.allSatisfy({ $0 == "#" }), trimmed.count <= 6 { return true }
+		if trimmed.allSatisfy({ $0 == "`" || $0 == "~" }), trimmed.count < 3 { return true }
+		let digits = trimmed.prefix { $0.isNumber }
+		if !digits.isEmpty, digits.count <= 9 {
+			let rest = trimmed.dropFirst(digits.count)
+			return rest.isEmpty || rest == "." || rest == ")"
+		}
+		return false
+	}
+
+	/// Closes what the cut left open on the last line: a code span, `**`, a link.
+	static func closingInline(_ line: String) -> String {
+		var line = line
+		if line.filter({ $0 == "`" }).count % 2 == 1 {
+			if line.hasSuffix("`") { line.removeLast() } else { line += "`" }
+		}
+		// Outside code spans: every other stretch between backticks.
+		let prose = line.split(separator: "`", omittingEmptySubsequences: false).enumerated().filter { $0.offset % 2 == 0 }.map(\.element).joined(separator: " ")
+		if prose.components(separatedBy: "**").count % 2 == 0 {
+			if line.hasSuffix("**") { line.removeLast(2) } else { line += "**" }
+		}
+		if let open = line.lastIndex(of: "["), !line[open...].contains("`") {
+			let rest = line[line.index(after: open)...]
+			if let close = rest.firstIndex(of: "]") {
+				let after = rest[rest.index(after: close)...]
+				if after.hasPrefix("("), !after.contains(")") {
+					line = String(line[..<open]) + String(rest[..<close])
+				}
+			} else {
+				line.remove(at: open)
+			}
+		}
+		return line
+	}
+
 	private struct Parser {
 		let lines: [String]
 		var index = 0
