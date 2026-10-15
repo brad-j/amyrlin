@@ -93,7 +93,7 @@ private struct Inline: View {
 			.font(Typography.reading)
 			.foregroundStyle(color)
 			.tailFade(tail)
-			.lineSpacing(4)
+			.lineSpacing(Typography.readingLineSpacing)
 			.textSelection(.enabled)
 			.fixedSize(horizontal: false, vertical: true)
 			.tint(Palette.accent)

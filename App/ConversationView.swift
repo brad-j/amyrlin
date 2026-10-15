@@ -37,7 +37,7 @@ struct ConversationView: View {
 					.frame(maxWidth: .infinity)
 					.overlay(alignment: .leading) { SidebarToggle().padding(.leading, 10) }
 			}
-			.padding(.top, 8)
+			.padding(.top, 18)
 			.padding(.bottom, 12)
 			.frame(maxWidth: .infinity)
 			.animation(.row, value: store.state.approvals.map(\.approvalId))

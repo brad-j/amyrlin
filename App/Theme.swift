@@ -48,6 +48,12 @@ import SwiftUI
 	static var projectHeader: Font { mono(12.5, .regular) }
 	/// A machine's name is a row's size; the computer icon and full ink set it apart.
 	static var machineHeader: Font { mono(12.5, .regular) }
+	/// The space between lines of `reading` text: Plex Sans sets lines 1.3 em apart, and the transcript's are 10% more
+	/// than that plus 4 points.
+	static var readingLineSpacing: CGFloat {
+		let natural = 1.3 * 15 * textScale
+		return (natural + 4) * 1.1 - natural
+	}
 	/// Line height of `codeSmall`, for blocks that keep a fixed number of lines.
 	static var codeSmallLine: CGFloat { 15.5 * textScale }
 }

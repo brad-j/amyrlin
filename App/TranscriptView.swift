@@ -358,7 +358,7 @@ private struct InputRow: View {
 					Text(text)
 						.font(Typography.reading)
 						.foregroundStyle(dim ? Palette.ink2 : Palette.ink)
-						.lineSpacing(3)
+						.lineSpacing(Typography.readingLineSpacing)
 						.textSelection(.enabled)
 				}
 			}
