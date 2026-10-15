@@ -201,6 +201,7 @@ struct ComposerView: View {
 	@State private var text = ""
 	@State private var steer = false
 	@State private var attachments = Attachments()
+	@State private var pasted = PastedText()
 	@FocusState private var focused: Bool
 
 	private var busy: Bool { store.state.isBusy }
@@ -211,7 +212,7 @@ struct ComposerView: View {
 			line
 		}
 		.promptBox(focused: focused)
-		.acceptsImages(attachments, focused: focused)
+		.acceptsPastes(attachments, text: pasted, focused: focused)
 		.onAppear { focused = true }
 		.onChange(of: busy) { _, now in if !now { steer = false } }
 	}
@@ -302,9 +303,10 @@ struct ComposerView: View {
 	}
 
 	private func send(steer: Bool) {
-		let message = text
+		let message = pasted.expand(text)
 		guard canSend else { return }
 		text = ""
+		pasted.clear()
 		store.send(message, images: attachments.take(), whenBusy: steer ? .steer : .followUp)
 	}
 }

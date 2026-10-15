@@ -149,8 +149,7 @@ private struct StatusLine: View {
 				if !store.state.approvals.isEmpty {
 					Text("needs you").foregroundStyle(Palette.wait).padding(.trailing, 14)
 				}
-				Text(store.state.isBusy ? "running" : "idle")
-					.foregroundStyle(store.state.isBusy ? Palette.accent : Palette.ink3)
+				RunClock(turns: store.turns)
 			} else if let draft = model.draft, let machine = model.machine(draft.machine) {
 				host(machine.store)
 				segment("new session")
@@ -183,6 +182,25 @@ private struct StatusLine: View {
 			if !trailing { Text("  │  ").foregroundStyle(Palette.rule2) }
 			Text(text).foregroundStyle(Palette.ink3)
 			if trailing { Text("  │  ").foregroundStyle(Palette.rule2) }
+		}
+	}
+}
+
+/// `running 12s`, counting up, then `idle · 1m 05s`, the last run's time, once it ends.
+private struct RunClock: View {
+	let turns: TurnClock
+
+	var body: some View {
+		if let started = turns.started {
+			TimelineView(.periodic(from: started, by: 1)) { context in
+				Text("running \(TurnClock.format(context.date.timeIntervalSince(started)))")
+			}
+			.foregroundStyle(Palette.accent)
+			.monospacedDigit()
+		} else {
+			Text(turns.last.map { "idle · \(TurnClock.format($0))" } ?? "idle")
+				.foregroundStyle(Palette.ink3)
+				.monospacedDigit()
 		}
 	}
 }

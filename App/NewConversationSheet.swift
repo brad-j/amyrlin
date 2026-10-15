@@ -254,6 +254,7 @@ struct DraftView: View {
 	let project: ProjectInfo?
 	@State private var text = ""
 	@State private var attachments = Attachments()
+	@State private var pasted = PastedText()
 	@State private var sending = false
 	@FocusState private var focused: Bool
 
@@ -313,7 +314,7 @@ struct DraftView: View {
 				}
 			}
 			.promptBox(focused: focused)
-			.acceptsImages(attachments, focused: focused)
+			.acceptsPastes(attachments, text: pasted, focused: focused)
 			// The conversation's composer column, so nothing moves when the session opens.
 			.frame(maxWidth: Metrics.measure + 48)
 			.padding(.horizontal, 40)
@@ -326,13 +327,14 @@ struct DraftView: View {
 	}
 
 	private func send() {
-		let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
+		let message = pasted.expand(text).trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !message.isEmpty || !attachments.isEmpty, !sending else { return }
 		sending = true
 		let images = attachments.items.map(\.upload)
 		Task {
 			if await model.startConversation(on: machine, project: project?.dir, text: message, images: images) {
 				_ = attachments.take()
+				pasted.clear()
 			} else {
 				sending = false
 			}

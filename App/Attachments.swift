@@ -122,9 +122,11 @@ struct AttachmentStrip: View {
 }
 
 /// Takes images dropped on the view, and pasted (⌘V) while `focused` is true. The text field's editor would take the
-/// paste first and ignore an image, so ⌘V is looked at before it; text on the pasteboard pastes as usual.
-struct AcceptsImages: ViewModifier {
+/// paste first and ignore an image, so ⌘V is looked at before it. Long text goes into the field as a marker that
+/// `pasted` holds the text for (PastedText); other text pastes as usual. Backspace right after a marker deletes it whole.
+struct AcceptsPastes: ViewModifier {
 	let attachments: Attachments
+	let pasted: PastedText
 	let focused: Bool
 	@State private var monitor: Any?
 	@State private var targeted = false
@@ -145,15 +147,36 @@ struct AcceptsImages: ViewModifier {
 			.onAppear {
 				let flag = active
 				let attachments = attachments
+				let pasted = pasted
 				monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+					if flag.on, event.keyCode == 51, event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty {
+						return MainActor.assumeIsolated { Self.deleteMarker(in: pasted) } ? nil : event
+					}
 					guard flag.on, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command, event.charactersIgnoringModifiers == "v" else { return event }
-					return MainActor.assumeIsolated { attachments.paste() } ? nil : event
+					return MainActor.assumeIsolated { attachments.paste() || Self.pasteLong(into: pasted) } ? nil : event
 				}
 			}
 			.onDisappear {
 				if let monitor { NSEvent.removeMonitor(monitor) }
 				monitor = nil
 			}
+	}
+
+	/// Long text on the pasteboard goes in at the cursor as its marker. False for short text, or no text.
+	@MainActor private static func pasteLong(into pasted: PastedText, from pasteboard: NSPasteboard = .general) -> Bool {
+		guard let text = pasteboard.string(forType: .string), PastedText.isLong(text),
+			let editor = NSApp.keyWindow?.firstResponder as? NSTextView else { return false }
+		editor.insertText(pasted.hold(text), replacementRange: editor.selectedRange())
+		return true
+	}
+
+	/// Deletes the marker just before the cursor, when nothing is selected. False when there's no marker there.
+	@MainActor private static func deleteMarker(in pasted: PastedText) -> Bool {
+		guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView else { return false }
+		let selection = editor.selectedRange()
+		guard selection.length == 0, let range = pasted.marker(endingAt: selection.location, in: editor.string) else { return false }
+		editor.insertText("", replacementRange: range)
+		return true
 	}
 
 	private func load(_ providers: [NSItemProvider]) {
@@ -174,8 +197,8 @@ struct AcceptsImages: ViewModifier {
 }
 
 extension View {
-	func acceptsImages(_ attachments: Attachments, focused: Bool) -> some View {
-		modifier(AcceptsImages(attachments: attachments, focused: focused))
+	func acceptsPastes(_ attachments: Attachments, text pasted: PastedText, focused: Bool) -> some View {
+		modifier(AcceptsPastes(attachments: attachments, pasted: pasted, focused: focused))
 	}
 }
 

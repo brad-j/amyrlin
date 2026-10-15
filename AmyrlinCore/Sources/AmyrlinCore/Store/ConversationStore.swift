@@ -20,6 +20,8 @@ public final class ConversationStore {
 	public let id: ConversationID
 	public private(set) var state = ConversationState()
 	public private(set) var outbox: [PendingSend] = []
+	/// How long runs take, timed while watching.
+	public private(set) var turns = TurnClock()
 	/// True between a dropped stream and its fresh snapshot.
 	public private(set) var isResyncing = false
 	/// Set when the subscription gave up (protocol section 3) or the conversation is gone.
@@ -164,6 +166,7 @@ public final class ConversationStore {
 					isResyncing = true
 					await subscription.resync(reason: reason)
 				}
+				turns.observe(state, snapshot: events.first?.isSnapshot == true)
 				settleOutbox(afterSnapshot: events.first?.isSnapshot == true)
 			case .resyncing:
 				isResyncing = true
