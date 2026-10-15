@@ -6,6 +6,10 @@ struct AmyrlinApp: App {
 	@State private var model = AppModel()
 	@State private var textSize = TextSize.shared
 
+	init() {
+		CopyOnSelect.start()
+	}
+
 	var body: some Scene {
 		WindowGroup("Amyrlin") {
 			MainView(model: model)

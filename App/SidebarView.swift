@@ -3,7 +3,7 @@ import AppKit
 import SwiftUI
 
 /// Machines, and on each its sessions grouped by project, in the inspector's style: small-caps labels, hairlines,
-/// quiet rows. The project needing attention comes first, and archived sessions fold away at the end; each row is a
+/// quiet rows. Sessions keep their place as they work, and archived sessions fold away at the end; each row is a
 /// state mark, a title and an age.
 /// ↑ and ↓ move between sessions while the sidebar has focus.
 struct SidebarView: View {
@@ -62,20 +62,19 @@ private struct MachineSection: View {
 
 	private var store: HostStore { machine.store }
 
-	/// Sessions by project: scratch (sessions in no project) pinned first, then the project needing attention, then the
-	/// most recently active.
+	/// Sessions by project: scratch (sessions in no project) pinned first, then the project with the newest session.
+	/// Ordered by creation, not activity, so a session stays put while it works.
 	static func groups(_ store: HostStore) -> [(project: String, sessions: [ConversationSummary])] {
 		let byProject = Dictionary(grouping: store.state.active) { $0.project ?? "" }
-		func urgency(_ sessions: [ConversationSummary]) -> Int {
-			sessions.contains { $0.status == .needsApproval } ? 0 : sessions.contains { $0.status == .busy } ? 1 : 2
+		func newestFirst(_ a: ConversationSummary, _ b: ConversationSummary) -> Bool {
+			a.createdAt != b.createdAt ? a.createdAt > b.createdAt : a.id > b.id
 		}
 		return byProject
-			.map { (project: $0.key, sessions: $0.value.sorted { $0.updatedAt > $1.updatedAt }) }
+			.map { (project: $0.key, sessions: $0.value.sorted(by: newestFirst)) }
 			.sorted { a, b in
 				if a.project.isEmpty != b.project.isEmpty { return a.project.isEmpty }
-				let (ua, ub) = (urgency(a.sessions), urgency(b.sessions))
-				if ua != ub { return ua < ub }
-				return (a.sessions.first?.updatedAt ?? 0) > (b.sessions.first?.updatedAt ?? 0)
+				let (ca, cb) = (a.sessions.first?.createdAt ?? 0, b.sessions.first?.createdAt ?? 0)
+				return ca != cb ? ca > cb : a.project < b.project
 			}
 	}
 

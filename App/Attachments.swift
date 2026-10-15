@@ -1,5 +1,6 @@
 import AmyrlinCore
 import AppKit
+import QuickLook
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -202,48 +203,72 @@ extension View {
 	}
 }
 
-/// A message's or a result's images, small, fetched from the host; one opens in Preview.
+/// A message's or a result's images as thumbnails of one height, fetched from the host, wrapping onto more lines when
+/// they don't fit across. One opens in Quick Look, where the arrow keys step through the rest.
 struct TranscriptImages: View {
 	let refs: [ImageRef]
 	let store: ConversationStore
+	@State private var loaded: [ImageRef: Data] = [:]
+	@State private var previewing: URL?
+
+	static var height: CGFloat { 120 * Typography.textScale }
 
 	var body: some View {
-		HStack(alignment: .top, spacing: 8) {
+		Wrapping(spacing: 8) {
 			ForEach(refs, id: \.self) { ref in
-				TranscriptImage(ref: ref, store: store)
+				TranscriptImage(ref: ref, store: store, data: $loaded[ref]) { open(ref) }
 			}
 		}
+		.quickLookPreview($previewing, in: refs.filter { loaded[$0] != nil }.map(file))
+	}
+
+	/// Writes the loaded images out for Quick Look, which reads files, and shows `ref`'s.
+	private func open(_ ref: ImageRef) {
+		for (ref, data) in loaded where !FileManager.default.fileExists(atPath: file(ref).path) {
+			try? data.write(to: file(ref))
+		}
+		previewing = file(ref)
+	}
+
+	private func file(_ ref: ImageRef) -> URL {
+		let ext = UTType(mimeType: ref.mimeType)?.preferredFilenameExtension ?? "png"
+		return FileManager.default.temporaryDirectory.appending(path: "amyrlin-\(store.id)-\(ref.entryId)-\(ref.index).\(ext)")
 	}
 }
 
 private struct TranscriptImage: View {
 	let ref: ImageRef
 	let store: ConversationStore
-	@State private var data: Data?
+	@Binding var data: Data?
+	let open: () -> Void
 	@State private var failed = false
+	@State private var hovering = false
 
 	var body: some View {
 		Group {
 			if let data, let image = NSImage(data: data) {
-				Button {
-					open(data)
-				} label: {
+				Button(action: open) {
 					Image(nsImage: image)
 						.resizable()
-						.frame(width: Self.fit(image.size).width, height: Self.fit(image.size).height)
-						.overlay(Rectangle().stroke(Palette.rule2))
+						.scaledToFill()
+						.frame(width: Self.width(image.size), height: TranscriptImages.height)
+						.clipped()
+						.overlay(Rectangle().stroke(hovering ? Palette.accent : Palette.rule2))
 				}
 				.buttonStyle(.plain)
-				.help("Open in Preview")
+				.pointerStyle(.link)
+				.onHover { inside in withAnimation(.state) { hovering = inside } }
+				.help("Preview")
 			} else {
 				Text(failed ? "[image unavailable]" : "[image]")
 					.font(Typography.uiSmall)
 					.foregroundStyle(Palette.ink3)
-					.frame(width: 120, height: 80)
+					.frame(width: TranscriptImages.height * 1.6, height: TranscriptImages.height)
 					.overlay(Rectangle().stroke(Palette.rule))
 			}
 		}
 		.task(id: ref) {
+			guard data == nil else { return }
 			do {
 				data = try await store.image(ref)
 			} catch {
@@ -252,21 +277,44 @@ private struct TranscriptImage: View {
 		}
 	}
 
-	/// The image's size within 320 × 200, never larger than it is.
-	static func fit(_ size: CGSize) -> CGSize {
-		guard size.width > 0, size.height > 0 else { return CGSize(width: 120, height: 80) }
-		let scale = min(1, 320 / size.width, 200 / size.height)
-		return CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+	/// The thumbnail's width for an image of `size`: its own shape at the thumbnail height, cropped when it's much
+	/// taller or wider than that.
+	static func width(_ size: CGSize) -> CGFloat {
+		let height = TranscriptImages.height
+		guard size.width > 0, size.height > 0 else { return height * 1.6 }
+		return (height * min(max(size.width / size.height, 0.5), 2.4)).rounded()
+	}
+}
+
+/// Lays its views out in a row, starting another below whenever the next one wouldn't fit across.
+private struct Wrapping: Layout {
+	let spacing: CGFloat
+
+	func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+		let frames = place(subviews, width: proposal.width ?? .infinity)
+		return CGSize(width: frames.map(\.maxX).max() ?? 0, height: frames.map(\.maxY).max() ?? 0)
 	}
 
-	private func open(_ data: Data) {
-		let ext = UTType(mimeType: ref.mimeType)?.preferredFilenameExtension ?? "png"
-		let url = FileManager.default.temporaryDirectory.appending(path: "amyrlin-\(store.id)-\(ref.entryId)-\(ref.index).\(ext)")
-		do {
-			try data.write(to: url)
-			NSWorkspace.shared.open(url)
-		} catch {
-			failed = true
+	func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+		for (subview, frame) in zip(subviews, place(subviews, width: bounds.width)) {
+			subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), proposal: ProposedViewSize(frame.size))
 		}
+	}
+
+	private func place(_ subviews: Subviews, width: CGFloat) -> [CGRect] {
+		var frames: [CGRect] = []
+		var origin = CGPoint.zero
+		var lineHeight: CGFloat = 0
+		for subview in subviews {
+			let size = subview.sizeThatFits(.unspecified)
+			if origin.x > 0, origin.x + size.width > width {
+				origin = CGPoint(x: 0, y: origin.y + lineHeight + spacing)
+				lineHeight = 0
+			}
+			frames.append(CGRect(origin: origin, size: size))
+			origin.x += size.width + spacing
+			lineHeight = max(lineHeight, size.height)
+		}
+		return frames
 	}
 }

@@ -350,7 +350,13 @@ private struct InputRow: View {
 				if let tag {
 					Text(tag).font(Typography.label).foregroundStyle(Palette.accent).transition(.opacity)
 				}
-				if !images.isEmpty { TranscriptImages(refs: images, store: store) }
+				if !images.isEmpty {
+					let prompt = 12.5 * Typography.scale
+					TranscriptImages(refs: images, store: store)
+						// The prompt sits beside the images' top edge rather than down by the text.
+						.alignmentGuide(.firstTextBaseline) { $0[.top] + prompt }
+						.padding(.bottom, text.isEmpty ? 0 : 6)
+				}
 				if pendingImages > 0 {
 					Text(pendingImages == 1 ? "[1 image]" : "[\(pendingImages) images]").font(Typography.uiSmall).foregroundStyle(Palette.ink3)
 				}
@@ -535,16 +541,24 @@ private struct CallLine: View {
 		}
 	}
 
-	/// The one argument worth showing: a command, a path, or the arguments as JSON; `…` while they're still streaming.
+	/// The one argument worth showing: a command, a path, a script's first line, or the arguments as JSON; `…` while
+	/// they're still streaming.
 	var argument: String {
 		if case .object(let object) = call.args {
 			if object.isEmpty { return "…" }
 			for key in ["command", "path", "file_path", "pattern", "url", "query"] {
 				if let value = object[key]?.stringValue { return value.replacingOccurrences(of: "\n", with: " ⏎ ") }
 			}
+			if let code = object["code"]?.stringValue { return Self.firstLine(of: code) }
 			if object.count == 1, let value = object.values.first?.stringValue { return value }
 		}
 		return call.args.jsonText
+	}
+
+	/// A script's first line that says something: not blank, and not codemode's `// @options` line.
+	static func firstLine(of code: String) -> String {
+		let lines = code.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+		return lines.first { !$0.isEmpty && !$0.hasPrefix("// @options") } ?? "…"
 	}
 
 	var argumentFull: String {
@@ -584,8 +598,13 @@ private struct CallDetail: View {
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 8) {
-			if !tail, case .object(let args) = call.args, args.count > 1 {
-				OutputText(text: call.args.jsonText, label: "arguments")
+			if !tail, case .object(let args) = call.args {
+				if args.count == 1, let (key, value) = args.first, let text = value.stringValue, text.contains("\n") {
+					// One long argument, a script or a message, reads as itself rather than escaped in JSON.
+					OutputText(text: text, label: key == "code" ? "script" : key)
+				} else if args.count > 1 {
+					OutputText(text: call.args.jsonText, label: "arguments")
+				}
 			}
 			if !call.output.isEmpty {
 				OutputText(text: tail ? tailText : fullText, minLines: tail ? Self.tailLines : nil)
