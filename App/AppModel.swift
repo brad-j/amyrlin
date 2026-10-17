@@ -173,6 +173,12 @@ final class AppModel {
 		didSet { UserDefaults.standard.set(Double(inspectorWidth), forKey: "inspectorWidth") }
 	}
 	var isAddingMachine = false
+	/// The keyboard shortcuts sheet (⌘K).
+	var showingShortcuts = false
+	/// The sidebar's search; sessions whose title, project and directory hold every word show.
+	var sessionQuery = ""
+	/// Set to put the keyboard in the sidebar's search, which clears it once it has.
+	var focusSearch = false
 	/// The conversation whose title is being changed.
 	var renaming: ConversationKey?
 	/// The machine whose removal is being confirmed.
@@ -299,6 +305,12 @@ final class AppModel {
 	/// message.
 	func openDraft(on machine: UUID, project: ProjectInfo?) {
 		panes[focus].content = .draft(Draft(machine: machine, project: project))
+	}
+
+	/// Shows the sidebar if it's hidden and puts the keyboard in its search (⌘F).
+	func searchSessions() {
+		if !showSidebar { withAnimation(.panel) { showSidebar = true } }
+		focusSearch = true
 	}
 
 	/// Opens the project picker on the first connected machine (⌘N).

@@ -5,6 +5,7 @@ import SwiftUI
 struct AmyrlinApp: App {
 	@State private var model = AppModel()
 	@State private var textSize = TextSize.shared
+	@State private var shortcuts = Shortcuts.shared
 
 	init() {
 		CopyOnSelect.start()
@@ -23,30 +24,37 @@ struct AmyrlinApp: App {
 			// One window: ⌘N starts a session instead of opening another window.
 			CommandGroup(replacing: .newItem) {
 				Button("New Session…") { model.newSession() }
-					.keyboardShortcut("n", modifiers: .command)
+					.keyboardShortcut(.newSession, in: shortcuts)
 				Button("Add Machine…") { model.isAddingMachine = true }
-					.keyboardShortcut("n", modifiers: [.command, .shift])
+					.keyboardShortcut(.addMachine, in: shortcuts)
 			}
 			CommandGroup(after: .sidebar) {
 				Button(model.showSidebar ? "Hide Sidebar" : "Show Sidebar") { withAnimation(.panel) { model.showSidebar.toggle() } }
-					.keyboardShortcut("s", modifiers: [.command, .control])
+					.keyboardShortcut(.toggleSidebar, in: shortcuts)
 				Button(model.showInspector ? "Hide Inspector" : "Show Inspector") { withAnimation(.panel) { model.showInspector.toggle() } }
-					.keyboardShortcut("i", modifiers: [.command, .option])
+					.keyboardShortcut(.toggleInspector, in: shortcuts)
+				Button("Search Sessions") { model.searchSessions() }
+					.keyboardShortcut(.searchSessions, in: shortcuts)
 				Divider()
 				Button("Split Right") { withAnimation(.panel) { model.splitRight() } }
-					.keyboardShortcut("d", modifiers: .command)
+					.keyboardShortcut(.splitRight, in: shortcuts)
 					.disabled(!model.canSplit)
 				Button("Close Pane") { withAnimation(.panel) { model.closePane() } }
-					.keyboardShortcut("w", modifiers: [.command, .shift])
+					.keyboardShortcut(.closePane, in: shortcuts)
 					.disabled(model.panes.count < 2)
 				Button("Next Pane") { model.cycleFocus(1) }
-					.keyboardShortcut("]", modifiers: .command)
+					.keyboardShortcut(.nextPane, in: shortcuts)
 					.disabled(model.panes.count < 2)
 				Button("Previous Pane") { model.cycleFocus(-1) }
-					.keyboardShortcut("[", modifiers: .command)
+					.keyboardShortcut(.previousPane, in: shortcuts)
 					.disabled(model.panes.count < 2)
 			}
-			TextSizeCommands(size: textSize)
+			TextSizeCommands(size: textSize, shortcuts: shortcuts)
+			// No help book, so the Help menu holds the shortcuts sheet in place of a help item that opens nothing.
+			CommandGroup(replacing: .help) {
+				Button("Keyboard Shortcuts") { model.showingShortcuts.toggle() }
+					.keyboardShortcut(.showShortcuts, in: shortcuts)
+			}
 		}
 		Settings {
 			SettingsView(size: textSize)
@@ -90,6 +98,9 @@ struct MainView: View {
 		.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
 		.sheet(isPresented: $model.isAddingMachine) {
 			AddMachineSheet(model: model)
+		}
+		.sheet(isPresented: $model.showingShortcuts) {
+			ShortcutsSheet(shortcuts: Shortcuts.shared)
 		}
 		.sheet(item: Binding(get: { model.renaming.map(RenameRef.init) }, set: { model.renaming = $0?.conversation })) { ref in
 			RenameSheet(model: model, target: ref.conversation)

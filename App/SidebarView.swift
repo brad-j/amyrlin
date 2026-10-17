@@ -5,10 +5,14 @@ import SwiftUI
 /// Machines, and on each its sessions grouped by project, in the inspector's style: small-caps labels, hairlines,
 /// quiet rows. Sessions keep their place as they work, and archived sessions fold away at the end; each row is a
 /// state mark, a title and an age.
-/// ↑ and ↓ move between sessions while the sidebar has focus.
+/// ↑ and ↓ move between sessions while the sidebar or its search has focus. The search, under the header, narrows the
+/// tree to matching sessions, open whatever their folds.
 struct SidebarView: View {
 	@Bindable var model: AppModel
 	@FocusState private var focused: Bool
+	@FocusState private var searchFocused: Bool
+
+	private var words: [String] { SessionSearch.words(model.sessionQuery) }
 
 	var body: some View {
 		VStack(spacing: 0) {
@@ -18,10 +22,11 @@ struct SidebarView: View {
 				IconButton("plus") { model.isAddingMachine = true }
 					.help("Add a machine (⇧⌘N)")
 			}
+			if !model.machines.isEmpty { search }
 			ScrollView {
 				VStack(alignment: .leading, spacing: 0) {
 					ForEach(model.machines) { machine in
-						MachineSection(machine: machine, model: model)
+						MachineSection(machine: machine, model: model, words: words)
 					}
 				}
 				.padding(.horizontal, 16)
@@ -33,15 +38,54 @@ struct SidebarView: View {
 			.onKeyPress(.upArrow) { move(-1) }
 		}
 		.background(Palette.panel)
+		.onChange(of: model.focusSearch, initial: true) { _, now in
+			guard now else { return }
+			searchFocused = true
+			model.focusSearch = false
+		}
 	}
 
-	/// Every session the sidebar shows, in order; folded projects are skipped.
+	/// `/` and the query, in the picker's style; ↩ opens the first match and esc clears the query, then leaves.
+	private var search: some View {
+		HStack(spacing: 8) {
+			Text("/").font(Typography.uiStrong).foregroundStyle(searchFocused || !words.isEmpty ? Palette.accent : Palette.ink3)
+			TextField("", text: $model.sessionQuery, prompt: Text("search sessions").foregroundStyle(Palette.ink3))
+				.textFieldStyle(.plain)
+				.font(Typography.ui)
+				.foregroundStyle(Palette.ink)
+				.focused($searchFocused)
+				.onSubmit {
+					if let first = ordered.first { model.selection = first }
+				}
+				.onKeyPress(.downArrow) { move(1) }
+				.onKeyPress(.upArrow) { move(-1) }
+				.onKeyPress(.escape) {
+					if model.sessionQuery.isEmpty { searchFocused = false } else { model.sessionQuery = "" }
+					return .handled
+				}
+			if !model.sessionQuery.isEmpty {
+				IconButton("xmark") { model.sessionQuery = "" }
+					.help("Clear the search")
+			} else if let combo = Shortcuts.shared.combo(.searchSessions), !searchFocused {
+				Text(combo.display).font(Typography.uiSmall).foregroundStyle(Palette.ink3)
+			}
+		}
+		.padding(.horizontal, 10)
+		.frame(minHeight: 28 * Typography.scale)
+		.background(Palette.paper2)
+		.overlay(Rectangle().stroke(searchFocused ? Palette.rule2 : Palette.rule))
+		.padding(.horizontal, 16)
+		.padding(.top, 12)
+	}
+
+	/// Every session the sidebar shows, in order; folded projects are skipped unless searching.
 	private var ordered: [ConversationKey] {
-		model.machines.flatMap { machine in
-			let projects = MachineSection.groups(machine.store)
-				.filter { !model.isCollapsed(machine: machine.id, project: $0.project) }
+		let searching = !words.isEmpty
+		return model.machines.flatMap { machine in
+			let projects = MachineSection.groups(machine.store, words: words)
+				.filter { searching || !model.isCollapsed(machine: machine.id, project: $0.project) }
 				.flatMap(\.sessions)
-			let archived = model.openArchives.contains(machine.id) ? machine.store.state.archived : []
+			let archived = searching || model.openArchives.contains(machine.id) ? MachineSection.archived(machine.store, words: words) : []
 			return (projects + archived).map { ConversationKey(machine: machine.id, conversation: $0.id) }
 		}
 	}
@@ -58,14 +102,18 @@ struct SidebarView: View {
 private struct MachineSection: View {
 	let machine: AppModel.Machine
 	let model: AppModel
+	/// The search's words; none shows every session.
+	let words: [String]
 	@State private var hovering = false
 
 	private var store: HostStore { machine.store }
+	private var searching: Bool { !words.isEmpty }
 
-	/// Sessions by project: scratch (sessions in no project) pinned first, then the project with the newest session.
-	/// Ordered by creation, not activity, so a session stays put while it works.
-	static func groups(_ store: HostStore) -> [(project: String, sessions: [ConversationSummary])] {
-		let byProject = Dictionary(grouping: store.state.active) { $0.project ?? "" }
+	/// Sessions matching `words` by project: scratch (sessions in no project) pinned first, then the project with the
+	/// newest session. Ordered by creation, not activity, so a session stays put while it works.
+	static func groups(_ store: HostStore, words: [String]) -> [(project: String, sessions: [ConversationSummary])] {
+		let matching = store.state.active.filter { SessionSearch.matches($0, words: words) }
+		let byProject = Dictionary(grouping: matching) { $0.project ?? "" }
 		func newestFirst(_ a: ConversationSummary, _ b: ConversationSummary) -> Bool {
 			a.createdAt != b.createdAt ? a.createdAt > b.createdAt : a.id > b.id
 		}
@@ -76,6 +124,10 @@ private struct MachineSection: View {
 				let (ca, cb) = (a.sessions.first?.createdAt ?? 0, b.sessions.first?.createdAt ?? 0)
 				return ca != cb ? ca > cb : a.project < b.project
 			}
+	}
+
+	static func archived(_ store: HostStore, words: [String]) -> [ConversationSummary] {
+		store.state.archived.filter { SessionSearch.matches($0, words: words) }
 	}
 
 	var body: some View {
@@ -139,9 +191,12 @@ private struct MachineSection: View {
 					.padding(.top, 10)
 			}
 
+			let groups = Self.groups(store, words: words)
+			let archived = Self.archived(store, words: words)
 			VStack(alignment: .leading, spacing: 10) {
-				ForEach(Self.groups(store), id: \.project) { group in
-					let collapsed = model.collapsedBinding(machine: machine.id, project: group.project)
+				ForEach(groups, id: \.project) { group in
+					// A search opens every fold, so its matches show.
+					let collapsed = searching ? .constant(false) : model.collapsedBinding(machine: machine.id, project: group.project)
 					VStack(alignment: .leading, spacing: 0) {
 						let name = group.project.isEmpty ? "scratch" : group.project
 						ProjectRow(
@@ -161,9 +216,8 @@ private struct MachineSection: View {
 					}
 				}
 				// Archived sessions last, folded until opened; a session needing approval still shows in the fold.
-				let archived = store.state.archived
 				if !archived.isEmpty {
-					let collapsed = model.archiveCollapsedBinding(machine: machine.id)
+					let collapsed = searching ? .constant(false) : model.archiveCollapsedBinding(machine: machine.id)
 					VStack(alignment: .leading, spacing: 0) {
 						// A hairline sets the archive apart from the projects above it.
 						Rectangle().fill(Palette.rule).frame(height: 1).padding(.bottom, 8)
@@ -173,7 +227,12 @@ private struct MachineSection: View {
 				}
 			}
 			.padding(.bottom, 6)
-			if store.state.hasSnapshot, store.state.conversations.isEmpty {
+			if searching, store.state.hasSnapshot, groups.isEmpty, archived.isEmpty {
+				Text("No matching sessions")
+					.font(Typography.ui)
+					.foregroundStyle(Palette.ink3)
+					.padding(.vertical, 6)
+			} else if store.state.hasSnapshot, store.state.conversations.isEmpty {
 				Text("No sessions yet")
 					.font(Typography.ui)
 					.foregroundStyle(Palette.ink3)

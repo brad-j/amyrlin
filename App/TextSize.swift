@@ -43,18 +43,19 @@ final class TextSize {
 /// The View menu's text size commands, as in Messages: they size the transcript; Settings sizes the chrome too.
 struct TextSizeCommands: Commands {
 	let size: TextSize
+	let shortcuts: Shortcuts
 
 	var body: some Commands {
 		CommandGroup(after: .toolbar) {
 			Divider()
 			Button("Bigger Text") { size.textZoom = TextSize.step(size.textZoom, by: 1) }
-				.keyboardShortcut("+", modifiers: .command)
+				.keyboardShortcut(.biggerText, in: shortcuts)
 				.disabled(size.textZoom == TextSize.steps.last)
 			Button("Smaller Text") { size.textZoom = TextSize.step(size.textZoom, by: -1) }
-				.keyboardShortcut("-", modifiers: .command)
+				.keyboardShortcut(.smallerText, in: shortcuts)
 				.disabled(size.textZoom == TextSize.steps.first)
 			Button("Actual Size") { size.textZoom = 1 }
-				.keyboardShortcut("0", modifiers: .command)
+				.keyboardShortcut(.actualSize, in: shortcuts)
 				.disabled(size.textZoom == 1)
 			Divider()
 		}
@@ -71,7 +72,7 @@ struct SettingsView: View {
 				Text("text size").font(Typography.label).foregroundStyle(Palette.ink3).textCase(.uppercase)
 			}
 			VStack(alignment: .leading, spacing: 14) {
-				row("transcript", detail: "messages, code and tool output · ⌘+ ⌘− ⌘0", zoom: $size.textZoom)
+				row("transcript", detail: (["messages, code and tool output"] + textKeys).joined(separator: " · "), zoom: $size.textZoom)
 				row("interface", detail: "sidebar, headers, inspector, composer", zoom: $size.interfaceZoom)
 				Text("The quick brown fox jumps over the lazy dog.")
 					.font(Typography.reading)
@@ -83,6 +84,12 @@ struct SettingsView: View {
 		.frame(width: 520 * Typography.scale)
 		.background(Palette.paper)
 		.preferredColorScheme(.dark)
+	}
+
+	/// The text size commands' keys, as changed in the shortcuts sheet.
+	private var textKeys: [String] {
+		let keys = [ShortcutCommand.biggerText, .smallerText, .actualSize].compactMap { Shortcuts.shared.combo($0)?.display }
+		return keys.isEmpty ? [] : [keys.joined(separator: " ")]
 	}
 
 	private func row(_ title: String, detail: String, zoom: Binding<CGFloat>) -> some View {
