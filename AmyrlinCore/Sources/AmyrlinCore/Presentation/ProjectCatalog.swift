@@ -69,7 +69,7 @@ public enum ProjectCatalog {
 		return 1
 	}
 
-	private static func entries(projects: [ProjectInfo], sessions: [ConversationSummary]) -> [Entry] {
+	static func entries(projects: [ProjectInfo], sessions: [ConversationSummary]) -> [Entry] {
 		let byDir = Dictionary(grouping: sessions.filter { !$0.archived }) { $0.dir ?? "" }
 		return projects.map { project in
 			let mine = byDir[project.dir] ?? []

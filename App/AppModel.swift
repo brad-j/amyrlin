@@ -181,6 +181,8 @@ final class AppModel {
 	var isAddingMachine = false
 	/// The keyboard shortcuts sheet (⌘K).
 	var showingShortcuts = false
+	/// The spotlight (⌘/), which finds a project on any machine.
+	var showingSpotlight = false
 	/// The sidebar's search; sessions whose title, project and directory hold every word show.
 	var sessionQuery = ""
 	/// Set to put the keyboard in the sidebar's search, which clears it once it has.
@@ -257,6 +259,13 @@ final class AppModel {
 			Task {
 				try? await Task.sleep(for: .seconds(2))
 				newConversationMachine = first.id
+			}
+		}
+		// `--args -openSpotlight` shows the spotlight at launch, for screenshots.
+		if ProcessInfo.processInfo.arguments.contains("-openSpotlight") {
+			Task {
+				try? await Task.sleep(for: .seconds(2))
+				showingSpotlight = true
 			}
 		}
 		// `--args -confirmRemoveMachine` asks to remove the first machine at launch, for screenshots.

@@ -12,6 +12,7 @@
 		13C386A29264C6B406732A81 /* IBMPlexSans-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3618134CB70BB36C30D63A38 /* IBMPlexSans-Italic.ttf */; };
 		2C96991DCF40CF1BD5BD099E /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C93A86000CFBD344D169CBB4 /* SidebarView.swift */; };
 		3E246E97702392C8017B1D82 /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6FF507E96091DF46C73B8C0 /* ConversationView.swift */; };
+		3E32CDB71CF450963CCECDB4 /* SpotlightSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87DFD5E4007D9043C9B1A36A /* SpotlightSheet.swift */; };
 		4052569961C01BB910F9A139 /* Shortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13540D33A9E587C2354E258B /* Shortcuts.swift */; };
 		414F2D7917FAB38273814515 /* IBMPlex-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = F9F1EDA367D84F1E12969C30 /* IBMPlex-OFL.txt */; };
 		4490CBA833957F7D29197FEE /* Streaming.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE779E6A013811D3504F3959 /* Streaming.swift */; };
@@ -54,6 +55,7 @@
 		683EB059DBE7F4081E821D7B /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
 		74CFC7E014E5733957E6AE35 /* IBMPlexSans-Light.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexSans-Light.ttf"; sourceTree = "<group>"; };
 		7D357F171DCC5EF0B185509D /* Amyrlin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Amyrlin.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		87DFD5E4007D9043C9B1A36A /* SpotlightSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotlightSheet.swift; sourceTree = "<group>"; };
 		96C81C52F22A4378025089DF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		976BB1CCA2CDFB3AECFBE1CE /* IBMPlexMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Regular.ttf"; sourceTree = "<group>"; };
 		9919763F27220BA381156823 /* Amyrlin.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Amyrlin.entitlements; sourceTree = "<group>"; };
@@ -141,6 +143,7 @@
 				4607A3DCCB13BC46E7BFEE87 /* NewConversationSheet.swift */,
 				13540D33A9E587C2354E258B /* Shortcuts.swift */,
 				C93A86000CFBD344D169CBB4 /* SidebarView.swift */,
+				87DFD5E4007D9043C9B1A36A /* SpotlightSheet.swift */,
 				BE779E6A013811D3504F3959 /* Streaming.swift */,
 				F5E0486C01575E9101504707 /* TextSize.swift */,
 				0987027DBAEEDC51353D4ADB /* Theme.swift */,
@@ -257,6 +260,7 @@
 				701C56D4979C4B1DDCDDA1E1 /* NewConversationSheet.swift in Sources */,
 				4052569961C01BB910F9A139 /* Shortcuts.swift in Sources */,
 				2C96991DCF40CF1BD5BD099E /* SidebarView.swift in Sources */,
+				3E32CDB71CF450963CCECDB4 /* SpotlightSheet.swift in Sources */,
 				4490CBA833957F7D29197FEE /* Streaming.swift in Sources */,
 				69C6F996831A0BD3655E6F57 /* TextSize.swift in Sources */,
 				EF49776FA13371AF809A8701 /* Theme.swift in Sources */,
