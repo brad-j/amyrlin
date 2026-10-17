@@ -16,7 +16,29 @@ struct Draft: Equatable {
 	let project: ProjectInfo?
 }
 
-/// The machines the app knows, persisted as URLs, and the current selection.
+/// One pane of the middle column. Split, the column shows its panes side by side; one has focus, and the sidebar, the
+/// inspector and the status line follow it.
+struct Pane: Identifiable, Equatable {
+	enum Content: Equatable {
+		/// A pane split off and not given a session yet.
+		case empty
+		case conversation(ConversationKey)
+		case draft(Draft)
+
+		var machine: UUID? {
+			switch self {
+			case .empty: nil
+			case .conversation(let key): key.machine
+			case .draft(let draft): draft.machine
+			}
+		}
+	}
+
+	let id = UUID()
+	var content: Content
+}
+
+/// The machines the app knows, persisted as URLs, and the panes showing their sessions.
 @MainActor @Observable
 final class AppModel {
 	struct Machine: Identifiable {
@@ -26,20 +48,88 @@ final class AppModel {
 	}
 
 	private(set) var machines: [Machine] = []
+	/// Left to right; never empty.
+	private(set) var panes = [Pane(content: .empty)] {
+		didSet { saveSelection() }
+	}
+	/// The index of the pane with focus.
+	private(set) var focus = 0 {
+		didSet { saveSelection() }
+	}
+	/// As many as fit beside the sidebar and the inspector on a laptop's screen.
+	static let maxPanes = 3
+
+	/// The focused pane's conversation. Setting one already open in another pane focuses that pane instead of showing
+	/// it twice.
 	var selection: ConversationKey? {
-		didSet {
-			if selection != nil { draft = nil }
-			// Reopened at the next launch; not for machines given at launch, whose sessions aren't in the saved list.
-			guard !ephemeral else { return }
-			if let selection {
-				UserDefaults.standard.set(["machine": selection.machine.uuidString, "conversation": String(selection.conversation)], forKey: Self.selectionKey)
+		get {
+			// Checked: closing a pane changes `panes` and then `focus`, and saving in between reads this.
+			guard panes.indices.contains(focus), case .conversation(let key) = panes[focus].content else { return nil }
+			return key
+		}
+		set {
+			guard let newValue else {
+				if selection != nil { panes[focus].content = .empty }
+				return
+			}
+			if let index = panes.firstIndex(where: { $0.content == .conversation(newValue) }) {
+				focus = index
 			} else {
-				UserDefaults.standard.removeObject(forKey: Self.selectionKey)
+				panes[focus].content = .conversation(newValue)
 			}
 		}
 	}
-	/// Shown in place of a conversation until its first message is sent.
-	var draft: Draft?
+	/// The focused pane's draft, shown in place of a conversation until its first message is sent.
+	var draft: Draft? {
+		guard panes.indices.contains(focus), case .draft(let draft) = panes[focus].content else { return nil }
+		return draft
+	}
+
+	/// Whether a conversation shows in any pane, focused or not.
+	func isOpen(_ key: ConversationKey) -> Bool {
+		panes.contains { $0.content == .conversation(key) }
+	}
+
+	var canSplit: Bool { panes.count < Self.maxPanes }
+
+	func focusPane(_ index: Int) {
+		if panes.indices.contains(index), focus != index { focus = index }
+	}
+
+	/// Focuses the next pane to the right, or with -1 to the left, wrapping around.
+	func cycleFocus(_ step: Int) {
+		focus = (focus + step + panes.count) % panes.count
+	}
+
+	/// Opens an empty pane right of the focused one and focuses it; the sidebar fills it.
+	func splitRight() {
+		insertPane(.empty)
+	}
+
+	/// Opens `key` in a new pane right of the focused one, or focuses the pane it's already in. With no room for
+	/// another pane, the focused one shows it.
+	func openInNewPane(_ key: ConversationKey) {
+		if isOpen(key) || !canSplit {
+			selection = key
+		} else {
+			insertPane(.conversation(key))
+		}
+	}
+
+	/// Closes a pane, the focused one by default. The last pane can't close.
+	func closePane(_ index: Int? = nil) {
+		let index = index ?? focus
+		guard panes.count > 1, panes.indices.contains(index) else { return }
+		panes.remove(at: index)
+		if focus > index || focus == panes.count { focus -= 1 }
+	}
+
+	private func insertPane(_ content: Pane.Content) {
+		guard canSplit else { return }
+		panes.insert(Pane(content: content), at: focus + 1)
+		focus += 1
+	}
+
 	/// Folded project groups in the sidebar, as "machine/project", kept across launches.
 	var collapsedProjects: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "collapsedProjects") ?? []) {
 		didSet { UserDefaults.standard.set(collapsedProjects.sorted(), forKey: "collapsedProjects") }
@@ -135,6 +225,12 @@ final class AppModel {
 		{
 			selection = ConversationKey(machine: first.id, conversation: conversation)
 		}
+		// `--args -openSplit 12` opens conversation 12 of the first machine in a second pane, for screenshots.
+		if let flag = ProcessInfo.processInfo.arguments.firstIndex(of: "-openSplit"), flag + 1 < ProcessInfo.processInfo.arguments.count,
+			let conversation = ConversationID(ProcessInfo.processInfo.arguments[flag + 1]), let first = machines.first
+		{
+			openInNewPane(ConversationKey(machine: first.id, conversation: conversation))
+		}
 		// `--args -openAddMachine` shows the Add Machine sheet at launch, for screenshots.
 		if ProcessInfo.processInfo.arguments.contains("-openAddMachine") {
 			Task {
@@ -177,7 +273,9 @@ final class AppModel {
 	func removeMachine(_ id: UUID) {
 		guard let index = machines.firstIndex(where: { $0.id == id }) else { return }
 		let machine = machines.remove(at: index)
-		if selection?.machine == id { selection = nil }
+		for pane in panes.indices.reversed() where panes[pane].content.machine == id {
+			if panes.count > 1 { closePane(pane) } else { panes[pane].content = .empty }
+		}
 		save()
 		Task { await machine.store.stop() }
 	}
@@ -197,10 +295,10 @@ final class AppModel {
 		return (machine, machine.store.conversation(selection.conversation))
 	}
 
-	/// Opens an empty conversation for `project`; nothing is created on the host until the first message.
+	/// Opens an empty conversation for `project` in the focused pane; nothing is created on the host until the first
+	/// message.
 	func openDraft(on machine: UUID, project: ProjectInfo?) {
-		selection = nil
-		draft = Draft(machine: machine, project: project)
+		panes[focus].content = .draft(Draft(machine: machine, project: project))
 	}
 
 	/// Opens the project picker on the first connected machine (⌘N).
@@ -212,12 +310,22 @@ final class AppModel {
 		newConversationMachine = machine.id
 	}
 
-	/// Starts a conversation in `project` with `text` as its first message, and selects it.
-	func startConversation(on machine: Machine, project: String?, text: String, images: [ImageUpload] = []) async -> Bool {
+	/// Starts `draft`'s conversation with `text` as its first message, and shows it in the draft's pane.
+	func startConversation(_ draft: Draft, text: String, images: [ImageUpload] = []) async -> Bool {
+		guard let machine = machine(draft.machine) else { return false }
 		do {
-			let summary = try await machine.store.createConversation(project: project, text: text, images: images)
+			let summary = try await machine.store.createConversation(project: draft.project?.dir, text: text, images: images)
+			let key = ConversationKey(machine: machine.id, conversation: summary.id)
 			// A crossfade: the new conversation is blank for a moment while its first snapshot comes, which cut in as a flash.
-			withAnimation(.row) { selection = ConversationKey(machine: machine.id, conversation: summary.id) }
+			withAnimation(.row) {
+				// The draft's pane, which may have lost focus while the host made the session.
+				if let pane = panes.firstIndex(where: { $0.content == .draft(draft) }) {
+					panes[pane].content = .conversation(key)
+					focus = pane
+				} else {
+					selection = key
+				}
+			}
 			return true
 		} catch {
 			self.error = (error as? ProtocolError)?.message ?? String(describing: error)
@@ -262,6 +370,17 @@ final class AppModel {
 
 	private func makeMachine(id: UUID, url: URL) -> Machine {
 		Machine(id: id, url: url, store: HostStore(url: url, client: client))
+	}
+
+	/// The focused conversation, reopened at the next launch; not for machines given at launch, whose sessions aren't
+	/// in the saved list.
+	private func saveSelection() {
+		guard !ephemeral else { return }
+		if let selection {
+			UserDefaults.standard.set(["machine": selection.machine.uuidString, "conversation": String(selection.conversation)], forKey: Self.selectionKey)
+		} else {
+			UserDefaults.standard.removeObject(forKey: Self.selectionKey)
+		}
 	}
 
 	private func save() {

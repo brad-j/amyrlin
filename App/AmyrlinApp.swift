@@ -13,6 +13,8 @@ struct AmyrlinApp: App {
 	var body: some Scene {
 		WindowGroup("Amyrlin") {
 			MainView(model: model)
+				// For the panes' close buttons and composers, which act on their own pane.
+				.environment(model)
 				.preferredColorScheme(.dark)
 				.frame(minWidth: 900, minHeight: 560)
 		}
@@ -30,6 +32,19 @@ struct AmyrlinApp: App {
 					.keyboardShortcut("s", modifiers: [.command, .control])
 				Button(model.showInspector ? "Hide Inspector" : "Show Inspector") { withAnimation(.panel) { model.showInspector.toggle() } }
 					.keyboardShortcut("i", modifiers: [.command, .option])
+				Divider()
+				Button("Split Right") { withAnimation(.panel) { model.splitRight() } }
+					.keyboardShortcut("d", modifiers: .command)
+					.disabled(!model.canSplit)
+				Button("Close Pane") { withAnimation(.panel) { model.closePane() } }
+					.keyboardShortcut("w", modifiers: [.command, .shift])
+					.disabled(model.panes.count < 2)
+				Button("Next Pane") { model.cycleFocus(1) }
+					.keyboardShortcut("]", modifiers: .command)
+					.disabled(model.panes.count < 2)
+				Button("Previous Pane") { model.cycleFocus(-1) }
+					.keyboardShortcut("[", modifiers: .command)
+					.disabled(model.panes.count < 2)
 			}
 			TextSizeCommands(size: textSize)
 		}
@@ -56,7 +71,6 @@ struct MainView: View {
 				}
 				detail
 					.frame(maxWidth: .infinity, maxHeight: .infinity)
-					.environment(\.sidebarShown, $model.showSidebar)
 				if model.showInspector, let selected = model.selected {
 					InspectorView(store: selected.conversation, host: selected.machine.store)
 						.id(model.selection)
@@ -70,6 +84,7 @@ struct MainView: View {
 		.background(Palette.paper)
 		.animation(.panel, value: model.showInspector)
 		.animation(.panel, value: model.showSidebar)
+		.animation(.panel, value: model.panes.map(\.id))
 		.toolbar(removing: .title)
 		// Each column's colour runs up under the title bar, as before the header bands; the bar draws nothing of its own.
 		.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
@@ -102,21 +117,66 @@ struct MainView: View {
 		}
 	}
 
-	@ViewBuilder private var detail: some View {
-		if let selected = model.selected {
-			ConversationView(
-				store: selected.conversation,
-				host: selected.machine.store,
-				showInspector: $model.showInspector,
-				rename: { model.renaming = model.selection }
-			)
-			.id(model.selection)
+	/// The panes side by side, each as wide as the next, with a hairline between them. Split, the focused pane's header
+	/// rule is in the accent, as tmux marks its active pane. The sidebar's toggle is in the leftmost pane and the
+	/// inspector's in the rightmost, at the column's edges.
+	private var detail: some View {
+		HStack(spacing: 0) {
+			ForEach(Array(model.panes.enumerated()), id: \.element.id) { index, pane in
+				if index > 0 {
+					Rectangle().fill(Palette.rule).frame(width: 1).ignoresSafeArea(.container, edges: .top)
+				}
+				paneView(pane, at: index)
+			}
+		}
+	}
+
+	private func paneView(_ pane: Pane, at index: Int) -> some View {
+		let focused = index == model.focus
+		return paneContent(pane.content)
+			.frame(maxWidth: .infinity, maxHeight: .infinity)
+			.overlay(alignment: .top) {
+				if model.panes.count > 1, focused {
+					Rectangle().fill(Palette.accent).frame(height: 1).padding(.top, Metrics.bar - 1)
+				}
+			}
+			.simultaneousGesture(TapGesture().onEnded { model.focusPane(index) })
+			.environment(\.sidebarShown, index == 0 ? $model.showSidebar : nil)
+			.environment(\.inspectorShown, index == model.panes.count - 1 ? $model.showInspector : nil)
+			.environment(\.paneIndex, index)
+			.environment(\.paneFocused, focused)
 			.transition(.opacity)
-		} else if let draft = model.draft, let machine = model.machine(draft.machine) {
-			DraftView(model: model, machine: machine, project: draft.project)
-				.id(draft.project?.dir ?? "no project")
+	}
+
+	@ViewBuilder private func paneContent(_ content: Pane.Content) -> some View {
+		switch content {
+		case .conversation(let key):
+			if let machine = model.machine(key.machine) {
+				ConversationView(
+					store: machine.store.conversation(key.conversation),
+					host: machine.store,
+					rename: { model.renaming = key }
+				)
+				.id(key)
 				.transition(.opacity)
-		} else if model.machines.isEmpty {
+			} else {
+				emptyPane
+			}
+		case .draft(let draft):
+			if let machine = model.machine(draft.machine) {
+				DraftView(model: model, machine: machine, project: draft.project)
+					.id(draft.project?.dir ?? "no project")
+					.transition(.opacity)
+			} else {
+				emptyPane
+			}
+		case .empty:
+			emptyPane
+		}
+	}
+
+	@ViewBuilder private var emptyPane: some View {
+		if model.machines.isEmpty {
 			VStack(spacing: 0) {
 				HeaderBar()
 				SetupGuide { model.isAddingMachine = true }
@@ -124,7 +184,10 @@ struct MainView: View {
 			.overlay(alignment: .bottomLeading) { SidebarToggle().padding(10) }
 		} else {
 			VStack(spacing: 0) {
-				HeaderBar()
+				HeaderBar {
+					Spacer()
+					PaneCloseButton()
+				}
 				Text("Select a session, or ⌘N for a new one")
 					.font(Typography.ui)
 					.foregroundStyle(Palette.ink3)

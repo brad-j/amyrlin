@@ -268,6 +268,7 @@ struct DraftView: View {
 				PathLabel(project: project?.name, dir: project?.dir, colors: machine.store.state.projectColors)
 				Text("new session").foregroundStyle(Palette.ink2)
 				Spacer(minLength: 8)
+				PaneCloseButton()
 			}
 			VStack(spacing: 6) {
 				Text(project?.name ?? "scratch")
@@ -323,7 +324,7 @@ struct DraftView: View {
 			.padding(.bottom, 12)
 		}
 		.background(Palette.paper)
-		.onAppear { focused = true }
+		.followsPaneFocus($focused)
 	}
 
 	private func send() {
@@ -332,7 +333,7 @@ struct DraftView: View {
 		sending = true
 		let images = attachments.items.map(\.upload)
 		Task {
-			if await model.startConversation(on: machine, project: project?.dir, text: message, images: images) {
+			if await model.startConversation(Draft(machine: machine.id, project: project), text: message, images: images) {
 				_ = attachments.take()
 				pasted.clear()
 			} else {

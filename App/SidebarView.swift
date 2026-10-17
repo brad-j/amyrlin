@@ -185,10 +185,18 @@ private struct MachineSection: View {
 	private func sessionRows(_ sessions: [ConversationSummary]) -> some View {
 		ForEach(Array(sessions.enumerated()), id: \.element.id) { index, summary in
 			let key = ConversationKey(machine: machine.id, conversation: summary.id)
-			SessionRow(summary: summary, last: index == sessions.count - 1, selected: model.selection == key, colors: store.state.projectColors) {
-				model.selection = key
+			SessionRow(summary: summary, last: index == sessions.count - 1, selected: model.selection == key, open: model.isOpen(key), colors: store.state.projectColors) {
+				// ⌘-click opens the session in a pane of its own, beside the focused one.
+				if NSEvent.modifierFlags.contains(.command) {
+					withAnimation(.panel) { model.openInNewPane(key) }
+				} else {
+					model.selection = key
+				}
 			}
 			.contextMenu {
+				Button("Open in New Pane") { withAnimation(.panel) { model.openInNewPane(key) } }
+					.disabled(!model.canSplit || model.isOpen(key))
+				Divider()
 				Button("Rename…") { model.renaming = key }.disabled(!store.isConnected)
 				// Archiving only hides the session; a running one keeps running.
 				if summary.archived {
@@ -320,10 +328,12 @@ private struct ProjectRow: View {
 }
 
 /// A session in the tree: a guide (├ or └), its state mark, its title, what it was charged if anything, and its age.
+/// The focused pane's session has a wash and a mark at its edge; one open in another pane has a fainter mark only.
 private struct SessionRow: View {
 	let summary: ConversationSummary
 	let last: Bool
 	let selected: Bool
+	let open: Bool
 	let colors: [String: Int]
 	let select: () -> Void
 	@State private var hovering = false
@@ -354,7 +364,9 @@ private struct SessionRow: View {
 			.padding(.vertical, 4)
 			.background(selected ? (summary.project.map { Palette.projectWash($0, in: colors) } ?? Palette.selection) : hovering ? Palette.paper2 : .clear)
 			.overlay(alignment: .leading) {
-				if selected { Rectangle().fill(summary.project.map { Palette.project($0, in: colors) } ?? Palette.accent).frame(width: 2) }
+				if selected || open {
+					Rectangle().fill(summary.project.map { Palette.project($0, in: colors) } ?? Palette.accent).frame(width: 2).opacity(selected ? 1 : 0.5)
+				}
 			}
 			.contentShape(Rectangle())
 		}

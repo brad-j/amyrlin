@@ -6,7 +6,6 @@ import SwiftUI
 struct ConversationView: View {
 	let store: ConversationStore
 	let host: HostStore
-	@Binding var showInspector: Bool
 	/// Opens the rename sheet for this conversation.
 	var rename: () -> Void = {}
 
@@ -14,7 +13,7 @@ struct ConversationView: View {
 
 	var body: some View {
 		VStack(spacing: 0) {
-			ConversationHeader(title: summary?.title ?? store.state.conversation?.title ?? "Conversation", project: summary?.project, dir: summary?.dir, colors: host.state.projectColors, busy: store.state.isBusy, showInspector: $showInspector, rename: rename)
+			ConversationHeader(title: summary?.title ?? store.state.conversation?.title ?? "Conversation", project: summary?.project, dir: summary?.dir, colors: host.state.projectColors, busy: store.state.isBusy, rename: rename)
 			// Under the header, so the header stays in line with the side columns' bands.
 			if let problem = store.problem {
 				Banner(text: "Stopped watching: \(problem)", color: Palette.bad)
@@ -64,7 +63,6 @@ private struct ConversationHeader: View {
 	let dir: String?
 	let colors: [String: Int]
 	let busy: Bool
-	@Binding var showInspector: Bool
 	let rename: () -> Void
 
 	var body: some View {
@@ -77,9 +75,10 @@ private struct ConversationHeader: View {
 				.onTapGesture(count: 2, perform: rename)
 				.help("Double-click to rename")
 			Spacer(minLength: 8)
-			// Always here, at the column's edge, so it rides along as the inspector opens and closes.
-			IconButton("sidebar.right") { withAnimation(.panel) { showInspector.toggle() } }
-				.help(showInspector ? "Hide the inspector (⌥⌘I)" : "Show the inspector (⌥⌘I)")
+			HStack(spacing: 6) {
+				PaneCloseButton()
+				InspectorToggle()
+			}
 		}
 	}
 }
@@ -213,7 +212,7 @@ struct ComposerView: View {
 		}
 		.promptBox(focused: focused)
 		.acceptsPastes(attachments, text: pasted, focused: focused)
-		.onAppear { focused = true }
+		.followsPaneFocus($focused)
 		.onChange(of: busy) { _, now in if !now { steer = false } }
 	}
 
@@ -312,6 +311,11 @@ struct ComposerView: View {
 }
 
 extension View {
+	/// A pane's composer takes the keyboard when the pane gains focus, and focuses the pane when it's clicked into.
+	func followsPaneFocus(_ focused: FocusState<Bool>.Binding) -> some View {
+		modifier(FollowsPaneFocus(focused: focused))
+	}
+
 	/// The composer's frame: a raised box with a rule, and the accent down its left edge while it has focus.
 	func promptBox(focused: Bool) -> some View {
 		padding(.horizontal, 12)
@@ -319,6 +323,20 @@ extension View {
 			.background(Palette.paper2)
 			.overlay(Rectangle().stroke(focused ? Palette.rule2 : Palette.rule))
 			.overlay(alignment: .leading) { Rectangle().fill(focused ? Palette.accent : .clear).frame(width: 2) }
+	}
+}
+
+private struct FollowsPaneFocus: ViewModifier {
+	let focused: FocusState<Bool>.Binding
+	@Environment(AppModel.self) private var model: AppModel?
+	@Environment(\.paneIndex) private var index
+	@Environment(\.paneFocused) private var paneFocused
+
+	func body(content: Content) -> some View {
+		content
+			.onAppear { if paneFocused { focused.wrappedValue = true } }
+			.onChange(of: paneFocused) { _, now in if now { focused.wrappedValue = true } }
+			.onChange(of: focused.wrappedValue) { _, now in if now { model?.focusPane(index) } }
 	}
 }
 

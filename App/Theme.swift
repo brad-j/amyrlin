@@ -158,6 +158,12 @@ extension Animation {
 extension EnvironmentValues {
 	/// Whether the sidebar shows; set on the middle column, whose foot holds the button that toggles it.
 	@Entry var sidebarShown: Binding<Bool>?
+	/// Whether the inspector shows; set on the rightmost pane, whose header holds the button that toggles it.
+	@Entry var inspectorShown: Binding<Bool>?
+	/// Where this pane is in the middle column, from the left.
+	@Entry var paneIndex = 0
+	/// Whether this pane has focus. Its composer takes the keyboard when it gains it.
+	@Entry var paneFocused = true
 }
 
 /// The sidebar's toggle, at the foot of the middle column left of the composer, where it stays whether the sidebar
@@ -169,6 +175,32 @@ struct SidebarToggle: View {
 		if let shown {
 			IconButton("sidebar.left") { withAnimation(.panel) { shown.wrappedValue.toggle() } }
 				.help(shown.wrappedValue ? "Hide the sidebar (⌃⌘S)" : "Show the sidebar (⌃⌘S)")
+		}
+	}
+}
+
+/// The inspector's toggle, at the right of the rightmost pane's header, so it rides along as the inspector opens and
+/// closes.
+struct InspectorToggle: View {
+	@Environment(\.inspectorShown) private var shown
+
+	var body: some View {
+		if let shown {
+			IconButton("sidebar.right") { withAnimation(.panel) { shown.wrappedValue.toggle() } }
+				.help(shown.wrappedValue ? "Hide the inspector (⌥⌘I)" : "Show the inspector (⌥⌘I)")
+		}
+	}
+}
+
+/// A pane's close icon, in its header while the middle column is split.
+struct PaneCloseButton: View {
+	@Environment(AppModel.self) private var model: AppModel?
+	@Environment(\.paneIndex) private var index
+
+	var body: some View {
+		if let model, model.panes.count > 1 {
+			IconButton("xmark") { withAnimation(.panel) { model.closePane(index) } }
+				.help("Close this pane (⇧⌘W)")
 		}
 	}
 }
