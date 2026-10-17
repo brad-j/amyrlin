@@ -9,6 +9,12 @@ struct ConversationKey: Hashable {
 	let conversation: ConversationID
 }
 
+/// A project in the sidebar: its machine and name, "" for scratch.
+struct ProjectKey: Hashable {
+	let machine: UUID
+	let project: String
+}
+
 /// A conversation not created yet: a project picked, no message sent. The first message creates it on the host.
 struct Draft: Equatable {
 	let machine: UUID
@@ -183,6 +189,8 @@ final class AppModel {
 	var renaming: ConversationKey?
 	/// The machine whose removal is being confirmed.
 	var removingMachine: UUID?
+	/// The project whose removal from the sidebar is being confirmed.
+	var removingProject: ProjectKey?
 	/// The machine a new conversation is being started on, while its sheet is open.
 	var newConversationMachine: UUID?
 	/// A failed app-level action, shown once in the window.
@@ -363,6 +371,25 @@ final class AppModel {
 		Task {
 			do {
 				try await machine.store.setArchived(target.conversation, archived)
+			} catch {
+				self.error = (error as? ProtocolError)?.message ?? String(describing: error)
+			}
+		}
+	}
+
+	/// The project's sessions that aren't archived; the sidebar shows a project while it has any.
+	func activeSessions(in target: ProjectKey) -> [ConversationSummary] {
+		machine(target.machine)?.store.state.active.filter { ($0.project ?? "") == target.project } ?? []
+	}
+
+	/// Takes a project off the sidebar by archiving its sessions; running ones keep running, and each can be brought back
+	/// from the archive.
+	func removeProject(_ target: ProjectKey) {
+		guard let machine = machine(target.machine) else { return }
+		let ids = activeSessions(in: target).map(\.id)
+		Task {
+			do {
+				for id in ids { try await machine.store.setArchived(id, true) }
 			} catch {
 				self.error = (error as? ProtocolError)?.message ?? String(describing: error)
 			}

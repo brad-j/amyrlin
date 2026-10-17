@@ -121,6 +121,19 @@ struct MainView: View {
 			let name = model.removingMachine.flatMap(model.machine).map(model.name) ?? "the machine"
 			Text("Its sessions stay on \(name). Add it again any time with its address.")
 		}
+		.alert(
+			"Remove \(model.removingProject.map { $0.project.isEmpty ? "scratch" : $0.project } ?? "this project") from the sidebar?",
+			isPresented: Binding(get: { model.removingProject != nil }, set: { if !$0 { model.removingProject = nil } })
+		) {
+			Button("Cancel", role: .cancel) { model.removingProject = nil }
+			Button("Remove") {
+				if let target = model.removingProject { model.removeProject(target) }
+				model.removingProject = nil
+			}
+		} message: {
+			let count = model.removingProject.map { model.activeSessions(in: $0).count } ?? 0
+			Text("Its \(count == 1 ? "session moves" : "\(count) sessions move") to the archive, where any can be brought back. A running session keeps running.")
+		}
 		.alert("Something went wrong", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
 			Button("OK") { model.error = nil }
 		} message: {
