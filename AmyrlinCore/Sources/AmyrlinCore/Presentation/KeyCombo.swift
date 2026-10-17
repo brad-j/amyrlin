@@ -31,6 +31,11 @@ public struct KeyCombo: Codable, Hashable, Sendable {
 		(control ? "⌃" : "") + (option ? "⌥" : "") + (shift ? "⇧" : "") + (command ? "⌘" : "") + keyName
 	}
 
+	/// One symbol per key, for drawing each on its own cap: `["⇧", "⌘", "D"]`.
+	public var symbols: [String] {
+		[(control, "⌃"), (option, "⌥"), (shift, "⇧"), (command, "⌘")].filter(\.0).map(\.1) + [keyName]
+	}
+
 	public var keyName: String {
 		if let name = Self.names[key] { return name }
 		if let scalar = key.unicodeScalars.first, key.unicodeScalars.count == 1, (0xF704...0xF70F).contains(scalar.value) {

@@ -22,8 +22,8 @@ import SwiftUI
 	/// The transcript's scale: 1.15 at 100%.
 	static var textScale: CGFloat { TextSize.base * TextSize.shared.textZoom }
 	/// Both families ship one file per weight; `.weight(_:)` picks among the bundled ones, light to bold.
-	private static func sans(_ size: CGFloat, _ weight: Font.Weight = .light) -> Font {
-		.custom("IBM Plex Sans", size: size * textScale).weight(weight)
+	private static func sans(_ size: CGFloat, _ weight: Font.Weight = .light, scale: CGFloat = textScale) -> Font {
+		.custom("IBM Plex Sans", size: size * scale).weight(weight)
 	}
 	private static func mono(_ size: CGFloat, _ weight: Font.Weight = .light, scale: CGFloat = scale) -> Font {
 		.custom("IBM Plex Mono", size: size * scale).weight(weight)
@@ -48,6 +48,13 @@ import SwiftUI
 	static var projectHeader: Font { mono(12.5, .regular) }
 	/// A machine's name is a row's size; the computer icon and full ink set it apart.
 	static var machineHeader: Font { mono(12.5, .regular) }
+	/// Chrome in the reading face, scaled with the chrome, for the shortcuts sheet: a reference read down a list, and
+	/// the keys' symbols sit better beside it than beside mono.
+	static var uiSans: Font { sans(13, scale: scale) }
+	static var uiSansSmall: Font { sans(11.5, scale: scale) }
+	static var uiSansStrong: Font { sans(13, .medium, scale: scale) }
+	/// A key's symbol on its cap: the system face, which draws ⌘ ⌥ ⇧ ⌃ as menus do.
+	static var keyCap: Font { .system(size: 10.5 * scale, weight: .regular) }
 	/// The space between lines of `reading` text: Plex Sans sets lines 1.3 em apart, and the transcript's are 10% more
 	/// than that plus 4 points.
 	static var readingLineSpacing: CGFloat {

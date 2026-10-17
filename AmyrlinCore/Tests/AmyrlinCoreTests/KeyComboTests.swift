@@ -7,6 +7,8 @@ import Testing
 		#expect(KeyCombo("d", command: true, shift: true).display == "⇧⌘D")
 		#expect(KeyCombo("k", command: true, shift: true, option: true, control: true).display == "⌃⌥⇧⌘K")
 		#expect(KeyCombo("[", command: true).display == "⌘[")
+		#expect(KeyCombo("d", command: true, shift: true).symbols == ["⇧", "⌘", "D"])
+		#expect(KeyCombo(" ", control: true).symbols == ["⌃", "Space"])
 	}
 
 	@Test func namesKeysThatTypeNothing() {

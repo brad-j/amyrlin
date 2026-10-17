@@ -188,125 +188,134 @@ final class KeyRecorder {
 	}
 }
 
-/// Every keyboard shortcut (⌘K): the menu commands', which a click changes, then the fixed keys of the composer and
-/// the sidebar.
+/// Every keyboard shortcut (⌘K), in two columns of groups: the menu commands', which a click changes, then the fixed
+/// keys of the composer and the sidebar. Set in Plex Sans with each key on its own cap, as a reference reads.
 struct ShortcutsSheet: View {
 	let shortcuts: Shortcuts
 	@Environment(\.dismiss) private var dismiss
 	@State private var recorder = KeyRecorder()
 	@State private var problem: String?
 
-	/// Keys that aren't menu commands, so they don't change.
-	private static let fixed: [(title: String, keys: [(String, String)])] = [
-		("composer", [
-			("↩", "Send, or queue a follow-up while running"),
-			("⌘↩", "Steer the run once"),
-			("⇧↩  ⌥↩", "New line"),
-			("⎋", "Stop the run"),
-			("⌘V", "Paste images, or fold a long paste"),
-		]),
-		("sidebar", [
-			("↑ ↓", "Move between sessions"),
-			("⌘-click", "Open a session in a new pane"),
-			("↩", "Open the first match, in the search"),
-			("⎋", "Clear the search"),
-		]),
+	/// Keys that aren't menu commands, so they don't change: each a list of combinations, each a list of caps.
+	private static let composer: [(caps: [[String]], title: String)] = [
+		([["↩"]], "Send, or queue while running"),
+		([["⌘", "↩"]], "Steer the run once"),
+		([["⇧", "↩"], ["⌥", "↩"]], "New line"),
+		([["esc"]], "Stop the run"),
+		([["⌘", "V"]], "Paste images or long text"),
+	]
+	private static let sidebar: [(caps: [[String]], title: String)] = [
+		([["↑"], ["↓"]], "Move between sessions"),
+		([["⌘", "click"]], "Open in a new pane"),
+		([["↩"]], "Open the first match"),
+		([["esc"]], "Clear the search"),
 	]
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 0) {
-			HeaderBar {
-				Text("keyboard shortcuts").font(Typography.label).foregroundStyle(Palette.ink3).textCase(.uppercase)
+			HStack {
+				Text("Keyboard Shortcuts").font(Typography.uiSansStrong).foregroundStyle(Palette.ink)
 				Spacer()
 				if shortcuts.anyChanged {
-					BracketButton("reset all") {
+					Button("Reset All") {
 						recorder.stop()
+						problem = nil
 						shortcuts.resetAll()
 					}
+					.buttonStyle(.plain)
+					.font(Typography.uiSansSmall)
+					.foregroundStyle(Palette.ink3)
 				}
 			}
-			ScrollView {
-				VStack(alignment: .leading, spacing: 18) {
-					ForEach(ShortcutCommand.groups, id: \.title) { group in
-						section(group.title) {
-							ForEach(group.commands) { command in editableRow(command) }
-						}
-					}
-					ForEach(Self.fixed, id: \.title) { group in
-						section(group.title) {
-							ForEach(group.keys, id: \.1) { keys, title in
-								HStack {
-									Text(title).foregroundStyle(Palette.ink2)
-									Spacer()
-									Text(keys).foregroundStyle(Palette.ink3).padding(.horizontal, 8)
-								}
-							}
-						}
-					}
-				}
-				.font(Typography.ui)
-				.padding(16)
-			}
-			.frame(maxHeight: 520 * Typography.scale)
+			.padding(.horizontal, 22)
+			.frame(height: Metrics.bar + 8)
 			Rectangle().fill(Palette.rule).frame(height: 1)
-			HStack(spacing: 8) {
+			// Scrolls only when the text is too big for the screen.
+			ViewThatFits(in: .vertical) {
+				columns
+				ScrollView { columns }
+			}
+			Rectangle().fill(Palette.rule).frame(height: 1)
+			HStack(spacing: 12) {
 				Group {
 					if let problem {
 						Text(problem).foregroundStyle(Palette.bad)
 					} else if recorder.recording != nil {
-						Text("press the new keys · ⌫ removes · esc cancels").foregroundStyle(Palette.accent)
+						Text("Press the new shortcut. Delete removes it; esc cancels.").foregroundStyle(Palette.accent)
 					} else {
-						Text("click a shortcut to change it").foregroundStyle(Palette.ink3)
+						Text("Click a shortcut to change it.").foregroundStyle(Palette.ink3)
 					}
 				}
-				.font(Typography.uiSmall)
+				.font(Typography.uiSansSmall)
 				.lineLimit(1)
 				Spacer()
-				Button("esc close") { dismiss() }
-					.buttonStyle(QuietButton())
+				Button("Done") { dismiss() }
+					.buttonStyle(QuietButton(font: Typography.uiSans))
 					.keyboardShortcut(.cancelAction)
 			}
-			.padding(.horizontal, 16)
-			.padding(.vertical, 10)
+			.padding(.horizontal, 22)
+			.padding(.vertical, 12)
 		}
-		.frame(width: 560 * Typography.scale)
+		.frame(width: 780 * Typography.scale)
 		.background(Palette.paper)
 		.onDisappear { recorder.stop() }
 	}
 
-	private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-		VStack(alignment: .leading, spacing: 6) {
-			Text(title).font(Typography.label).foregroundStyle(Palette.ink3).textCase(.uppercase)
-			content()
+	private var columns: some View {
+		let groups = ShortcutCommand.groups
+		return HStack(alignment: .top, spacing: 40) {
+			VStack(alignment: .leading, spacing: 22) {
+				commandGroup(groups[0])
+				commandGroup(groups[1])
+				fixedGroup("Composer", Self.composer)
+			}
+			VStack(alignment: .leading, spacing: 22) {
+				commandGroup(groups[2])
+				commandGroup(groups[3])
+				fixedGroup("Sidebar", Self.sidebar)
+			}
+		}
+		.padding(.horizontal, 22)
+		.padding(.vertical, 20)
+	}
+
+	private func commandGroup(_ group: (title: String, commands: [ShortcutCommand])) -> some View {
+		section(group.title.capitalized) {
+			ForEach(group.commands) { command in
+				EditableShortcutRow(
+					command: command,
+					combo: shortcuts.combo(command),
+					changed: shortcuts.isChanged(command),
+					recording: recorder.recording == command,
+					toggle: { recorder.recording == command ? stopRecording() : record(command) },
+					reset: { shortcuts.reset(command) }
+				)
+			}
 		}
 	}
 
-	private func editableRow(_ command: ShortcutCommand) -> some View {
-		let recording = recorder.recording == command
-		let combo = shortcuts.combo(command)
-		return HStack(spacing: 8) {
-			Text(command.title).foregroundStyle(Palette.ink)
-			Spacer()
-			if shortcuts.isChanged(command), !recording {
-				BracketButton("reset") { shortcuts.reset(command) }
-					.help("Back to \(command.defaultCombo?.display ?? "none")")
+	private func fixedGroup(_ title: String, _ rows: [(caps: [[String]], title: String)]) -> some View {
+		section(title) {
+			ForEach(rows, id: \.title) { row in
+				HStack(spacing: 12) {
+					Text(row.title).foregroundStyle(Palette.ink2)
+					Spacer(minLength: 12)
+					HStack(spacing: 8) {
+						ForEach(row.caps.indices, id: \.self) { index in KeyCaps(symbols: row.caps[index]) }
+					}
+				}
+				.frame(minHeight: 26 * Typography.scale)
 			}
-			Button {
-				if recording { stopRecording() } else { record(command) }
-			} label: {
-				Text(recording ? "press keys…" : combo?.display ?? "none")
-					.foregroundStyle(recording ? Palette.accentInk : combo == nil ? Palette.ink3 : Palette.ink)
-					.monospacedDigit()
-					.padding(.horizontal, 8)
-					.padding(.vertical, 2)
-					.frame(minWidth: 96 * Typography.scale, alignment: .trailing)
-					.background(recording ? Palette.accent : Palette.paper3)
-					.overlay(Rectangle().stroke(recording ? .clear : Palette.rule2))
-					.contentShape(Rectangle())
-			}
-			.buttonStyle(.plain)
-			.help(recording ? "Press the new keys" : "Change the shortcut")
 		}
+	}
+
+	private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+		VStack(alignment: .leading, spacing: 2) {
+			Text(title).font(Typography.uiSansSmall.weight(.medium)).foregroundStyle(Palette.ink3).padding(.bottom, 6)
+			content()
+		}
+		.font(Typography.uiSans)
+		.frame(maxWidth: .infinity, alignment: .leading)
 	}
 
 	private func record(_ command: ShortcutCommand) {
@@ -334,5 +343,77 @@ struct ShortcutsSheet: View {
 	private func stopRecording() {
 		recorder.stop()
 		problem = nil
+	}
+}
+
+/// A menu command and its keys, which a click records anew; Reset shows once it's changed.
+private struct EditableShortcutRow: View {
+	let command: ShortcutCommand
+	let combo: KeyCombo?
+	let changed: Bool
+	let recording: Bool
+	let toggle: () -> Void
+	let reset: () -> Void
+	@State private var hovering = false
+
+	var body: some View {
+		HStack(spacing: 10) {
+			// The menu's "…" says a sheet follows; here it's only noise.
+			Text(command.title.replacingOccurrences(of: "…", with: "")).foregroundStyle(Palette.ink)
+			Spacer(minLength: 12)
+			if changed, !recording {
+				Button("Reset", action: reset)
+					.buttonStyle(.plain)
+					.font(Typography.uiSansSmall)
+					.foregroundStyle(Palette.ink3)
+					.help("Back to \(command.defaultCombo?.display ?? "none")")
+			}
+			Button(action: toggle) {
+				Group {
+					if recording {
+						Text("Type shortcut")
+							.font(Typography.uiSansSmall)
+							.foregroundStyle(Palette.accentInk)
+							.padding(.horizontal, 8)
+							.frame(minHeight: 20 * Typography.scale)
+							.background(Palette.accent)
+					} else if let combo {
+						KeyCaps(symbols: combo.symbols, highlighted: hovering)
+					} else {
+						Text("none")
+							.font(Typography.uiSansSmall)
+							.foregroundStyle(Palette.ink3)
+							.padding(.horizontal, 8)
+							.frame(minHeight: 20 * Typography.scale)
+							.overlay(Rectangle().stroke(hovering ? Palette.ink3 : Palette.rule2, style: StrokeStyle(lineWidth: 1, dash: [2, 2])))
+					}
+				}
+				.contentShape(Rectangle())
+			}
+			.buttonStyle(.plain)
+			.onHover { hovering = $0 }
+			.help(recording ? "Press the new shortcut" : "Change the shortcut")
+		}
+		.frame(minHeight: 26 * Typography.scale)
+	}
+}
+
+/// Keys as caps, one symbol each: `⇧` `⌘` `D`.
+struct KeyCaps: View {
+	let symbols: [String]
+	var highlighted = false
+
+	var body: some View {
+		HStack(spacing: 3) {
+			ForEach(symbols.indices, id: \.self) { index in
+				Text(symbols[index])
+					.font(Typography.keyCap)
+					.foregroundStyle(highlighted ? Palette.ink : Palette.ink2)
+					.padding(.horizontal, 5)
+					.frame(minWidth: 20 * Typography.scale, minHeight: 20 * Typography.scale)
+					.background(Palette.paper3)
+					.overlay(Rectangle().stroke(highlighted ? Palette.ink3 : Palette.rule2))
+			}
+		}
 	}
 }

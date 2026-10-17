@@ -178,10 +178,12 @@ struct ApprovalCard: View {
 struct QuietButton: ButtonStyle {
 	var fill: Color?
 	var ink: Color = Palette.ink
+	/// Mono's `ui` when nil.
+	var font: Font?
 
 	func makeBody(configuration: Configuration) -> some View {
 		configuration.label
-			.font(Typography.ui)
+			.font(font ?? Typography.ui)
 			.foregroundStyle(ink)
 			.padding(.vertical, 5)
 			.padding(.horizontal, 12)
