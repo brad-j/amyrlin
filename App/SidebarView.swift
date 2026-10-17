@@ -209,6 +209,9 @@ private struct MachineSection: View {
 						.contextMenu {
 							Button("New Session in \(name)") { newSession(in: group) }.disabled(!store.isConnected)
 							if !group.project.isEmpty, store.isConnected { colourMenu(group.project) }
+							Divider()
+							Button("Remove from Sidebar…") { model.removingProject = ProjectKey(machine: machine.id, project: group.project) }
+								.disabled(!store.isConnected)
 						}
 						if !collapsed.wrappedValue {
 							sessionRows(group.sessions)
