@@ -25,6 +25,9 @@ struct AmyrlinApp: App {
 			CommandGroup(replacing: .newItem) {
 				Button("New Session…") { model.newSession() }
 					.keyboardShortcut(.newSession, in: shortcuts)
+				Button("Open Project…") { model.showingSpotlight.toggle() }
+					.keyboardShortcut(.openProject, in: shortcuts)
+					.disabled(model.machines.isEmpty)
 				Button("Add Machine…") { model.isAddingMachine = true }
 					.keyboardShortcut(.addMachine, in: shortcuts)
 			}
@@ -102,6 +105,9 @@ struct MainView: View {
 		}
 		.sheet(isPresented: $model.showingShortcuts) {
 			ShortcutsSheet(shortcuts: Shortcuts.shared)
+		}
+		.sheet(isPresented: $model.showingSpotlight) {
+			SpotlightSheet(model: model)
 		}
 		.sheet(item: Binding(get: { model.renaming.map(RenameRef.init) }, set: { model.renaming = $0?.conversation })) { ref in
 			RenameSheet(model: model, target: ref.conversation)
