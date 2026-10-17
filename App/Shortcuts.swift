@@ -5,7 +5,7 @@ import SwiftUI
 
 /// A menu command whose key can be changed in the shortcuts sheet (⌘K).
 enum ShortcutCommand: String, CaseIterable, Identifiable {
-	case newSession, addMachine, searchSessions, showShortcuts
+	case newSession, openProject, addMachine, searchSessions, showShortcuts
 	case toggleSidebar, toggleInspector
 	case splitRight, closePane, nextPane, previousPane
 	case biggerText, smallerText, actualSize
@@ -15,6 +15,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
 	var title: String {
 		switch self {
 		case .newSession: "New Session…"
+		case .openProject: "Open Project…"
 		case .addMachine: "Add Machine…"
 		case .searchSessions: "Search Sessions"
 		case .showShortcuts: "Keyboard Shortcuts"
@@ -33,6 +34,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
 	var defaultCombo: KeyCombo? {
 		switch self {
 		case .newSession: KeyCombo("n", command: true)
+		case .openProject: KeyCombo("/", command: true)
 		case .addMachine: KeyCombo("n", command: true, shift: true)
 		case .searchSessions: KeyCombo("f", command: true)
 		case .showShortcuts: KeyCombo("k", command: true)
@@ -50,7 +52,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
 
 	/// The sheet's groups, in order.
 	static let groups: [(title: String, commands: [ShortcutCommand])] = [
-		("sessions", [.newSession, .addMachine, .searchSessions, .showShortcuts]),
+		("sessions", [.newSession, .openProject, .addMachine, .searchSessions, .showShortcuts]),
 		("columns", [.toggleSidebar, .toggleInspector]),
 		("panes", [.splitRight, .closePane, .nextPane, .previousPane]),
 		("text", [.biggerText, .smallerText, .actualSize]),
