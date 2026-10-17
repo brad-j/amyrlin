@@ -68,6 +68,33 @@ struct StoreTests {
 		await host.stop()
 	}
 
+	/// `onAlerts` hears each change in turn, even an ask and its answer in one batch, and nothing from the snapshot.
+	@Test func alertsFollowHostWatch() async throws {
+		var heard: [SessionAlert.Kind] = []
+		host.onAlerts = { heard += $0.map(\.kind) }
+		host.start()
+		let server = try await transport.nextConnection()
+		try await server.acceptHello()
+		var watch: FakeServerSide.Request?
+		for _ in 0..<2 {
+			let request = try await server.nextRequest()
+			if request.method == "host.watch" { watch = request }
+		}
+		let hostWatch = try #require(watch)
+		server.respond(hostWatch, result: .object(["subscription": "h1"]))
+		server.event("h1", seq: 0, [.object([
+			"type": "host.snapshot", "host": .object(["hostId": "h", "name": "egwene"]), "spend": .object([:]),
+			"conversations": .array([.object(["id": .number(1), "title": "Count", "status": "needsApproval", "updatedAt": .number(100)])]),
+		])])
+		#expect(await eventually { host.state.hasSnapshot })
+		server.event("h1", seq: 1, ["busy", "needsApproval", "busy", "idle"].map { status in
+			.object(["type": "conversation.updated", "conversation": .object(["id": .number(1), "title": "Count", "status": .string(status), "updatedAt": .number(200)])])
+		})
+		#expect(await eventually { host.state.conversations[1]?.status == .idle })
+		#expect(heard == [.needsYou, .done])
+		await host.stop()
+	}
+
 	/// Archiving moves a session between the lists, from the command's result and from `host.watch`; titles follow
 	/// `conversation.updated`, as when the host's model titles a new session.
 	@Test func archivingAndRetitlingFollowTheHost() async throws {

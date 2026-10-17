@@ -10,6 +10,8 @@ public final class HostStore {
 	public private(set) var info: Commands.HostInfo.Result?
 	/// Set when `host.watch` gave up or ended; the list is then stale.
 	public private(set) var watchProblem: String?
+	/// Told when sessions start needing approval, finish a run or get stuck (SessionAlerts), as `host.watch` reports it.
+	@ObservationIgnored public var onAlerts: (@MainActor ([SessionAlert]) -> Void)?
 
 	@ObservationIgnored public let connection: HostConnection
 	@ObservationIgnored private var tasks: [Task<Void, Never>] = []
@@ -114,9 +116,17 @@ public final class HostStore {
 				watchProblem = nil
 				let costs = state.costs
 				let hadSnapshot = state.hasSnapshot
-				if case .needsResync(let reason) = state.apply(events) {
-					await subscription.resync(reason: reason)
+				// One event at a time, so a session that asks and is answered within a batch still says so.
+				var alerts: [SessionAlert] = []
+				for event in events {
+					let before = state.conversations
+					if case .needsResync(let reason) = state.apply(event) {
+						await subscription.resync(reason: reason)
+						break
+					}
+					alerts += SessionAlerts.between(before, state.conversations)
 				}
+				if !alerts.isEmpty { onAlerts?(alerts) }
 				// A snapshot brings its own monthCost; a session charged since needs host.info's.
 				let snapshot = events.contains { if case .snapshot = $0 { true } else { false } }
 				if hadSnapshot, !snapshot, state.costs != costs { refreshMonthCost() }

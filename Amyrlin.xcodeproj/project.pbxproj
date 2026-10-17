@@ -24,6 +24,7 @@
 		8E52101B16CC6899E2A5B21F /* IBMPlexMono-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FACC027B3134DED45C50F173 /* IBMPlexMono-SemiBold.ttf */; };
 		934A96A2063E455D29F2F089 /* IBMPlexSans-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CA27715EC3AA23942F53B817 /* IBMPlexSans-BoldItalic.ttf */; };
 		A310D309B47461DC9CC59F99 /* IBMPlexSans-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 426443675E16744793344942 /* IBMPlexSans-Bold.ttf */; };
+		A72D3567E72FBD289C4F8F64 /* ToastStack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76BF3D6C015E28B6A54E13C2 /* ToastStack.swift */; };
 		A72E7A31DF98C83FA8A34DCE /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 683EB059DBE7F4081E821D7B /* MarkdownView.swift */; };
 		A96F62B37DD56C9283F7B1B1 /* IBMPlexMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 976BB1CCA2CDFB3AECFBE1CE /* IBMPlexMono-Regular.ttf */; };
 		B1AED751167FC0C047FB468F /* IBMPlexMono-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E098E2DEA603F2E95964E60C /* IBMPlexMono-Medium.ttf */; };
@@ -53,6 +54,7 @@
 		46CC484C10EE38B5F76742D7 /* AmyrlinCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = AmyrlinCore; path = AmyrlinCore; sourceTree = SOURCE_ROOT; };
 		683EB059DBE7F4081E821D7B /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
 		74CFC7E014E5733957E6AE35 /* IBMPlexSans-Light.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexSans-Light.ttf"; sourceTree = "<group>"; };
+		76BF3D6C015E28B6A54E13C2 /* ToastStack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastStack.swift; sourceTree = "<group>"; };
 		7D357F171DCC5EF0B185509D /* Amyrlin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Amyrlin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		96C81C52F22A4378025089DF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		976BB1CCA2CDFB3AECFBE1CE /* IBMPlexMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Regular.ttf"; sourceTree = "<group>"; };
@@ -144,6 +146,7 @@
 				BE779E6A013811D3504F3959 /* Streaming.swift */,
 				F5E0486C01575E9101504707 /* TextSize.swift */,
 				0987027DBAEEDC51353D4ADB /* Theme.swift */,
+				76BF3D6C015E28B6A54E13C2 /* ToastStack.swift */,
 				400DB9A82C252E1F657E8D41 /* TranscriptView.swift */,
 				4E922853EB57DE092B86E7BB /* Fonts */,
 			);
@@ -260,6 +263,7 @@
 				4490CBA833957F7D29197FEE /* Streaming.swift in Sources */,
 				69C6F996831A0BD3655E6F57 /* TextSize.swift in Sources */,
 				EF49776FA13371AF809A8701 /* Theme.swift in Sources */,
+				A72D3567E72FBD289C4F8F64 /* ToastStack.swift in Sources */,
 				07A9818150EB8F9E60EC74B8 /* TranscriptView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
