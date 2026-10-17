@@ -9,6 +9,14 @@ struct ConversationKey: Hashable {
 	let conversation: ConversationID
 }
 
+/// A session's change of state, shown as a toast until it's opened, dismissed, or (for `.done` and `.stuck`) a few
+/// seconds pass.
+struct Toast: Identifiable, Equatable {
+	let id = UUID()
+	let key: ConversationKey
+	let kind: SessionAlert.Kind
+}
+
 /// A project in the sidebar: its machine and name, "" for scratch.
 struct ProjectKey: Hashable {
 	let machine: UUID
@@ -56,7 +64,11 @@ final class AppModel {
 	private(set) var machines: [Machine] = []
 	/// Left to right; never empty.
 	private(set) var panes = [Pane(content: .empty)] {
-		didSet { saveSelection() }
+		didSet {
+			saveSelection()
+			// A session opened in a pane shows what its toast said.
+			toasts.removeAll { isOpen($0.key) }
+		}
 	}
 	/// The index of the pane with focus.
 	private(set) var focus = 0 {
@@ -191,6 +203,9 @@ final class AppModel {
 	var renaming: ConversationKey?
 	/// The machine whose removal is being confirmed.
 	var removingMachine: UUID?
+	/// Sessions that need approval, finished a run or got stuck while out of view, oldest first.
+	private(set) var toasts: [Toast] = []
+	static let maxToasts = 4
 	/// The project whose removal from the sidebar is being confirmed.
 	var removingProject: ProjectKey?
 	/// The machine a new conversation is being started on, while its sheet is open.
@@ -296,6 +311,7 @@ final class AppModel {
 	func removeMachine(_ id: UUID) {
 		guard let index = machines.firstIndex(where: { $0.id == id }) else { return }
 		let machine = machines.remove(at: index)
+		toasts.removeAll { $0.key.machine == id }
 		for pane in panes.indices.reversed() where panes[pane].content.machine == id {
 			if panes.count > 1 { closePane(pane) } else { panes[pane].content = .empty }
 		}
@@ -416,8 +432,40 @@ final class AppModel {
 		}
 	}
 
+	/// The toasts still worth showing: one saying a session needs you goes once it doesn't.
+	var shownToasts: [Toast] {
+		toasts.filter { toast in
+			guard toast.kind == .needsYou else { return true }
+			return machine(toast.key.machine)?.store.state.conversations[toast.key.conversation]?.status == .needsApproval
+		}
+	}
+
+	/// Shows the toast's session in the focused pane, or focuses the pane already showing it.
+	func openToast(_ toast: Toast) {
+		dismissToast(toast)
+		selection = toast.key
+	}
+
+	func dismissToast(_ toast: Toast) {
+		toasts.removeAll { $0.id == toast.id }
+	}
+
+	/// A toast for each alert, but none for a session open in a pane while the app is in front, which shows it already.
+	/// A session's newer toast replaces its older one.
+	private func receive(_ alerts: [SessionAlert], from machine: UUID) {
+		for alert in alerts {
+			let key = ConversationKey(machine: machine, conversation: alert.summary.id)
+			if isOpen(key), NSApplication.shared.isActive { continue }
+			toasts.removeAll { $0.key == key }
+			toasts.append(Toast(key: key, kind: alert.kind))
+		}
+		toasts = Array(shownToasts.suffix(Self.maxToasts))
+	}
+
 	private func makeMachine(id: UUID, url: URL) -> Machine {
-		Machine(id: id, url: url, store: HostStore(url: url, client: client))
+		let store = HostStore(url: url, client: client)
+		store.onAlerts = { [weak self] alerts in self?.receive(alerts, from: id) }
+		return Machine(id: id, url: url, store: store)
 	}
 
 	/// The focused conversation, reopened at the next launch; not for machines given at launch, whose sessions aren't

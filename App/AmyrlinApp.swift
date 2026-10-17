@@ -82,6 +82,7 @@ struct MainView: View {
 				}
 				detail
 					.frame(maxWidth: .infinity, maxHeight: .infinity)
+					.overlay(alignment: .topTrailing) { ToastStack(model: model) }
 				if model.showInspector, let selected = model.selected {
 					InspectorView(store: selected.conversation, host: selected.machine.store)
 						.id(model.selection)
