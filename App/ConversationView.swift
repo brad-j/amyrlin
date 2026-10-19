@@ -145,10 +145,6 @@ struct ApprovalCard: View {
 		return "\(word) \(combo.display)"
 	}
 
-	private var command: String {
-		approval.args["command"]?.stringValue ?? approval.args.jsonText
-	}
-
 	var body: some View {
 		VStack(alignment: .leading, spacing: 0) {
 			HStack(spacing: 8) {
@@ -159,7 +155,7 @@ struct ApprovalCard: View {
 			.font(Typography.ui)
 			.padding(.horizontal, 10)
 			.padding(.vertical, 7)
-			Text("$ " + command)
+			Text("$ " + approval.command)
 				.font(Typography.code)
 				.foregroundStyle(Palette.ink)
 				.textSelection(.enabled)
@@ -186,6 +182,13 @@ struct ApprovalCard: View {
 		.background(Palette.paper2)
 		.overlay(Rectangle().stroke(Palette.wait.opacity(0.85)))
 		.overlay(alignment: .leading) { Rectangle().fill(Palette.wait).frame(width: 2) }
+	}
+}
+
+extension Approval {
+	/// What the call runs: its shell command, or its arguments as JSON.
+	var command: String {
+		args["command"]?.stringValue ?? args.jsonText
 	}
 }
 

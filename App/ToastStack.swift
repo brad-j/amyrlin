@@ -2,8 +2,8 @@ import AmyrlinCore
 import SwiftUI
 
 /// Toasts at the top right of the panes, newest at the bottom: a session out of view that needs you, finished a run or
-/// got stuck. A click opens the session; × dismisses. "Needs you" stays until the approval is answered, the others go
-/// after a few seconds unless the pointer is on them.
+/// got stuck. A click opens the session; × dismisses. "Needs you" shows the waiting command with deny and allow, and
+/// stays until it's answered; the others go after a few seconds unless the pointer is on them.
 struct ToastStack: View {
 	let model: AppModel
 
@@ -30,6 +30,11 @@ private struct ToastView: View {
 
 	private var machine: AppModel.Machine? { model.machine(toast.key.machine) }
 	private var summary: ConversationSummary? { machine?.store.state.conversations[toast.key.conversation] }
+	/// The session's store, watched while a "needs you" toast shows so its waiting call can be answered here.
+	private var conversation: ConversationStore? {
+		toast.kind == .needsYou ? machine?.store.conversation(toast.key.conversation) : nil
+	}
+	private var approval: Approval? { conversation?.state.approvals.first }
 
 	var body: some View {
 		HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -43,6 +48,9 @@ private struct ToastView: View {
 					.font(Typography.uiSmall)
 					.foregroundStyle(Palette.ink3)
 					.lineLimit(2)
+				if let approval, let conversation {
+					answer(approval, in: conversation)
+				}
 			}
 			Spacer(minLength: 4)
 			IconButton("xmark") { model.dismissToast(toast) }
@@ -61,6 +69,7 @@ private struct ToastView: View {
 		.onTapGesture { model.openToast(toast) }
 		.onHover { hovering = $0 }
 		.help("Open \(summary?.title ?? "the session")")
+		.task { conversation?.start() }
 		// Restarts when the pointer leaves, so a toast being read stays.
 		.task(id: hovering) {
 			guard toast.kind != .needsYou, !hovering else { return }
@@ -68,6 +77,30 @@ private struct ToastView: View {
 			guard !Task.isCancelled else { return }
 			model.dismissToast(toast)
 		}
+	}
+
+	/// The command it waits to run, then deny and allow. The toast goes once the session no longer needs you, so a failed
+	/// answer leaves it to try again; the host takes the same answer twice.
+	private func answer(_ approval: Approval, in conversation: ConversationStore) -> some View {
+		VStack(alignment: .leading, spacing: 8) {
+			Text("$ " + approval.command)
+				.font(Typography.code)
+				.foregroundStyle(Palette.ink)
+				.lineLimit(2)
+				.truncationMode(.tail)
+				.help(approval.command)
+			HStack(spacing: 8) {
+				Button("deny") { answer(approval, in: conversation, approve: false) }
+					.buttonStyle(QuietButton(font: Typography.uiSmall))
+				Button("allow") { answer(approval, in: conversation, approve: true) }
+					.buttonStyle(QuietButton(fill: Palette.wait, ink: Palette.waitInk, font: Typography.uiSmall))
+			}
+		}
+		.padding(.top, 5)
+	}
+
+	private func answer(_ approval: Approval, in conversation: ConversationStore, approve: Bool) {
+		Task { await conversation.answer(approval, approve: approve) }
 	}
 
 	private var mark: StateMark.State {
