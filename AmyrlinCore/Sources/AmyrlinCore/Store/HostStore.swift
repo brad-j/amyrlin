@@ -81,6 +81,12 @@ public final class HostStore {
 		state.upsert(result.conversation)
 	}
 
+	/// Takes back an always answer: the session asks again before it runs `summary`.
+	public func forgetApproval(_ summary: String, in id: ConversationID) async throws {
+		let result = try await connection.send(Commands.ForgetApproval(conversationId: id, summary: summary))
+		state.upsert(result.conversation)
+	}
+
 	public func setArchived(_ id: ConversationID, _ archived: Bool) async throws {
 		let result = try await connection.send(Commands.ArchiveConversation(conversationId: id, archived: archived))
 		state.upsert(result.conversation)

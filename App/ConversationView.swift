@@ -24,7 +24,7 @@ struct ConversationView: View {
 			VStack(spacing: 8) {
 				// An approval rises in above the composer and drops away once answered, instead of popping.
 				ForEach(store.state.approvals) { approval in
-					ApprovalCard(approval: approval, store: store)
+					ApprovalCard(approval: approval, store: store, isNext: approval.approvalId == store.state.approvals.first?.approvalId)
 						.frame(maxWidth: Metrics.measure + 48)
 						.padding(.horizontal, 40)
 						.transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 10)), removal: .opacity.combined(with: .offset(y: 6))))
@@ -131,10 +131,19 @@ private struct Banner: View {
 	}
 }
 
-/// A call waiting for Brad: an amber-edged box with what it runs, then deny and allow.
+/// A call waiting for Brad: an amber-edged box with what it runs, then deny, always allow and allow. The oldest one in
+/// the focused pane names the keys that answer it.
 struct ApprovalCard: View {
 	let approval: Approval
 	let store: ConversationStore
+	/// The one Allow Tool Call and Deny Tool Call answer, when its pane has focus.
+	var isNext = false
+	@Environment(\.paneFocused) private var paneFocused
+
+	private func label(_ word: String, _ command: ShortcutCommand) -> String {
+		guard isNext, paneFocused, let combo = Shortcuts.shared.combo(command) else { return word }
+		return "\(word) \(combo.display)"
+	}
 
 	private var command: String {
 		approval.args["command"]?.stringValue ?? approval.args.jsonText
@@ -161,9 +170,15 @@ struct ApprovalCard: View {
 				.overlay(alignment: .bottom) { Rectangle().fill(Palette.rule).frame(height: 1) }
 			HStack(spacing: 8) {
 				Spacer()
-				Button("deny") { Task { await store.answer(approval, approve: false) } }
+				Button(label("deny", .denyToolCall)) { Task { await store.answer(approval, approve: false) } }
 					.buttonStyle(QuietButton())
-				Button("allow") { Task { await store.answer(approval, approve: true) } }
+				// Only a host that names the kind of call (aludra's summary) can allow it for the session.
+				if let summary = approval.summary {
+					Button(label("always allow \(summary)", .alwaysAllowToolCall)) { Task { await store.answer(approval, approve: true, always: true) } }
+						.buttonStyle(QuietButton())
+						.help("Allow this and every \(summary) in this session without asking. The inspector lists it, and can take it back.")
+				}
+				Button(label("allow", .allowToolCall)) { Task { await store.answer(approval, approve: true) } }
 					.buttonStyle(QuietButton(fill: Palette.wait, ink: Palette.waitInk))
 			}
 			.padding(8)

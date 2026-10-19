@@ -66,8 +66,9 @@ final class AppModel {
 	private(set) var panes = [Pane(content: .empty)] {
 		didSet {
 			saveSelection()
-			// A session opened in a pane shows what its toast said.
+			// A session opened in a pane shows what its toast and notification said.
 			toasts.removeAll { isOpen($0.key) }
+			notifier.withdraw(panes.compactMap { if case .conversation(let key) = $0.content { key } else { nil } })
 		}
 	}
 	/// The index of the pane with focus.
@@ -222,8 +223,10 @@ final class AppModel {
 
 	/// Machines given at launch for screenshots, which are never saved over the real list.
 	private var ephemeral = false
+	private let notifier = Notifier()
 
 	init() {
+		notifier.onOpen = { [weak self] key in self?.selection = key }
 		let saved = UserDefaults.standard.array(forKey: Self.defaultsKey) as? [[String: String]] ?? []
 		var entries = saved.compactMap { entry -> (UUID, URL)? in
 			guard let id = entry["id"].flatMap(UUID.init(uuidString:)), let url = entry["url"].flatMap(URL.init(string:)) else { return nil }
@@ -243,6 +246,7 @@ final class AppModel {
 		}
 		save()
 		for machine in machines { machine.store.start() }
+		if !machines.isEmpty { notifier.requestPermission() }
 		if let saved = UserDefaults.standard.dictionary(forKey: Self.selectionKey) as? [String: String],
 			let machine = saved["machine"].flatMap(UUID.init(uuidString:)), self.machine(machine) != nil,
 			let conversation = saved["conversation"].flatMap(ConversationID.init)
@@ -306,6 +310,7 @@ final class AppModel {
 		machines.append(machine)
 		save()
 		machine.store.start()
+		notifier.requestPermission()
 	}
 
 	func removeMachine(_ id: UUID) {
@@ -450,12 +455,54 @@ final class AppModel {
 		toasts.removeAll { $0.id == toast.id }
 	}
 
-	/// A toast for each alert, but none for a session open in a pane while the app is in front, which shows it already.
-	/// A session's newer toast replaces its older one.
+	/// The focused session's oldest tool call waiting to be allowed, which ⌘Y, ⌥⌘Y and ⌘. answer.
+	var pendingApproval: Approval? {
+		selected?.conversation.state.approvals.first
+	}
+
+	/// Allows or denies the focused session's oldest waiting tool call; allowed `always`, its kind of call runs without
+	/// asking for the rest of the session.
+	func answerApproval(approve: Bool, always: Bool = false) {
+		guard let store = selected?.conversation, let approval = store.state.approvals.first else { return }
+		Task { await store.answer(approval, approve: approve, always: always) }
+	}
+
+	/// Sessions on every machine waiting for a tool call to be allowed, archived ones too; the Dock badge counts them.
+	var needingYou: Set<ConversationKey> {
+		Set(machines.flatMap { machine in
+			machine.store.state.conversations.values
+				.filter { $0.status == .needsApproval }
+				.map { ConversationKey(machine: machine.id, conversation: $0.id) }
+		})
+	}
+
+	func needingYouChanged(_ keys: Set<ConversationKey>) {
+		notifier.update(needingYou: keys)
+	}
+
+	/// What happened to a session, then where: the project and, with several machines, the machine. Toasts and
+	/// notifications say it under the session's title.
+	func detail(of kind: SessionAlert.Kind, _ summary: ConversationSummary?, on machine: Machine?) -> String {
+		let what = switch kind {
+		case .needsYou: "needs you to allow a tool call"
+		case .done: "done"
+		case .stuck: summary?.stuck.map { "stuck: \($0.reason)" } ?? "stuck"
+		}
+		var place = [summary?.project ?? "scratch"]
+		if machines.count > 1, let machine { place.append(name(of: machine)) }
+		return ([what] + place).joined(separator: " · ")
+	}
+
+	/// A toast for each alert, but none for a session open in a pane, which shows it already. With the app behind
+	/// another, each also posts a notification, open or not. A session's newer toast replaces its older one.
 	private func receive(_ alerts: [SessionAlert], from machine: UUID) {
+		let inFront = NSApplication.shared.isActive
 		for alert in alerts {
 			let key = ConversationKey(machine: machine, conversation: alert.summary.id)
-			if isOpen(key), NSApplication.shared.isActive { continue }
+			if !inFront {
+				notifier.post(alert.kind, for: key, title: alert.summary.title, detail: detail(of: alert.kind, alert.summary, on: self.machine(machine)))
+			}
+			if isOpen(key) { continue }
 			toasts.removeAll { $0.key == key }
 			toasts.append(Toast(key: key, kind: alert.kind))
 		}

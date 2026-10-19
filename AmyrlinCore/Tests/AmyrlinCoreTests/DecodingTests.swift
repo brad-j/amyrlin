@@ -98,6 +98,22 @@ private func decode<T: Decodable>(_ type: T.Type, _ json: String) throws -> T {
 		#expect(Dollars.text(1400) == "$1,400")
 	}
 
+	/// aludra's always answers: an approval names its kind of call, and a summary lists the kinds it runs without asking.
+	@Test func alwaysAllowed() throws {
+		let summary = try decode(ConversationSummary.self, #"{"id":1,"title":"t","alwaysAllowed":["git push","ssh to egwene"]}"#)
+		#expect(summary.alwaysAllowed == ["git push", "ssh to egwene"])
+		#expect(try decode(ConversationSummary.self, #"{"id":1,"title":"t"}"#).alwaysAllowed.isEmpty)
+		let approval = try decode(Approval.self, #"{"approvalId":"a","conversationId":1,"callId":"c","toolName":"bash","args":{},"requestedAt":0,"summary":"git push"}"#)
+		#expect(approval.summary == "git push")
+
+		let encoder = JSONEncoder()
+		encoder.outputFormatting = .sortedKeys
+		let always = String(decoding: try encoder.encode(Commands.AnswerApproval(approvalId: "a", decision: .approve, always: true).params), as: UTF8.self)
+		#expect(always == #"{"always":true,"approvalId":"a","decision":"approve"}"#)
+		let once = String(decoding: try encoder.encode(Commands.AnswerApproval(approvalId: "a", decision: .approve).params), as: UTF8.self)
+		#expect(once == #"{"approvalId":"a","decision":"approve"}"#)
+	}
+
 	@Test func settingsChangeEncodesTriState() throws {
 		let change = SettingsChange(model: .set(ModelRef(provider: "p", modelId: "m")), thinkingLevel: .cleared)
 		let encoder = JSONEncoder()

@@ -8,6 +8,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
 	case newSession, openProject, addMachine, searchSessions, showShortcuts
 	case toggleSidebar, toggleInspector
 	case splitRight, closePane, nextPane, previousPane
+	case allowToolCall, alwaysAllowToolCall, denyToolCall
 	case biggerText, smallerText, actualSize
 
 	var id: String { rawValue }
@@ -25,6 +26,9 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
 		case .closePane: "Close Pane"
 		case .nextPane: "Next Pane"
 		case .previousPane: "Previous Pane"
+		case .allowToolCall: "Allow Tool Call"
+		case .alwaysAllowToolCall: "Always Allow in Session"
+		case .denyToolCall: "Deny Tool Call"
 		case .biggerText: "Bigger Text"
 		case .smallerText: "Smaller Text"
 		case .actualSize: "Actual Size"
@@ -44,6 +48,10 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
 		case .closePane: KeyCombo("w", command: true, shift: true)
 		case .nextPane: KeyCombo("]", command: true)
 		case .previousPane: KeyCombo("[", command: true)
+		case .allowToolCall: KeyCombo("y", command: true)
+		case .alwaysAllowToolCall: KeyCombo("y", command: true, option: true)
+		// ⌘. is the Mac's cancel.
+		case .denyToolCall: KeyCombo(".", command: true)
 		case .biggerText: KeyCombo("+", command: true)
 		case .smallerText: KeyCombo("-", command: true)
 		case .actualSize: KeyCombo("0", command: true)
@@ -55,6 +63,7 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
 		("sessions", [.newSession, .openProject, .addMachine, .searchSessions, .showShortcuts]),
 		("columns", [.toggleSidebar, .toggleInspector]),
 		("panes", [.splitRight, .closePane, .nextPane, .previousPane]),
+		("tool calls", [.allowToolCall, .alwaysAllowToolCall, .denyToolCall]),
 		("text", [.biggerText, .smallerText, .actualSize]),
 	]
 }
@@ -274,6 +283,7 @@ struct ShortcutsSheet: View {
 			VStack(alignment: .leading, spacing: 22) {
 				commandGroup(groups[2])
 				commandGroup(groups[3])
+				commandGroup(groups[4])
 				fixedGroup("Sidebar", Self.sidebar)
 			}
 		}
@@ -282,7 +292,7 @@ struct ShortcutsSheet: View {
 	}
 
 	private func commandGroup(_ group: (title: String, commands: [ShortcutCommand])) -> some View {
-		section(group.title.capitalized) {
+		section(group.title.prefix(1).uppercased() + group.title.dropFirst()) {
 			ForEach(group.commands) { command in
 				EditableShortcutRow(
 					command: command,

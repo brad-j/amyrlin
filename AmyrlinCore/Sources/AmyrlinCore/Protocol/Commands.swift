@@ -233,11 +233,28 @@ public enum Commands {
 			public var approvalId: String
 			public var decision: Decision
 			public var message: String?
+			/// Approving, also allow the approval's summary for the rest of the session (aludra). Left out when false.
+			public var always: Bool?
 		}
 		public struct Result: Decodable, Sendable, Hashable { public var approval: ApprovalResolution }
 		public let params: Params
-		public init(approvalId: String, decision: Decision, message: String? = nil) {
-			params = Params(approvalId: approvalId, decision: decision, message: message)
+		public init(approvalId: String, decision: Decision, message: String? = nil, always: Bool = false) {
+			params = Params(approvalId: approvalId, decision: decision, message: message, always: always ? true : nil)
+		}
+	}
+
+	/// Asks again before the session runs a summary an always answer allowed (aludra; optional within v1).
+	public struct ForgetApproval: Command {
+		public static let method = "approval.forget"
+		public static let retriesOnReconnect = true
+		public struct Params: Encodable, Sendable {
+			public var conversationId: ConversationID
+			public var summary: String
+		}
+		public struct Result: Decodable, Sendable, Hashable { public var conversation: ConversationSummary }
+		public let params: Params
+		public init(conversationId: ConversationID, summary: String) {
+			params = Params(conversationId: conversationId, summary: summary)
 		}
 	}
 

@@ -398,6 +398,8 @@ public struct Approval: Decodable, Sendable, Hashable, Identifiable {
 	public var toolName: String
 	public var args: JSONValue
 	public var requestedAt: Int64
+	/// What the call does, in a line (aludra: `git push`, `ssh to egwene`); what an always answer allows.
+	public var summary: String?
 
 	public var id: String { approvalId }
 }
@@ -490,6 +492,8 @@ public struct ConversationSummary: Decodable, Sendable, Hashable, Identifiable {
 	public var workspace: String?
 	public var project: String?
 	public var dir: String?
+	/// Approval summaries the session runs without asking, from always answers (aludra).
+	public var alwaysAllowed: [String]
 
 	public init(from decoder: any Decoder) throws {
 		let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -508,10 +512,11 @@ public struct ConversationSummary: Decodable, Sendable, Hashable, Identifiable {
 		workspace = try c.decodeIfPresent(String.self, forKey: .workspace)
 		project = try c.decodeIfPresent(String.self, forKey: .project)
 		dir = try c.decodeIfPresent(String.self, forKey: .dir)
+		alwaysAllowed = try c.decodeIfPresent([String].self, forKey: .alwaysAllowed) ?? []
 	}
 
 	private enum CodingKeys: String, CodingKey {
-		case id, title, status, archived, parent, model, createdAt, updatedAt, pendingApprovals, spend, cost, stuck, workspace, project, dir
+		case id, title, status, archived, parent, model, createdAt, updatedAt, pendingApprovals, spend, cost, stuck, workspace, project, dir, alwaysAllowed
 	}
 }
 

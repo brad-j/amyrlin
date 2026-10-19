@@ -93,9 +93,11 @@ public final class ConversationStore {
 		await run { _ = try await $0.send(Commands.Reset(conversationId: self.id, handoff: handoff)) }
 	}
 
-	public func answer(_ approval: Approval, approve: Bool, message: String? = nil) async {
+	/// Allows or denies a waiting call. Allowed `always`, the host runs the approval's summary without asking for the
+	/// rest of the session.
+	public func answer(_ approval: Approval, approve: Bool, always: Bool = false, message: String? = nil) async {
 		await run {
-			_ = try await $0.send(Commands.AnswerApproval(approvalId: approval.approvalId, decision: approve ? .approve : .deny, message: message))
+			_ = try await $0.send(Commands.AnswerApproval(approvalId: approval.approvalId, decision: approve ? .approve : .deny, message: message, always: always && approve))
 		}
 	}
 

@@ -91,6 +91,19 @@ struct InspectorView: View {
 								.help("What OpenRouter billed for this session. Answers on a Claude Code or ChatGPT plan aren't counted.")
 						}
 					}
+					if let allowed = host.state.conversations[store.id]?.alwaysAllowed, !allowed.isEmpty {
+						PanelSection("Always allowed") {
+							ForEach(allowed, id: \.self) { summary in
+								Row(summary) {
+									Button("[forget]") { forget(summary) }
+										.buttonStyle(.plain)
+										.font(Typography.uiSmall)
+										.foregroundStyle(Palette.ink2)
+										.help("Ask again before this session runs \(summary)")
+								}
+							}
+						}
+					}
 					PanelSection("Context actions") {
 						HStack(spacing: 8) {
 							Button("compact") { Task { await store.compact() } }
@@ -107,6 +120,16 @@ struct InspectorView: View {
 			}
 		}
 		.background(Palette.panel)
+	}
+
+	private func forget(_ summary: String) {
+		Task {
+			do {
+				try await host.forgetApproval(summary, in: store.id)
+			} catch {
+				store.lastError = (error as? ProtocolError)?.message ?? String(describing: error)
+			}
+		}
 	}
 
 	private var contextUsed: Int? {

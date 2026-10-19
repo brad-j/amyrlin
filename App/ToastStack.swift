@@ -86,15 +86,7 @@ private struct ToastView: View {
 		}
 	}
 
-	/// What happened, then where: the project and, with several machines, the machine.
 	private var detail: String {
-		let what = switch toast.kind {
-		case .needsYou: "needs you to allow a tool call"
-		case .done: "done"
-		case .stuck: summary?.stuck.map { "stuck: \($0.reason)" } ?? "stuck"
-		}
-		var place = [summary?.project ?? "scratch"]
-		if model.machines.count > 1, let machine { place.append(model.name(of: machine)) }
-		return ([what] + place).joined(separator: " · ")
+		model.detail(of: toast.kind, summary, on: machine)
 	}
 }

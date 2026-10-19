@@ -52,6 +52,19 @@ struct AmyrlinApp: App {
 					.keyboardShortcut(.previousPane, in: shortcuts)
 					.disabled(model.panes.count < 2)
 			}
+			CommandMenu("Session") {
+				Button("Allow Tool Call") { model.answerApproval(approve: true) }
+					.keyboardShortcut(.allowToolCall, in: shortcuts)
+					.disabled(model.pendingApproval == nil)
+				Button(model.pendingApproval?.summary.map { "Always Allow \($0) in Session" } ?? "Always Allow in Session") {
+					model.answerApproval(approve: true, always: true)
+				}
+				.keyboardShortcut(.alwaysAllowToolCall, in: shortcuts)
+				.disabled(model.pendingApproval?.summary == nil)
+				Button("Deny Tool Call") { model.answerApproval(approve: false) }
+					.keyboardShortcut(.denyToolCall, in: shortcuts)
+					.disabled(model.pendingApproval == nil)
+			}
 			TextSizeCommands(size: textSize, shortcuts: shortcuts)
 			// No help book, so the Help menu holds the shortcuts sheet in place of a help item that opens nothing.
 			CommandGroup(replacing: .help) {
@@ -97,6 +110,7 @@ struct MainView: View {
 		.animation(.panel, value: model.showInspector)
 		.animation(.panel, value: model.showSidebar)
 		.animation(.panel, value: model.panes.map(\.id))
+		.onChange(of: model.needingYou, initial: true) { _, keys in model.needingYouChanged(keys) }
 		.toolbar(removing: .title)
 		// Each column's colour runs up under the title bar, as before the header bands; the bar draws nothing of its own.
 		.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)

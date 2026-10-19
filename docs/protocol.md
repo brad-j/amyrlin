@@ -568,6 +568,10 @@ Added 2026-10-13, also optional within v1 (aludra serves them; a server without 
 
 10. **Charged cost.** A `ConversationSummary` carries `cost`, the dollars providers that bill each request (OpenRouter) charged for it, only when it used one. `host.info` and `host.snapshot` carry `monthCost`, this calendar month's charged total, only when something was charged. No event carries `monthCost`, so the Mac app reads `host.info` again (at most once a second) when a summary's `cost` changes. It writes amounts as `<$0.01`, `$0.42`, `$12.30`, `$140`.
 
+Added 2026-10-19, also optional within v1:
+
+11. **Always allowed.** `approval.answer` takes `always: true` with `approve` (with `deny` it's `bad_request`): the host then runs the approval's `summary` (`git push`, `ssh to egwene`) without asking for the rest of that conversation, and approves the conversation's other pending requests with the same summary. Other conversations still ask. A `ConversationSummary` lists those summaries as `alwaysAllowed`, present only when there are any; `approval.forget {conversationId, summary}` takes one back and returns `{conversation}`. A server without it ignores `always`, so the answer is an ordinary approve, and answers `approval.forget` with `unknown_method`. The Mac app offers always only for approvals that carry a `summary`.
+
 Deferred, not in v1:
 
 - Withdrawing one queued message (`harness.abortSubmission`). `abort` withdraws all queued inputs.
