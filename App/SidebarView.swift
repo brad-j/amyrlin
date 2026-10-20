@@ -6,7 +6,7 @@ import SwiftUI
 /// quiet rows. Sessions keep their place as they work, and archived sessions fold away at the end; each row is a
 /// state mark, a title and an age.
 /// ↑ and ↓ move between sessions while the sidebar or its search has focus. The search, under the header, narrows the
-/// tree to matching sessions, open whatever their folds.
+/// tree to matching sessions, open whatever their folds. A click on a machine's header folds it to that one line.
 struct SidebarView: View {
 	@Bindable var model: AppModel
 	@FocusState private var focused: Bool
@@ -81,7 +81,8 @@ struct SidebarView: View {
 	/// Every session the sidebar shows, in order; folded projects are skipped unless searching.
 	private var ordered: [ConversationKey] {
 		let searching = !words.isEmpty
-		return model.machines.flatMap { machine in
+		return model.machines.flatMap { machine -> [ConversationKey] in
+			if !searching, model.collapsedMachines.contains(machine.id) { return [] }
 			let projects = MachineSection.groups(machine.store, words: words)
 				.filter { searching || !model.isCollapsed(machine: machine.id, project: $0.project) }
 				.flatMap(\.sessions)
@@ -108,6 +109,14 @@ private struct MachineSection: View {
 
 	private var store: HostStore { machine.store }
 	private var searching: Bool { !words.isEmpty }
+	/// Folded to its header; a search opens it, so its matches show.
+	private var folded: Bool { !searching && model.collapsedMachines.contains(machine.id) }
+
+	private func toggleFold() {
+		withAnimation(.easeInOut(duration: 0.15)) {
+			if model.collapsedMachines.contains(machine.id) { model.collapsedMachines.remove(machine.id) } else { model.collapsedMachines.insert(machine.id) }
+		}
+	}
 
 	/// Sessions matching `words` by project: scratch (sessions in no project) pinned first, then the project with the
 	/// newest session. Ordered by creation, not activity, so a session stays put while it works.
@@ -146,7 +155,18 @@ private struct MachineSection: View {
 					.font(Typography.machineHeader)
 					.foregroundStyle(Palette.ink)
 					.lineLimit(1)
+				// The fold's mark only while the pointer is over the machine or it's folded, so the header stays quiet.
+				Text(folded ? "▸" : "▾")
+					.font(Typography.projectHeader)
+					.foregroundStyle(Palette.ink3)
+					.opacity(hovering || folded ? 1 : 0)
 				Spacer()
+				if folded {
+					let note = foldedNote(store.state.conversations.values.filter { !$0.archived || $0.status == .needsApproval })
+					Text(note)
+						.font(Typography.projectHeader)
+						.foregroundStyle(note == "needs you" ? Palette.wait : note == "working" ? Palette.accent : Palette.ink3)
+				}
 				if let month = store.state.monthCost {
 					Text("\(Dollars.text(month)) this month")
 						.font(Typography.uiSmall)
@@ -179,8 +199,9 @@ private struct MachineSection: View {
 			.padding(.top, 18)
 			.padding(.bottom, 8)
 			.contentShape(Rectangle())
+			.onTapGesture(perform: toggleFold)
 			.onHover { inside in withAnimation(.state) { hovering = inside } }
-			.help(statusHelp)
+			.help("\(statusHelp). Click to \(folded ? "show" : "hide") its sessions.")
 			.contextMenu { machineMenu }
 			if let trouble {
 				Text(trouble)
@@ -191,8 +212,8 @@ private struct MachineSection: View {
 					.padding(.top, 10)
 			}
 
-			let groups = Self.groups(store, words: words)
-			let archived = Self.archived(store, words: words)
+			let groups = folded ? [] : Self.groups(store, words: words)
+			let archived = folded ? [] : Self.archived(store, words: words)
 			VStack(alignment: .leading, spacing: 10) {
 				ForEach(groups, id: \.project) { group in
 					// A search opens every fold, so its matches show.
@@ -235,7 +256,7 @@ private struct MachineSection: View {
 					.font(Typography.ui)
 					.foregroundStyle(Palette.ink3)
 					.padding(.vertical, 6)
-			} else if store.state.hasSnapshot, store.state.conversations.isEmpty {
+			} else if !folded, store.state.hasSnapshot, store.state.conversations.isEmpty {
 				Text("No sessions yet")
 					.font(Typography.ui)
 					.foregroundStyle(Palette.ink3)
@@ -290,6 +311,20 @@ private struct MachineSection: View {
 		if case .waiting = store.status {
 			Button("Reconnect Now") { Task { await store.reconnect() } }
 		}
+		Button(folded ? "Show Sessions" : "Hide Sessions", action: toggleFold)
+		Button("Collapse All Projects") {
+			withAnimation(.easeInOut(duration: 0.15)) {
+				model.collapsedMachines.remove(machine.id)
+				model.setAllProjectsCollapsed(true, on: machine)
+			}
+		}
+		Button("Expand All Projects") {
+			withAnimation(.easeInOut(duration: 0.15)) {
+				model.collapsedMachines.remove(machine.id)
+				model.setAllProjectsCollapsed(false, on: machine)
+			}
+		}
+		Divider()
 		Button("Copy Address") {
 			NSPasteboard.general.clearContents()
 			NSPasteboard.general.setString(machine.url.absoluteString, forType: .string)

@@ -167,6 +167,22 @@ final class AppModel {
 		collapsedProjects.contains("\(machine.uuidString)/\(project)")
 	}
 
+	/// Folds or opens every project on `machine` the sidebar shows, and its archive.
+	func setAllProjectsCollapsed(_ folded: Bool, on machine: Machine) {
+		let projects = Set(machine.store.state.active.map { $0.project ?? "" }).map { "\(machine.id.uuidString)/\($0)" }
+		if folded {
+			collapsedProjects.formUnion(projects)
+			openArchives.remove(machine.id)
+		} else {
+			collapsedProjects.subtract(projects)
+		}
+	}
+
+	/// Machines folded to their header in the sidebar, kept across launches.
+	var collapsedMachines: Set<UUID> = Set((UserDefaults.standard.stringArray(forKey: "collapsedMachines") ?? []).compactMap(UUID.init(uuidString:))) {
+		didSet { UserDefaults.standard.set(collapsedMachines.map(\.uuidString).sorted(), forKey: "collapsedMachines") }
+	}
+
 	/// Machines whose Archived group is open in the sidebar. It starts folded, unlike projects, so this keeps the open ones.
 	var openArchives: Set<UUID> = Set((UserDefaults.standard.stringArray(forKey: "openArchives") ?? []).compactMap(UUID.init(uuidString:))) {
 		didSet { UserDefaults.standard.set(openArchives.map(\.uuidString).sorted(), forKey: "openArchives") }
