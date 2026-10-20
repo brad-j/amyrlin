@@ -225,6 +225,9 @@ private struct MachineSection: View {
 							color: group.project.isEmpty ? Palette.ink3 : Palette.project(group.project, in: store.state.projectColors),
 							collapsed: collapsed,
 							note: collapsed.wrappedValue ? foldedNote(group.sessions) : nil,
+							held: collapsed.wrappedValue ? held(group.sessions) : nil,
+							mark: group.project.isEmpty ? Palette.accent : Palette.project(group.project, in: store.state.projectColors),
+							wash: group.project.isEmpty ? Palette.selection : Palette.projectWash(group.project, in: store.state.projectColors),
 							newSession: store.isConnected ? { newSession(in: group) } : nil
 						)
 						.contextMenu {
@@ -245,7 +248,7 @@ private struct MachineSection: View {
 					VStack(alignment: .leading, spacing: 0) {
 						// A hairline sets the archive apart from the projects above it.
 						Rectangle().fill(Palette.rule).frame(height: 1).padding(.bottom, 8)
-						ProjectRow(name: "archived", color: Palette.ink3, collapsed: collapsed, note: collapsed.wrappedValue ? foldedNote(archived) : nil)
+						ProjectRow(name: "archived", color: Palette.ink3, collapsed: collapsed, note: collapsed.wrappedValue ? foldedNote(archived) : nil, held: collapsed.wrappedValue ? held(archived) : nil)
 						if !collapsed.wrappedValue { sessionRows(archived) }
 					}
 				}
@@ -353,6 +356,13 @@ private struct MachineSection: View {
 		}
 	}
 
+	/// Whether a fold hides the focused pane's session, or only one open in another pane.
+	private func held(_ sessions: [ConversationSummary]) -> ProjectRow.Held? {
+		let keys = sessions.map { ConversationKey(machine: machine.id, conversation: $0.id) }
+		if keys.contains(where: { $0 == model.selection }) { return .selected }
+		return keys.contains(where: model.isOpen) ? .open : nil
+	}
+
 	/// What a folded project still says: how many sessions, and whether one needs you or is working.
 	private func foldedNote(_ sessions: [ConversationSummary]) -> String {
 		if sessions.contains(where: { $0.status == .needsApproval }) { return "needs you" }
@@ -381,12 +391,19 @@ private struct MachineSection: View {
 }
 
 /// A project in the tree: `▾ name`, folding its sessions; folded, a count or what needs attention. With `newSession`,
-/// a new-session icon shows while the pointer is over the row.
+/// a new-session icon shows while the pointer is over the row. A fold over an open session marks the row as the
+/// session's would be, so the session can still be found: a wash and a mark for the focused pane's, a fainter mark for
+/// another pane's.
 private struct ProjectRow: View {
+	enum Held { case selected, open }
+
 	let name: String
 	let color: Color
 	@Binding var collapsed: Bool
 	let note: String?
+	var held: Held? = nil
+	var mark: Color = Palette.accent
+	var wash: Color = Palette.selection
 	var newSession: (() -> Void)? = nil
 	@State private var hovering = false
 	/// Tracked apart from `hovering`: the icon's own hover takes the row's away, which hid it under the pointer.
@@ -407,11 +424,16 @@ private struct ProjectRow: View {
 					}
 				}
 				.font(Typography.projectHeader)
+				.padding(.leading, 2)
 				.padding(.vertical, 3)
+				.background(held == .selected ? wash : .clear)
+				.overlay(alignment: .leading) {
+					if let held { Rectangle().fill(mark).frame(width: 2).opacity(held == .selected ? 1 : 0.5) }
+				}
 				.contentShape(Rectangle())
 			}
 			.buttonStyle(.plain)
-			.help(collapsed ? "Show \(name)" : "Hide \(name)")
+			.help(held == nil ? (collapsed ? "Show \(name)" : "Hide \(name)") : "Show \(name), which holds an open session")
 			if let newSession {
 				IconButton("square.and.pencil", action: newSession)
 					.help("New session in \(name)")

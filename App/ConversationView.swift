@@ -97,7 +97,7 @@ struct PathLabel: View {
 			if project == nil {
 				Text("scratch").foregroundStyle(Palette.ink3)
 			} else if let project, let dir {
-				Text(hovering ? parent(dir, project) : "../").foregroundStyle(Palette.ink3)
+				Text(hovering ? Self.parent(dir, project) : "../").foregroundStyle(Palette.ink3)
 				Text(project).foregroundStyle(Palette.project(project, in: colors))
 			}
 			Text("  ")
@@ -107,7 +107,7 @@ struct PathLabel: View {
 
 	/// The directory up to the project, `~/westwood/Projects/Software/`; all of it, then a slash, if it doesn't end in
 	/// the project's name.
-	private func parent(_ dir: String, _ project: String) -> String {
+	static func parent(_ dir: String, _ project: String) -> String {
 		let short = ConversationView.shortPath(dir)
 		return short.hasSuffix(project) ? String(short.dropLast(project.count)) : short + "/"
 	}

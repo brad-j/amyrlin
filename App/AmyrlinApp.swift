@@ -239,7 +239,9 @@ private struct StatusLine: View {
 		HStack(spacing: 0) {
 			if let selected = model.selected {
 				let store = selected.conversation
+				let summary = selected.machine.store.state.conversations[store.id]
 				host(selected.machine.store)
+				place(project: summary?.project, dir: summary?.dir, colors: selected.machine.store.state.projectColors)
 				Text("  │  ").foregroundStyle(Palette.rule2)
 				SessionSettingsLine(store: store, host: selected.machine.store)
 				Spacer(minLength: 8)
@@ -250,6 +252,7 @@ private struct StatusLine: View {
 				RunClock(turns: store.turns)
 			} else if let draft = model.draft, let machine = model.machine(draft.machine) {
 				host(machine.store)
+				place(project: draft.project?.name, dir: draft.project?.dir, colors: machine.store.state.projectColors)
 				segment("new session")
 				Spacer(minLength: 8)
 			} else {
@@ -273,6 +276,21 @@ private struct StatusLine: View {
 			StatusDot(color: Palette.color(for: store.status), pulsing: !store.isConnected)
 			Text(store.state.host?.name ?? store.url.host() ?? "host").foregroundStyle(Palette.ink2)
 		}
+	}
+
+	/// Where the session works: `~/westwood/Projects/Software/` dim, then the project in its colour; `scratch` for a
+	/// session in no project. A long path gives way at its start, so the project's name stays.
+	private func place(project: String?, dir: String?, colors: [String: Int]) -> some View {
+		HStack(spacing: 0) {
+			Text("  │  ").foregroundStyle(Palette.rule2)
+			if let project, let dir {
+				Text(PathLabel.parent(dir, project)).foregroundStyle(Palette.ink3).truncationMode(.head)
+				Text(project).foregroundStyle(Palette.project(project, in: colors)).layoutPriority(1)
+			} else {
+				Text("scratch").foregroundStyle(Palette.ink3)
+			}
+		}
+		.help(dir.map(ConversationView.shortPath) ?? "A scratch directory of its own")
 	}
 
 	private func segment(_ text: String, trailing: Bool = false) -> some View {
