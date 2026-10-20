@@ -304,10 +304,7 @@ struct DraftView: View {
 							send()
 							return .handled
 						}
-					Button("[+ image]") { attachments.pick() }
-						.buttonStyle(.plain)
-						.font(Typography.uiSmall)
-						.foregroundStyle(attachments.isFull ? Palette.ink3 : Palette.ink2)
+					IconButton("photo.badge.plus", color: attachments.isFull ? Palette.ink3 : Palette.ink2) { attachments.pick() }
 						.disabled(attachments.isFull || sending)
 						.help("Attach images; you can also drop them here or paste them (⌘V)")
 					SendButton(enabled: canSend, action: send)

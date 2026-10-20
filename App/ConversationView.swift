@@ -254,10 +254,7 @@ struct ComposerView: View {
 					.foregroundStyle(Palette.bad)
 					.help("Stop the run (Esc)")
 			}
-			Button("[+ image]") { attachments.pick() }
-				.buttonStyle(.plain)
-				.font(Typography.uiSmall)
-				.foregroundStyle(attachments.isFull ? Palette.ink3 : Palette.ink2)
+			IconButton("photo.badge.plus", color: attachments.isFull ? Palette.ink3 : Palette.ink2) { attachments.pick() }
 				.disabled(attachments.isFull)
 				.help("Attach images; you can also drop them here or paste them (⌘V)")
 			SendButton(enabled: canSend) { send(steer: steer) }

@@ -67,8 +67,7 @@ final class Attachments {
 
 	/// Image files on the pasteboard, or image data when there's no text to paste instead. False when there's neither.
 	func paste(from pasteboard: NSPasteboard = .general) -> Bool {
-		let files = (pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? [])
-			.filter { UTType(filenameExtension: $0.pathExtension)?.conforms(to: .image) == true }
+		let files = Self.imageFiles(on: pasteboard)
 		if !files.isEmpty {
 			add(files: files)
 			return true
@@ -81,6 +80,54 @@ final class Attachments {
 			}
 		}
 		return false
+	}
+
+	/// A drop's image files, images another app promises to write (Photos, say), or image data. False when it has none.
+	func drop(from pasteboard: NSPasteboard) -> Bool {
+		let files = Self.imageFiles(on: pasteboard)
+		if !files.isEmpty {
+			add(files: files)
+			return true
+		}
+		let promises = Self.imagePromises(on: pasteboard)
+		if !promises.isEmpty {
+			let folder = FileManager.default.temporaryDirectory.appending(path: "amyrlin-drop-\(UUID().uuidString)")
+			try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+			for promise in promises {
+				promise.receivePromisedFiles(atDestination: folder, operationQueue: Self.promiseQueue) { url, error in
+					guard error == nil else { return }
+					Task { @MainActor in self.add(files: [url]) }
+				}
+			}
+			return true
+		}
+		for type in [NSPasteboard.PasteboardType.png, .tiff] {
+			if let data = pasteboard.data(forType: type) {
+				add([data])
+				return true
+			}
+		}
+		return false
+	}
+
+	/// Whether a drag carries anything `drop` takes.
+	static func hasImages(_ pasteboard: NSPasteboard) -> Bool {
+		!imageFiles(on: pasteboard).isEmpty || !imagePromises(on: pasteboard).isEmpty || pasteboard.availableType(from: [.png, .tiff]) != nil
+	}
+
+	/// The types a drop target registers for so `drop` sees them.
+	static let dropTypes: [NSPasteboard.PasteboardType] = [.fileURL, .png, .tiff] + NSFilePromiseReceiver.readableDraggedTypes.map { NSPasteboard.PasteboardType($0) }
+
+	private static let promiseQueue = OperationQueue()
+
+	private static func imageFiles(on pasteboard: NSPasteboard) -> [URL] {
+		(pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? [])
+			.filter { UTType(filenameExtension: $0.pathExtension)?.conforms(to: .image) == true }
+	}
+
+	private static func imagePromises(on pasteboard: NSPasteboard) -> [NSFilePromiseReceiver] {
+		(pasteboard.readObjects(forClasses: [NSFilePromiseReceiver.self]) as? [NSFilePromiseReceiver] ?? [])
+			.filter { $0.fileTypes.contains { UTType($0)?.conforms(to: .image) == true } }
 	}
 }
 
@@ -123,7 +170,7 @@ struct AttachmentStrip: View {
 }
 
 /// Takes images dropped on the view, and pasted (⌘V) while `focused` is true. The text field's editor would take the
-/// paste first and ignore an image, so ⌘V is looked at before it. Long text goes into the field as a marker that
+/// paste first and ignore an image, so ⌘V is looked at before it; it would take a drop too, so DropCatcher sits above it. Long text goes into the field as a marker that
 /// `pasted` holds the text for (PastedText); other text pastes as usual. Backspace right after a marker deletes it whole.
 struct AcceptsPastes: ViewModifier {
 	let attachments: Attachments
@@ -140,10 +187,7 @@ struct AcceptsPastes: ViewModifier {
 	func body(content: Content) -> some View {
 		content
 			.overlay(Rectangle().stroke(targeted ? Palette.accent : .clear, lineWidth: 1))
-			.onDrop(of: [.fileURL, .image], isTargeted: $targeted) { providers in
-				load(providers)
-				return true
-			}
+			.overlay(DropCatcher(attachments: attachments, targeted: $targeted))
 			.onChange(of: focused, initial: true) { _, now in active.on = now }
 			.onAppear {
 				let flag = active
@@ -179,20 +223,54 @@ struct AcceptsPastes: ViewModifier {
 		editor.insertText("", replacementRange: range)
 		return true
 	}
+}
 
-	private func load(_ providers: [NSItemProvider]) {
-		for provider in providers {
-			if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-				_ = provider.loadObject(ofClass: URL.self) { url, _ in
-					guard let url, UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) == true else { return }
-					Task { @MainActor in attachments.add(files: [url]) }
-				}
-			} else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-				provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
-					guard let data else { return }
-					Task { @MainActor in attachments.add([data]) }
-				}
-			}
+/// Takes image drops over the view it covers. While the text field is editing, its editor registers for files and
+/// images and would take them as text (a file's path, or nothing), and AppKit gives a drop to the frontmost view
+/// registered for it, so this lies on top for drops and lets clicks through to what's beneath.
+private struct DropCatcher: NSViewRepresentable {
+	let attachments: Attachments
+	@Binding var targeted: Bool
+
+	func makeNSView(context: Context) -> Catcher {
+		Catcher()
+	}
+
+	func updateNSView(_ view: Catcher, context: Context) {
+		view.attachments = attachments
+		view.targeted = $targeted
+	}
+
+	final class Catcher: NSView {
+		var attachments: Attachments?
+		var targeted: Binding<Bool>?
+
+		init() {
+			super.init(frame: .zero)
+			registerForDraggedTypes(Attachments.dropTypes)
+		}
+
+		required init?(coder: NSCoder) { nil }
+
+		override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+		override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+			guard Attachments.hasImages(sender.draggingPasteboard) else { return [] }
+			targeted?.wrappedValue = true
+			return .copy
+		}
+
+		override func draggingExited(_ sender: NSDraggingInfo?) {
+			targeted?.wrappedValue = false
+		}
+
+		override func draggingEnded(_ sender: NSDraggingInfo) {
+			targeted?.wrappedValue = false
+		}
+
+		override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+			targeted?.wrappedValue = false
+			return attachments?.drop(from: sender.draggingPasteboard) ?? false
 		}
 	}
 }

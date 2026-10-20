@@ -39,6 +39,8 @@ targets:
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
+        # The attach button's open panel, for images to send.
+        com.apple.security.files.user-selected.read-only: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.bradjohnson.amyrlin
