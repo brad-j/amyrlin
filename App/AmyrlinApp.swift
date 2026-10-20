@@ -186,6 +186,7 @@ struct MainView: View {
 				ConversationView(
 					store: machine.store.conversation(key.conversation),
 					host: machine.store,
+					composition: model.composition(for: content),
 					rename: { model.renaming = key }
 				)
 				.id(key)
@@ -195,7 +196,7 @@ struct MainView: View {
 			}
 		case .draft(let draft):
 			if let machine = model.machine(draft.machine) {
-				DraftView(model: model, machine: machine, project: draft.project)
+				DraftView(model: model, machine: machine, project: draft.project, composition: model.composition(for: content))
 					.id(draft.project?.dir ?? "no project")
 					.transition(.opacity)
 			} else {

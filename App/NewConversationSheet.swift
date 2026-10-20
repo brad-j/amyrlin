@@ -252,14 +252,16 @@ struct DraftView: View {
 	let machine: AppModel.Machine
 	/// Nil for a no-project session.
 	let project: ProjectInfo?
-	@State private var text = ""
-	@State private var attachments = Attachments()
-	@State private var pasted = PastedText()
+	/// The first message being written, kept while another session is shown.
+	@Bindable var composition: Composition
 	@State private var sending = false
 	@FocusState private var focused: Bool
 
+	private var attachments: Attachments { composition.attachments }
+	private var pasted: PastedText { composition.pasted }
+
 	private var canSend: Bool {
-		(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty) && !sending
+		(!composition.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty) && !sending
 	}
 
 	var body: some View {
@@ -289,7 +291,7 @@ struct DraftView: View {
 					Text("❯")
 						.font(Typography.uiStrong)
 						.foregroundStyle(focused ? Palette.accent : Palette.ink3)
-					TextField("first message", text: $text, axis: .vertical)
+					TextField("first message", text: $composition.text, axis: .vertical)
 						.textFieldStyle(.plain)
 						.font(Typography.ui)
 						.foregroundStyle(Palette.ink)
@@ -325,14 +327,13 @@ struct DraftView: View {
 	}
 
 	private func send() {
-		let message = pasted.expand(text).trimmingCharacters(in: .whitespacesAndNewlines)
+		let message = pasted.expand(composition.text).trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !message.isEmpty || !attachments.isEmpty, !sending else { return }
 		sending = true
 		let images = attachments.items.map(\.upload)
 		Task {
 			if await model.startConversation(Draft(machine: machine.id, project: project), text: message, images: images) {
-				_ = attachments.take()
-				pasted.clear()
+				composition.clear()
 			} else {
 				sending = false
 			}

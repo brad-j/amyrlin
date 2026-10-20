@@ -24,7 +24,7 @@ struct ProjectKey: Hashable {
 }
 
 /// A conversation not created yet: a project picked, no message sent. The first message creates it on the host.
-struct Draft: Equatable {
+struct Draft: Hashable {
 	let machine: UUID
 	/// Nil for a no-project session: the host gives it a scratch directory of its own.
 	let project: ProjectInfo?
@@ -33,7 +33,7 @@ struct Draft: Equatable {
 /// One pane of the middle column. Split, the column shows its panes side by side; one has focus, and the sidebar, the
 /// inspector and the status line follow it.
 struct Pane: Identifiable, Equatable {
-	enum Content: Equatable {
+	enum Content: Hashable {
 		/// A pane split off and not given a session yet.
 		case empty
 		case conversation(ConversationKey)
@@ -348,6 +348,17 @@ final class AppModel {
 	var selected: (machine: Machine, conversation: ConversationStore)? {
 		guard let selection, let machine = machine(selection.machine) else { return nil }
 		return (machine, machine.store.conversation(selection.conversation))
+	}
+
+	/// Messages written and not sent, by the session or new session they're for, so each keeps its text and attachments
+	/// while another is shown. Held until the app quits.
+	@ObservationIgnored private var compositions: [Pane.Content: Composition] = [:]
+
+	func composition(for content: Pane.Content) -> Composition {
+		if let composition = compositions[content] { return composition }
+		let composition = Composition()
+		compositions[content] = composition
+		return composition
 	}
 
 	/// Opens an empty conversation for `project` in the focused pane; nothing is created on the host until the first

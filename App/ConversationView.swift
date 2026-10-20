@@ -6,6 +6,8 @@ import SwiftUI
 struct ConversationView: View {
 	let store: ConversationStore
 	let host: HostStore
+	/// The message being written, kept while another session is shown.
+	let composition: Composition
 	/// Opens the rename sheet for this conversation.
 	var rename: () -> Void = {}
 
@@ -30,7 +32,7 @@ struct ConversationView: View {
 						.transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 10)), removal: .opacity.combined(with: .offset(y: 6))))
 				}
 				// The sidebar's toggle sits in the margin at the column's edge, level with the composer.
-				ComposerView(store: store, host: host)
+				ComposerView(store: store, host: host, composition: composition)
 					.frame(maxWidth: Metrics.measure + 48)
 					.padding(.horizontal, 40)
 					.frame(maxWidth: .infinity)
@@ -194,16 +196,32 @@ struct QuietButton: ButtonStyle {
 	}
 }
 
+/// A message being written and not sent: its text, its attachments, and the long pastes its markers stand for.
+/// AppModel keeps one for each session and new session, so switching away and back finds it as it was left.
+@MainActor @Observable
+final class Composition {
+	var text = ""
+	let attachments = Attachments()
+	@ObservationIgnored let pasted = PastedText()
+
+	func clear() {
+		text = ""
+		_ = attachments.take()
+		pasted.clear()
+	}
+}
+
 /// The input line: `❯` then the message, in mono. Return sends (a follow-up while busy), ⇧Return adds a line,
 /// ⌘Return or the steer toggle steers, Esc stops. The model, thinking and context live in the status line below.
 struct ComposerView: View {
 	let store: ConversationStore
 	let host: HostStore
-	@State private var text = ""
+	@Bindable var composition: Composition
 	@State private var steer = false
-	@State private var attachments = Attachments()
-	@State private var pasted = PastedText()
 	@FocusState private var focused: Bool
+
+	private var attachments: Attachments { composition.attachments }
+	private var pasted: PastedText { composition.pasted }
 
 	private var busy: Bool { store.state.isBusy }
 
@@ -223,7 +241,7 @@ struct ComposerView: View {
 			Text("❯")
 				.font(Typography.uiStrong)
 				.foregroundStyle(focused ? Palette.accent : Palette.ink3)
-			TextField(busy ? (steer ? "steer the run" : "queue a follow-up") : "message", text: $text, axis: .vertical)
+			TextField(busy ? (steer ? "steer the run" : "queue a follow-up") : "message", text: $composition.text, axis: .vertical)
 				.textFieldStyle(.plain)
 				.font(Typography.ui)
 				.foregroundStyle(Palette.ink)
@@ -263,7 +281,7 @@ struct ComposerView: View {
 	}
 
 	private var canSend: Bool {
-		!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
+		!composition.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
 	}
 
 	/// The session's model as the status line names it, lowercased: `opus 5.5`, or `opus 5.5 via claude code` when the
@@ -301,11 +319,11 @@ struct ComposerView: View {
 	}
 
 	private func send(steer: Bool) {
-		let message = pasted.expand(text)
+		let message = pasted.expand(composition.text)
 		guard canSend else { return }
-		text = ""
-		pasted.clear()
-		store.send(message, images: attachments.take(), whenBusy: steer ? .steer : .followUp)
+		let images = attachments.take()
+		composition.clear()
+		store.send(message, images: images, whenBusy: steer ? .steer : .followUp)
 	}
 }
 
