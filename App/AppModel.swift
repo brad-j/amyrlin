@@ -188,6 +188,11 @@ final class AppModel {
 		didSet { UserDefaults.standard.set(openArchives.map(\.uuidString).sorted(), forKey: "openArchives") }
 	}
 
+	/// Sessions brought back from the archive by hand, as "machine/conversation", which `archiveStale` leaves alone.
+	var keptSessions: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "keptSessions") ?? []) {
+		didSet { UserDefaults.standard.set(keptSessions.sorted(), forKey: "keptSessions") }
+	}
+
 	/// Folded when true, like `collapsedBinding`.
 	func archiveCollapsedBinding(machine: UUID) -> Binding<Bool> {
 		Binding(
@@ -261,6 +266,13 @@ final class AppModel {
 		}
 		save()
 		for machine in machines { machine.store.start() }
+		// Sessions age without the host saying anything, so look again every minute.
+		Task { [weak self] in
+			while self != nil {
+				self?.archiveStale()
+				try? await Task.sleep(for: .seconds(60))
+			}
+		}
 		if let saved = UserDefaults.standard.dictionary(forKey: Self.selectionKey) as? [String: String],
 			let machine = saved["machine"].flatMap(UUID.init(uuidString:)), self.machine(machine) != nil,
 			let conversation = saved["conversation"].flatMap(ConversationID.init)
@@ -429,11 +441,30 @@ final class AppModel {
 	/// Hides a conversation from the sidebar's projects, or with false brings it back. A running one keeps running.
 	func setArchived(_ target: ConversationKey, _ archived: Bool) {
 		guard let machine = machine(target.machine) else { return }
+		let kept = "\(target.machine.uuidString)/\(target.conversation)"
+		if archived { keptSessions.remove(kept) } else { keptSessions.insert(kept) }
 		Task {
 			do {
 				try await machine.store.setArchived(target.conversation, archived)
 			} catch {
 				self.error = (error as? ProtocolError)?.message ?? String(describing: error)
+			}
+		}
+	}
+
+	/// Archives each connected machine's sessions that have been idle for `StaleSessions.age`, except ones open in a
+	/// pane or brought back by hand. Not for machines given at launch, which are for screenshots.
+	private func archiveStale() {
+		guard !ephemeral else { return }
+		for machine in machines where machine.store.isConnected && machine.store.state.hasSnapshot {
+			let kept = Set(machine.store.state.conversations.keys.filter { id in
+				keptSessions.contains("\(machine.id.uuidString)/\(id)") || isOpen(ConversationKey(machine: machine.id, conversation: id))
+			})
+			let stale = StaleSessions.among(machine.store.state.conversations.values, now: .now, kept: kept)
+			guard !stale.isEmpty else { continue }
+			Task {
+				// Quietly: the next look tries again.
+				for id in stale { try? await machine.store.setArchived(id, true) }
 			}
 		}
 	}

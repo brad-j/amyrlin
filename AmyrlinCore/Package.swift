@@ -3,7 +3,8 @@ import PackageDescription
 
 let package = Package(
 	name: "AmyrlinCore",
-	platforms: [.macOS(.v26)],
+	// iOS for amyrlin-ios, which builds against this package from a checkout beside it.
+	platforms: [.macOS(.v26), .iOS(.v26)],
 	products: [
 		.library(name: "AmyrlinCore", targets: ["AmyrlinCore"]),
 	],

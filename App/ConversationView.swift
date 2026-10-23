@@ -247,6 +247,7 @@ struct ComposerView: View {
 				.foregroundStyle(Palette.ink)
 				.lineLimit(3...12)
 				.focused($focused)
+				.wrapsAtItsWidth(focused: focused)
 				.onKeyPress(.return, phases: .down) { press in
 					if press.modifiers.contains(.option) || press.modifiers.contains(.shift) {
 						insertLineBreak()
@@ -261,15 +262,12 @@ struct ComposerView: View {
 					return .handled
 				}
 			if busy {
-				Button(steer ? "[steer]" : "[queue]") { steer.toggle() }
-					.buttonStyle(.plain)
-					.font(Typography.uiSmall)
-					.foregroundStyle(steer ? Palette.accent : Palette.ink3)
-					.help("Steer joins the running work after its current tool round; queue waits for the run to finish. ⌘Return steers once.")
-				Button("[esc stop]") { Task { await store.abort() } }
-					.buttonStyle(.plain)
-					.font(Typography.uiSmall)
-					.foregroundStyle(Palette.bad)
+				// The icon says the mode: a wheel to steer, an hourglass to queue.
+				IconButton(steer ? "steeringwheel" : "hourglass", color: steer ? Palette.accent : Palette.ink3) { steer.toggle() }
+					.help(steer
+						? "Steering: the message joins the running work after its current tool round. Click to queue instead."
+						: "Queuing: the message waits for the run to finish. Click to steer instead; ⌘Return steers once.")
+				IconButton("stop.circle", color: Palette.bad) { Task { await store.abort() } }
 					.help("Stop the run (Esc)")
 			}
 			IconButton("photo.badge.plus", color: attachments.isFull ? Palette.ink3 : Palette.ink2) { attachments.pick() }
@@ -354,6 +352,21 @@ private struct FollowsPaneFocus: ViewModifier {
 			.onAppear { if paneFocused { focused.wrappedValue = true } }
 			.onChange(of: paneFocused) { _, now in if now { focused.wrappedValue = true } }
 			.onChange(of: focused.wrappedValue) { _, now in if now { model?.focusPane(index) } }
+	}
+}
+
+extension View {
+	/// A multi-line field's text wraps at the field's width as it changes. The field editor's text container keeps the
+	/// width it had when editing began, so when the busy buttons appear or the pane narrows the lines run under the
+	/// buttons. AppKit sets up the editor afresh for each field it edits, so this lasts only while the field has it.
+	func wrapsAtItsWidth(focused: Bool) -> some View {
+		onChange(of: focused, initial: true) { _, now in
+			guard now else { return }
+			// The field editor becomes first responder after the focus changes.
+			DispatchQueue.main.async {
+				(NSApp.keyWindow?.firstResponder as? NSTextView)?.textContainer?.widthTracksTextView = true
+			}
+		}
 	}
 }
 

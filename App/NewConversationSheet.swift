@@ -297,6 +297,7 @@ struct DraftView: View {
 						.foregroundStyle(Palette.ink)
 						.lineLimit(3...12)
 						.focused($focused)
+						.wrapsAtItsWidth(focused: focused)
 						.disabled(sending)
 						.onKeyPress(.return, phases: .down) { press in
 							if press.modifiers.contains(.option) || press.modifiers.contains(.shift) {
