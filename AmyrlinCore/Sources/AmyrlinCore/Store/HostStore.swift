@@ -8,6 +8,9 @@ public final class HostStore {
 	public private(set) var status: HostConnection.Status = .idle
 	public private(set) var state = HostState()
 	public private(set) var info: Commands.HostInfo.Result?
+	/// The host's settings as last read, on each connect and by `refreshSettings`. Nil until then, and for a host from
+	/// before `settings.get`, which has none to offer.
+	public private(set) var settings: HostSettings?
 	/// Set when `host.watch` gave up or ended; the list is then stale.
 	public private(set) var watchProblem: String?
 	/// Told when sessions start needing approval, finish a run or get stuck (SessionAlerts), as `host.watch` reports it.
@@ -40,7 +43,11 @@ public final class HostStore {
 		tasks.append(Task {
 			for await status in connection.statusUpdates {
 				self.status = status
-				if case .connected = status { await self.refreshInfo() }
+				if case .connected = status {
+					await self.refreshInfo()
+					// Apart, so a slow answer doesn't hold up the statuses after it.
+					Task { await self.refreshSettings() }
+				}
 			}
 		})
 		tasks.append(Task { await self.watchHost() })
@@ -89,6 +96,27 @@ public final class HostStore {
 	/// Picks `project`'s colour on this host, or with nil gives it back its name's.
 	public func setProjectColor(_ project: String, _ color: Int?) async throws {
 		state.projectColors = try await connection.send(Commands.SetProjectColor(project: project, color: color)).projectColors
+	}
+
+	/// Reads the host's settings again. A host without them answers `unknown_method`, which clears them; any other
+	/// failure keeps the last ones.
+	public func refreshSettings() async {
+		do {
+			settings = try await connection.send(Commands.GetSettings()).settings
+		} catch let error as ProtocolError where error.code == "unknown_method" {
+			settings = nil
+		} catch {}
+	}
+
+	/// Saves `changes` to the host's settings and returns them all after. A refused change throws `invalid_settings`
+	/// (`ProtocolError.reasons` has each reason) and saves nothing. Projects, models and defaults come from the settings,
+	/// so `host.info` is read again.
+	@discardableResult
+	public func saveSettings(_ changes: [String: SettingChange]) async throws -> HostSettings {
+		let saved = try await connection.send(Commands.SetSettings(changes: changes)).settings
+		settings = saved
+		await refreshInfo()
+		return saved
 	}
 
 	private func refreshInfo() async {

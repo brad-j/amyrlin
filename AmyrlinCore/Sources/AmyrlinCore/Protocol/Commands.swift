@@ -57,6 +57,28 @@ public enum Commands {
 		public init(project: String, color: Int?) { params = Params(project: project, color: color) }
 	}
 
+	/// The host's settings, each described for a form (aludra's own, outside v1). A host from before them answers
+	/// `unknown_method`.
+	public struct GetSettings: Command {
+		public static let method = "settings.get"
+		public static let retriesOnReconnect = true
+		public struct Params: Encodable, Sendable {}
+		public struct Result: Decodable, Sendable, Hashable { public var settings: HostSettings }
+		public let params = Params()
+		public init() {}
+	}
+
+	/// Saves changes to the host's settings, by key, and returns them all after (aludra). A refused change is
+	/// `invalid_settings`, its reasons in `data.errors`, and nothing is saved.
+	public struct SetSettings: Command {
+		public static let method = "settings.set"
+		public static let retriesOnReconnect = true
+		public struct Params: Encodable, Sendable { public var changes: [String: SettingChange] }
+		public typealias Result = GetSettings.Result
+		public let params: Params
+		public init(changes: [String: SettingChange]) { params = Params(changes: changes) }
+	}
+
 	public struct ListConversations: Command {
 		public static let method = "conversations.list"
 		public static let retriesOnReconnect = true

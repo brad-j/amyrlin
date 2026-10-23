@@ -568,6 +568,10 @@ Added 2026-10-13, also optional within v1 (aludra serves them; a server without 
 
 10. **Charged cost.** A `ConversationSummary` carries `cost`, the dollars providers that bill each request (OpenRouter) charged for it, only when it used one. `host.info` and `host.snapshot` carry `monthCost`, this calendar month's charged total, only when something was charged. No event carries `monthCost`, so the Mac app reads `host.info` again (at most once a second) when a summary's `cost` changes. It writes amounts as `<$0.01`, `$0.42`, `$12.30`, `$140`.
 
+Added 2026-10-23, outside v1: aludra's own extensions (aludra 861c0f3), which other v1 servers need not serve:
+
+11. **Host settings.** `settings.get {}` returns `{settings}`, and `settings.set {changes: {key: value | null}}` saves the changes and returns the new `{settings}`; `null` puts a setting back to its default. `settings` is aludra's `Settings` (its docs/api.md, "Settings"): `{file, settings, restart, errors}`, where each `Setting` describes itself (`key`, `label`, `help`, `kind`, `value`, `default`, `set`, `options`, `editable`, `live`) so a client draws its form from the list. A refused change is `invalid_settings` with `data.errors`, one reason each, and nothing is saved. A host without them answers `unknown_method`, and the Mac app offers no settings for it. After a save the Mac app reads `host.info` again, since projects, models and defaults come from the settings.
+
 Deferred, not in v1:
 
 - Withdrawing one queued message (`harness.abortSubmission`). `abort` withdraws all queued inputs.

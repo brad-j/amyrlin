@@ -328,6 +328,11 @@ private struct MachineSection: View {
 			}
 		}
 		Divider()
+		// Only hosts that answer settings.get (aludra 861c0f3 and later) have settings to show.
+		if store.settings != nil {
+			Button("Settings…") { model.hostSettingsMachine = machine.id }
+				.disabled(!store.isConnected)
+		}
 		Button("Copy Address") {
 			NSPasteboard.general.clearContents()
 			NSPasteboard.general.setString(machine.url.absoluteString, forType: .string)

@@ -115,6 +115,9 @@ struct MainView: View {
 		.sheet(item: Binding(get: { model.newConversationMachine.flatMap(model.machine) .map(MachineRef.init) }, set: { model.newConversationMachine = $0?.id })) { ref in
 			NewConversationSheet(model: model, machine: ref.machine)
 		}
+		.sheet(item: Binding(get: { model.hostSettingsMachine.flatMap(model.machine).map(MachineRef.init) }, set: { model.hostSettingsMachine = $0?.id })) { ref in
+			HostSettingsSheet(model: model, machine: ref.machine)
+		}
 		.alert(
 			"Remove \(model.removingMachine.flatMap(model.machine).map(model.name) ?? "this machine") from this Mac?",
 			isPresented: Binding(get: { model.removingMachine != nil }, set: { if !$0 { model.removingMachine = nil } })

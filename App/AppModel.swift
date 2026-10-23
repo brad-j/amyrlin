@@ -226,6 +226,8 @@ final class AppModel {
 	var removingProject: ProjectKey?
 	/// The machine a new conversation is being started on, while its sheet is open.
 	var newConversationMachine: UUID?
+	/// The machine whose aludra settings are open.
+	var hostSettingsMachine: UUID?
 	/// A failed app-level action, shown once in the window.
 	var error: String?
 
@@ -290,6 +292,13 @@ final class AppModel {
 			Task {
 				try? await Task.sleep(for: .seconds(2))
 				newConversationMachine = first.id
+			}
+		}
+		// `--args -openHostSettings` shows the first machine's settings at launch, for screenshots.
+		if ProcessInfo.processInfo.arguments.contains("-openHostSettings"), let first = machines.first {
+			Task {
+				try? await Task.sleep(for: .seconds(2))
+				hostSettingsMachine = first.id
 			}
 		}
 		// `--args -openSpotlight` shows the spotlight at launch, for screenshots.

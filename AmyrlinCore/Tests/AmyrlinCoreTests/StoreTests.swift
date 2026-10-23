@@ -241,4 +241,79 @@ struct StoreTests {
 		#expect(again.params["requestId"]?.stringValue == pending.id, "a retry reuses the requestId")
 		await host.stop()
 	}
+
+	private func hostInfo(defaultModel: String = "claude-opus-5-5") -> JSONValue {
+		.object([
+			"host": .object(["hostId": "h", "name": "egwene"]), "models": .array([]), "tools": .array([]),
+			"defaults": .object(["model": .object(["provider": "claude-bridge", "modelId": .string(defaultModel)])]),
+		])
+	}
+
+	private var settingsResult: JSONValue {
+		get throws { .object(["settings": try JSONDecoder().decode(JSONValue.self, from: Data(settingsJSON.utf8))]) }
+	}
+
+	/// Settings are read on each connect, after `host.info`. A host from before them answers `unknown_method` and has
+	/// none, so the app offers no settings screen for it.
+	@Test func settingsAreReadOnConnectAndAbsentFromOlderHosts() async throws {
+		host.start()
+		let server = try await transport.nextConnection()
+		try await server.acceptHello()
+		server.respond(try await server.nextRequest("host.info"), result: hostInfo())
+		server.respond(try await server.nextRequest("settings.get"), result: try settingsResult)
+		#expect(await eventually { host.settings?.settings.count == 11 })
+
+		// The machine comes back running an older aludra.
+		server.drop()
+		let older = try await transport.nextConnection()
+		try await older.acceptHello()
+		older.respond(try await older.nextRequest("host.info"), result: hostInfo())
+		older.respond(try await older.nextRequest("settings.get"), error: "unknown_method", message: "Unknown method settings.get")
+		#expect(await eventually { host.settings == nil })
+		await host.stop()
+	}
+
+	/// A save sends only the changes and reads `host.info` again, since the defaults, models and projects come from the
+	/// settings. A refused one keeps the settings as they were and gives every reason.
+	@Test func savingSendsTheChangesThenReadsHostInfoAgain() async throws {
+		host.start()
+		let server = try await transport.nextConnection()
+		try await server.acceptHello()
+		server.respond(try await server.nextRequest("host.info"), result: hostInfo())
+		server.respond(try await server.nextRequest("settings.get"), result: try settingsResult)
+		#expect(await eventually { host.settings != nil })
+		let before = host.settings
+
+		let saving = Task { try await host.saveSettings(["model.id": .value(.text("claude-bridge/claude-sonnet-5-5")), "approvals.hosts": .toDefault]) }
+		let set = try await server.nextRequest("settings.set")
+		#expect(set.params == .object(["changes": .object(["model.id": "claude-bridge/claude-sonnet-5-5", "approvals.hosts": .null])]))
+		var result = try settingsResult
+		if case .object(var outer) = result, case .object(var settings) = outer["settings"] {
+			settings["restart"] = .array(["model.choices"])
+			outer["settings"] = .object(settings)
+			result = .object(outer)
+		}
+		server.respond(set, result: result)
+		server.respond(try await server.nextRequest("host.info"), result: hostInfo(defaultModel: "claude-sonnet-5-5"))
+		let saved = try await saving.value
+		#expect(saved.restart == ["model.choices"])
+		#expect(host.settings == saved)
+		#expect(host.info?.defaults?.model == ModelRef(provider: "claude-bridge", modelId: "claude-sonnet-5-5"), "host.info was read again")
+
+		let refusing = Task { try await host.saveSettings(["backup.keep": .value(.text("lots")), "approvals.waitHours": .value(.text(""))]) }
+		let refused = try await server.nextRequest("settings.set")
+		let reasons: [JSONValue] = ["backup.keep should be a number", "approvals.waitHours should be a number"]
+		server.send(.object(["type": "response", "id": .string(refused.id), "error": .object([
+			"code": "invalid_settings", "message": "backup.keep should be a number\napprovals.waitHours should be a number", "data": .object(["errors": .array(reasons)]),
+		])]))
+		await #expect(throws: ProtocolError.self) { try await refusing.value }
+		do {
+			_ = try await refusing.value
+		} catch let error as ProtocolError {
+			#expect(error.reasons == ["backup.keep should be a number", "approvals.waitHours should be a number"])
+		}
+		#expect(host.settings == saved, "nothing was saved")
+		#expect(before != saved)
+		await host.stop()
+	}
 }
