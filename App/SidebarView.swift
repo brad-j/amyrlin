@@ -135,8 +135,10 @@ private struct MachineSection: View {
 			}
 	}
 
+	/// The ten most recently active archived sessions; a search looks through all of them.
 	static func archived(_ store: HostStore, words: [String]) -> [ConversationSummary] {
-		store.state.archived.filter { SessionSearch.matches($0, words: words) }
+		let matching = store.state.archived.filter { SessionSearch.matches($0, words: words) }
+		return words.isEmpty ? Array(matching.prefix(10)) : matching
 	}
 
 	var body: some View {
@@ -248,7 +250,7 @@ private struct MachineSection: View {
 					VStack(alignment: .leading, spacing: 0) {
 						// A hairline sets the archive apart from the projects above it.
 						Rectangle().fill(Palette.rule).frame(height: 1).padding(.bottom, 8)
-						ProjectRow(name: "archived", color: Palette.ink3, collapsed: collapsed, note: collapsed.wrappedValue ? foldedNote(archived) : nil, held: collapsed.wrappedValue ? held(archived) : nil)
+						ProjectRow(name: "archived", color: Palette.ink3, collapsed: collapsed, note: collapsed.wrappedValue ? archiveNote(archived) : nil, held: collapsed.wrappedValue ? held(archived) : nil)
 						if !collapsed.wrappedValue { sessionRows(archived) }
 					}
 				}
@@ -373,6 +375,12 @@ private struct MachineSection: View {
 		if sessions.contains(where: { $0.status == .needsApproval }) { return "needs you" }
 		if sessions.contains(where: { $0.status == .busy }) { return "working" }
 		return "\(sessions.count)"
+	}
+
+	/// A folded archive's note: only whether one needs you or is working, since it always holds ten.
+	private func archiveNote(_ sessions: [ConversationSummary]) -> String? {
+		let note = foldedNote(sessions)
+		return note == "needs you" || note == "working" ? note : nil
 	}
 
 	/// Why the machine isn't connected and what to do, once a try has failed.
