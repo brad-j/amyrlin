@@ -272,8 +272,8 @@ struct TranscriptRowView: View, Equatable {
 			}
 			.padding(.vertical, 10)
 			.task { await store.loadEarlier() }
-		case .user(let text, _, let images):
-			InputRow(text: text, images: images)
+		case .user(let text, _, let images, let videos):
+			InputRow(text: text, images: images, videos: videos)
 		case .text(let text, let streaming):
 			AnswerBlock(id: row.id, text: text, streaming: streaming)
 		case .thinking(let text, let redacted, let streaming):
@@ -285,9 +285,9 @@ struct TranscriptRowView: View, Equatable {
 		case .notice(let notice):
 			NoticeView(notice: notice)
 		case .queued(let item):
-			InputRow(text: item.text ?? "Queued message", tag: item.mode == .steer ? "steer" : "queued", dim: true)
+			InputRow(text: item.text.map(TranscriptVideo.withoutNotes) ?? "Queued message", tag: item.mode == .steer ? "steer" : "queued", dim: true)
 		case .pending(let pending):
-			InputRow(text: pending.text, tag: pending.failure == nil ? "sending" : nil, dim: true, pendingImages: pending.images.count, pending: pending)
+			InputRow(text: pending.text, tag: pending.failure == nil ? "sending" : nil, dim: true, pendingImages: pending.images.count, pendingVideos: pending.videos.count, pending: pending)
 		}
 	}
 }
@@ -317,10 +317,12 @@ private struct Gutter<Content: View>: View {
 private struct InputRow: View {
 	let text: String
 	var images: [ImageRef] = []
+	var videos: [TranscriptVideo] = []
 	var tag: String?
 	var dim = false
-	/// Images not sent yet, shown as a count.
+	/// Images and videos not sent yet, shown as counts.
 	var pendingImages = 0
+	var pendingVideos = 0
 	/// Set while it's the client's own send not yet placed.
 	var pending: PendingSend?
 	@Environment(ConversationStore.self) private var store
@@ -357,8 +359,15 @@ private struct InputRow: View {
 						.alignmentGuide(.firstTextBaseline) { $0[.top] + prompt }
 						.padding(.bottom, text.isEmpty ? 0 : 6)
 				}
+				ForEach(videos, id: \.self) { video in
+					TranscriptVideoView(video: video, store: store)
+						.padding(.bottom, text.isEmpty && video == videos.last ? 0 : 6)
+				}
 				if pendingImages > 0 {
 					Text(pendingImages == 1 ? "[1 image]" : "[\(pendingImages) images]").font(Typography.uiSmall).foregroundStyle(Palette.ink3)
+				}
+				if pendingVideos > 0 {
+					Text(pendingVideos == 1 ? "[1 video]" : "[\(pendingVideos) videos]").font(Typography.uiSmall).foregroundStyle(Palette.ink3)
 				}
 				if !text.isEmpty {
 					Text(text)

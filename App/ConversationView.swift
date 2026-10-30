@@ -272,14 +272,14 @@ struct ComposerView: View {
 			}
 			IconButton("photo.badge.plus", color: attachments.isFull ? Palette.ink3 : Palette.ink2) { attachments.pick() }
 				.disabled(attachments.isFull)
-				.help("Attach images; you can also drop them here or paste them (⌘V)")
+				.help("Attach images or videos; you can also drop them here or paste them (⌘V)")
 			SendButton(enabled: canSend) { send(steer: steer) }
 				.help("Send (Return)")
 		}
 	}
 
 	private var canSend: Bool {
-		!composition.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
+		(!composition.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty) && !attachments.isPreparing
 	}
 
 	/// The session's model as the status line names it, lowercased: `opus 5.5`, or `opus 5.5 via claude code` when the
@@ -318,10 +318,10 @@ struct ComposerView: View {
 
 	private func send(steer: Bool) {
 		let message = pasted.expand(composition.text)
-		guard canSend else { return }
-		let images = attachments.take()
+		guard canSend, !attachments.videosRefused(by: host.info) else { return }
+		let (images, videos) = attachments.take()
 		composition.clear()
-		store.send(message, images: images, whenBusy: steer ? .steer : .followUp)
+		store.send(message, images: images, videos: videos, whenBusy: steer ? .steer : .followUp)
 	}
 }
 

@@ -261,7 +261,7 @@ struct DraftView: View {
 	private var pasted: PastedText { composition.pasted }
 
 	private var canSend: Bool {
-		(!composition.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty) && !sending
+		(!composition.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty) && !attachments.isPreparing && !sending
 	}
 
 	var body: some View {
@@ -309,7 +309,7 @@ struct DraftView: View {
 						}
 					IconButton("photo.badge.plus", color: attachments.isFull ? Palette.ink3 : Palette.ink2) { attachments.pick() }
 						.disabled(attachments.isFull || sending)
-						.help("Attach images; you can also drop them here or paste them (⌘V)")
+						.help("Attach images or videos; you can also drop them here or paste them (⌘V)")
 					SendButton(enabled: canSend, action: send)
 						.help("Start the session (Return)")
 				}
@@ -329,11 +329,12 @@ struct DraftView: View {
 
 	private func send() {
 		let message = pasted.expand(composition.text).trimmingCharacters(in: .whitespacesAndNewlines)
-		guard !message.isEmpty || !attachments.isEmpty, !sending else { return }
+		guard canSend, !attachments.videosRefused(by: machine.store.info) else { return }
 		sending = true
 		let images = attachments.items.map(\.upload)
+		let videos = attachments.videos.map(\.upload)
 		Task {
-			if await model.startConversation(Draft(machine: machine.id, project: project), text: message, images: images) {
+			if await model.startConversation(Draft(machine: machine.id, project: project), text: message, images: images, videos: videos) {
 				composition.clear()
 			} else {
 				sending = false

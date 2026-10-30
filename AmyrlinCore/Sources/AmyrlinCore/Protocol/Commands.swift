@@ -30,6 +30,14 @@ public enum Commands {
 			public var projectColors: [String: Int]?
 			/// This calendar month's charged dollars, when any session was charged (aludra).
 			public var monthCost: Double?
+			/// Set when messages take videos (aludra, protocol section 10); a host without it gets none.
+			public var videos: VideoLimits?
+		}
+		public struct VideoLimits: Decodable, Sendable, Hashable {
+			public var maxVideos: Int
+			public var maxBytes: Int
+			public var maxFrames: Int
+			public var keepDays: Int
 		}
 		public let params = Params()
 		public init() {}
@@ -106,11 +114,13 @@ public enum Commands {
 			public var text: String?
 			/// The first message's images (aludra).
 			public var images: [ImageUpload]?
+			/// The first message's videos (aludra).
+			public var videos: [VideoUpload]?
 		}
 		public typealias Result = CreatedResult
 		public let params: Params
-		public init(requestId: String = UUID().uuidString, title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = []) {
-			params = Params(requestId: requestId, title: title, settings: settings, project: project, text: text, images: images.isEmpty ? nil : images)
+		public init(requestId: String = UUID().uuidString, title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = []) {
+			params = Params(requestId: requestId, title: title, settings: settings, project: project, text: text, images: images.isEmpty ? nil : images, videos: videos.isEmpty ? nil : videos)
 		}
 	}
 
@@ -169,14 +179,16 @@ public enum Commands {
 			public var whenBusy: WhenBusy
 			/// Images with the text (aludra).
 			public var images: [ImageUpload]?
+			/// Videos with the text (aludra).
+			public var videos: [VideoUpload]?
 		}
 		public struct Result: Decodable, Sendable, Hashable {
 			public var submission: Submission
 			public var duplicate: Bool
 		}
 		public let params: Params
-		public init(conversationId: ConversationID, requestId: String, text: String, whenBusy: WhenBusy = .followUp, images: [ImageUpload] = []) {
-			params = Params(conversationId: conversationId, requestId: requestId, text: text, whenBusy: whenBusy, images: images.isEmpty ? nil : images)
+		public init(conversationId: ConversationID, requestId: String, text: String, whenBusy: WhenBusy = .followUp, images: [ImageUpload] = [], videos: [VideoUpload] = []) {
+			params = Params(conversationId: conversationId, requestId: requestId, text: text, whenBusy: whenBusy, images: images.isEmpty ? nil : images, videos: videos.isEmpty ? nil : videos)
 		}
 	}
 

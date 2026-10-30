@@ -572,6 +572,10 @@ Added 2026-10-23, outside v1: aludra's own extensions (aludra 861c0f3), which ot
 
 11. **Host settings.** `settings.get {}` returns `{settings}`, and `settings.set {changes: {key: value | null}}` saves the changes and returns the new `{settings}`; `null` puts a setting back to its default. `settings` is aludra's `Settings` (its docs/api.md, "Settings"): `{file, settings, restart, errors}`, where each `Setting` describes itself (`key`, `label`, `help`, `kind`, `value`, `default`, `set`, `options`, `editable`, `live`) so a client draws its form from the list. A refused change is `invalid_settings` with `data.errors`, one reason each, and nothing is saved. A host without them answers `unknown_method`, and the Mac app offers no settings for it. After a save the Mac app reads `host.info` again, since projects, models and defaults come from the settings.
 
+Added 2026-10-29, aludra's own extension like 11:
+
+12. **Videos.** `submit` and `conversations.create` take `videos: [{name, mimeType, data, seconds?, frames?: [{mimeType, data, at}]}]` beside `images`. aludra takes MP4, QuickTime or WebM, at most 2 a message and 40 MB together, checks the bytes are the type named, and takes up to 6 frames each, checked as images. No model takes video, so aludra saves each in its data directory for 14 days and the user message carries a text block `<video name="…" seconds="…" path="…" until="YYYY-MM-DD">…</video>` for the agent, followed by the video's frames as image blocks. The Mac app re-encodes a video to 720p H.264 MP4 (540p if that's over the limit), sends frames from start to end, and shows the note as the video's name, length and how long the host keeps it (`TranscriptVideo`). `host.info` carries `videos: {maxVideos, maxBytes, maxFrames, keepDays}` on a host that takes them; the app sends no video to one without it, since an older aludra drops the field without a word.
+
 Deferred, not in v1:
 
 - Withdrawing one queued message (`harness.abortSubmission`). `abort` withdraws all queued inputs.

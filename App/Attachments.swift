@@ -4,8 +4,8 @@ import QuickLook
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Images waiting to go with a message: from the attach button, a drop, or a paste. Each is scaled and encoded as it's
-/// added (AmyrlinCore's ImagePreparation), so sending is immediate.
+/// Images and videos waiting to go with a message: from the attach button, a drop, or a paste. Each is prepared as it's
+/// added (AmyrlinCore's ImagePreparation and VideoPreparation), so sending is immediate once nothing is preparing.
 @MainActor @Observable
 final class Attachments {
 	struct Item: Identifiable {
@@ -14,19 +14,32 @@ final class Attachments {
 		let preview: NSImage
 	}
 
-	private(set) var items: [Item] = []
-	/// Why the last image couldn't be added, until the next one is.
-	var problem: String?
+	struct Video: Identifiable {
+		let id = UUID()
+		let upload: VideoUpload
+		/// Its first frame.
+		let preview: NSImage?
+	}
 
-	var isEmpty: Bool { items.isEmpty }
-	var isFull: Bool { items.count >= ImagePreparation.maxImages }
+	private(set) var items: [Item] = []
+	private(set) var videos: [Video] = []
+	/// Videos being re-encoded; a message waits for them.
+	private(set) var preparing = 0
+	/// Why the last image or video couldn't be added, until the next one is.
+	var problem: String?
+	/// Bumped when the list is taken, so videos still preparing then don't land in the next message.
+	@ObservationIgnored private var generation = 0
+
+	var isEmpty: Bool { items.isEmpty && videos.isEmpty }
+	var isPreparing: Bool { preparing > 0 }
+	var isFull: Bool { items.count >= ImagePreparation.maxImages && videos.count + preparing >= VideoPreparation.maxVideos }
 
 	func add(_ data: [Data]) {
 		guard !data.isEmpty else { return }
 		problem = nil
 		Task {
 			for chunk in data {
-				guard !isFull else {
+				guard items.count < ImagePreparation.maxImages else {
 					problem = "A message takes at most \(ImagePreparation.maxImages) images."
 					return
 				}
@@ -41,33 +54,81 @@ final class Attachments {
 		}
 	}
 
+	/// Image and video files; anything else is passed over.
 	func add(files: [URL]) {
-		add(files.compactMap { try? Data(contentsOf: $0) })
+		let movies = files.filter(Self.isMovie)
+		add(files.filter(Self.isImage).compactMap { try? Data(contentsOf: $0) })
+		for movie in movies { add(video: movie) }
+	}
+
+	private func add(video url: URL) {
+		problem = nil
+		guard videos.count + preparing < VideoPreparation.maxVideos else {
+			problem = "A message takes at most \(VideoPreparation.maxVideos) videos."
+			return
+		}
+		preparing += 1
+		let generation = generation
+		Task {
+			defer { if generation == self.generation { preparing -= 1 } }
+			do {
+				let upload = try await Task.detached(priority: .userInitiated) { try await VideoPreparation.prepare(url) }.value
+				guard generation == self.generation else { return }
+				guard videos.reduce(upload.data.count, { $0 + $1.upload.data.count }) / 4 * 3 <= VideoPreparation.maxBytes else {
+					problem = "A message's videos take at most \(VideoPreparation.maxBytes / 1_048_576) MB together."
+					return
+				}
+				let preview = upload.frames.first.flatMap { Data(base64Encoded: $0.data) }.flatMap(NSImage.init(data:))
+				videos.append(Video(upload: upload, preview: preview))
+			} catch {
+				guard generation == self.generation else { return }
+				problem = (error as? VideoPreparation.Failure)?.description ?? String(describing: error)
+			}
+		}
 	}
 
 	func remove(_ item: Item) {
 		items.removeAll { $0.id == item.id }
 	}
 
-	/// The images to send, emptying the list.
-	func take() -> [ImageUpload] {
-		defer { items = [] }
-		return items.map(\.upload)
+	func remove(_ video: Video) {
+		videos.removeAll { $0.id == video.id }
 	}
 
-	/// Opens the file picker for images.
+	/// Whether a host must turn the videos away: one whose `host.info` says nothing of videos would drop them without a
+	/// word. Says so in `problem`.
+	func videosRefused(by info: AmyrlinCore.Commands.HostInfo.Result?) -> Bool {
+		guard !videos.isEmpty, info?.videos == nil else { return false }
+		problem = "This machine's aludra doesn't take videos yet; update it, or remove the video."
+		return true
+	}
+
+	/// The images and videos to send, emptying the list; videos still preparing are dropped.
+	func take() -> (images: [ImageUpload], videos: [VideoUpload]) {
+		defer {
+			items = []
+			videos = []
+			preparing = 0
+			problem = nil
+			generation += 1
+		}
+		return (items.map(\.upload), videos.map(\.upload))
+	}
+
+	/// Opens the file picker for images and videos.
 	func pick() {
 		let panel = NSOpenPanel()
-		panel.allowedContentTypes = [.image]
+		panel.allowedContentTypes = [.image, .movie]
 		panel.allowsMultipleSelection = true
 		panel.canChooseDirectories = false
 		panel.prompt = "Attach"
 		if panel.runModal() == .OK { add(files: panel.urls) }
 	}
 
-	/// Image files on the pasteboard, or image data when there's no text to paste instead. False when there's neither.
+	/// Image or video files on the pasteboard, or image data when there's no text to paste instead. False when there's
+	/// none of them.
 	func paste(from pasteboard: NSPasteboard = .general) -> Bool {
-		let files = Self.imageFiles(on: pasteboard)
+		let files = Self.mediaFiles(on: pasteboard)
 		if !files.isEmpty {
 			add(files: files)
 			return true
@@ -82,14 +143,15 @@ final class Attachments {
 		return false
 	}
 
-	/// A drop's image files, images another app promises to write (Photos, say), or image data. False when it has none.
+	/// A drop's image or video files, ones another app promises to write (Photos, say), or image data. False when it has
+	/// none.
 	func drop(from pasteboard: NSPasteboard) -> Bool {
-		let files = Self.imageFiles(on: pasteboard)
+		let files = Self.mediaFiles(on: pasteboard)
 		if !files.isEmpty {
 			add(files: files)
 			return true
 		}
-		let promises = Self.imagePromises(on: pasteboard)
+		let promises = Self.mediaPromises(on: pasteboard)
 		if !promises.isEmpty {
 			let folder = FileManager.default.temporaryDirectory.appending(path: "amyrlin-drop-\(UUID().uuidString)")
 			try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -111,8 +173,8 @@ final class Attachments {
 	}
 
 	/// Whether a drag carries anything `drop` takes.
-	static func hasImages(_ pasteboard: NSPasteboard) -> Bool {
-		!imageFiles(on: pasteboard).isEmpty || !imagePromises(on: pasteboard).isEmpty || pasteboard.availableType(from: [.png, .tiff]) != nil
+	static func hasMedia(_ pasteboard: NSPasteboard) -> Bool {
+		!mediaFiles(on: pasteboard).isEmpty || !mediaPromises(on: pasteboard).isEmpty || pasteboard.availableType(from: [.png, .tiff]) != nil
 	}
 
 	/// The types a drop target registers for so `drop` sees them.
@@ -120,45 +182,48 @@ final class Attachments {
 
 	private static let promiseQueue = OperationQueue()
 
-	private static func imageFiles(on pasteboard: NSPasteboard) -> [URL] {
+	private static func type(of url: URL) -> UTType? { UTType(filenameExtension: url.pathExtension) }
+	private static func isImage(_ url: URL) -> Bool { type(of: url)?.conforms(to: .image) == true }
+	private static func isMovie(_ url: URL) -> Bool { type(of: url)?.conforms(to: .movie) == true }
+
+	private static func mediaFiles(on pasteboard: NSPasteboard) -> [URL] {
 		(pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? [])
-			.filter { UTType(filenameExtension: $0.pathExtension)?.conforms(to: .image) == true }
+			.filter { isImage($0) || isMovie($0) }
 	}
 
-	private static func imagePromises(on pasteboard: NSPasteboard) -> [NSFilePromiseReceiver] {
+	private static func mediaPromises(on pasteboard: NSPasteboard) -> [NSFilePromiseReceiver] {
 		(pasteboard.readObjects(forClasses: [NSFilePromiseReceiver.self]) as? [NSFilePromiseReceiver] ?? [])
-			.filter { $0.fileTypes.contains { UTType($0)?.conforms(to: .image) == true } }
+			.filter { $0.fileTypes.contains { UTType($0).map { $0.conforms(to: .image) || $0.conforms(to: .movie) } == true } }
 	}
 }
 
-/// Attached images above the text, each with a way to take it off.
+/// Attached images and videos above the text, each with a way to take it off; a video shows its first frame and length.
 struct AttachmentStrip: View {
 	let attachments: Attachments
 
 	var body: some View {
-		if !attachments.isEmpty || attachments.problem != nil {
+		if !attachments.isEmpty || attachments.isPreparing || attachments.problem != nil {
 			VStack(alignment: .leading, spacing: 6) {
 				HStack(spacing: 8) {
 					ForEach(attachments.items) { item in
-						Image(nsImage: item.preview)
-							.resizable()
-							.scaledToFill()
-							.frame(width: 52, height: 52)
-							.clipped()
-							.overlay(Rectangle().stroke(Palette.rule2))
-							.overlay(alignment: .topTrailing) {
-								Button {
-									attachments.remove(item)
-								} label: {
-									Text("×")
-										.font(Typography.uiSmall)
-										.foregroundStyle(Palette.ink)
-										.frame(width: 16, height: 16)
-										.background(Palette.paper3)
-								}
-								.buttonStyle(.plain)
-								.help("Remove this image")
+						thumbnail(item.preview, help: "Remove this image") { attachments.remove(item) }
+					}
+					ForEach(attachments.videos) { video in
+						thumbnail(video.preview, help: "Remove this video") { attachments.remove(video) }
+							.overlay(alignment: .bottomLeading) {
+								Text(video.upload.seconds.map(TranscriptVideo.clock) ?? "video")
+									.font(Typography.uiSmall)
+									.foregroundStyle(Palette.ink)
+									.padding(.horizontal, 3)
+									.background(Palette.paper3)
 							}
+					}
+					ForEach(0..<attachments.preparing, id: \.self) { _ in
+						ProgressView()
+							.controlSize(.small)
+							.frame(width: 52, height: 52)
+							.overlay(Rectangle().stroke(Palette.rule2))
+							.help("Preparing the video to send")
 					}
 				}
 				if let problem = attachments.problem {
@@ -167,9 +232,33 @@ struct AttachmentStrip: View {
 			}
 		}
 	}
+
+	private func thumbnail(_ preview: NSImage?, help: String, remove: @escaping () -> Void) -> some View {
+		Group {
+			if let preview {
+				Image(nsImage: preview).resizable().scaledToFill()
+			} else {
+				Palette.paper3
+			}
+		}
+		.frame(width: 52, height: 52)
+		.clipped()
+		.overlay(Rectangle().stroke(Palette.rule2))
+		.overlay(alignment: .topTrailing) {
+			Button(action: remove) {
+				Text("×")
+					.font(Typography.uiSmall)
+					.foregroundStyle(Palette.ink)
+					.frame(width: 16, height: 16)
+					.background(Palette.paper3)
+			}
+			.buttonStyle(.plain)
+			.help(help)
+		}
+	}
 }
 
-/// Takes images dropped on the view, and pasted (⌘V) while `focused` is true. The text field's editor would take the
+/// Takes images and videos dropped on the view, and pasted (⌘V) while `focused` is true. The text field's editor would take the
 /// paste first and ignore an image, so ⌘V is looked at before it; it would take a drop too, so DropCatcher sits above it. Long text goes into the field as a marker that
 /// `pasted` holds the text for (PastedText); other text pastes as usual. Backspace right after a marker deletes it whole.
 struct AcceptsPastes: ViewModifier {
@@ -225,7 +314,7 @@ struct AcceptsPastes: ViewModifier {
 	}
 }
 
-/// Takes image drops over the view it covers. While the text field is editing, its editor registers for files and
+/// Takes image and video drops over the view it covers. While the text field is editing, its editor registers for files and
 /// images and would take them as text (a file's path, or nothing), and AppKit gives a drop to the frontmost view
 /// registered for it, so this lies on top for drops and lets clicks through to what's beneath.
 private struct DropCatcher: NSViewRepresentable {
@@ -255,7 +344,7 @@ private struct DropCatcher: NSViewRepresentable {
 		override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
 		override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-			guard Attachments.hasImages(sender.draggingPasteboard) else { return [] }
+			guard Attachments.hasMedia(sender.draggingPasteboard) else { return [] }
 			targeted?.wrappedValue = true
 			return .copy
 		}
@@ -278,6 +367,35 @@ private struct DropCatcher: NSViewRepresentable {
 extension View {
 	func acceptsPastes(_ attachments: Attachments, text pasted: PastedText, focused: Bool) -> some View {
 		modifier(AcceptsPastes(attachments: attachments, pasted: pasted, focused: focused))
+	}
+}
+
+/// A video sent with a message: what it's called, how long it is and whether the host still has it, then the frames
+/// sent with it. The path is in the tooltip and the context menu, for pointing an agent at it later.
+struct TranscriptVideoView: View {
+	let video: TranscriptVideo
+	let store: ConversationStore
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 6) {
+			HStack(spacing: 6) {
+				Image(systemName: "film").foregroundStyle(Palette.ink3)
+				Text(video.name).foregroundStyle(Palette.ink2)
+				Text([video.seconds.map(TranscriptVideo.clock), video.keeping()].compactMap(\.self).joined(separator: " · "))
+					.foregroundStyle(Palette.ink3)
+			}
+			.font(Typography.uiSmall)
+			.help(video.path)
+			.contextMenu {
+				Button("Copy Path on Host") {
+					NSPasteboard.general.clearContents()
+					NSPasteboard.general.setString(video.path, forType: .string)
+				}
+			}
+			if !video.frames.isEmpty {
+				TranscriptImages(refs: video.frames, store: store)
+			}
+		}
 	}
 }
 

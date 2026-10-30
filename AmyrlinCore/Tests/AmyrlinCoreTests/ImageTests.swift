@@ -48,7 +48,7 @@ import UniformTypeIdentifiers
 		var state = ConversationState()
 		for frame in frames { state.apply(try JSONDecoder().decode([ConversationEvent].self, from: Data(frame.utf8))) }
 		let rows = TranscriptLayout.rows(state: state)
-		guard case .user(let text, _, let images)? = rows.first(where: { $0.id == "item-7" })?.kind else {
+		guard case .user(let text, _, let images, _)? = rows.first(where: { $0.id == "item-7" })?.kind else {
 			Issue.record("expected the user row")
 			return
 		}

@@ -6,6 +6,35 @@ public typealias SubmissionID = Int64
 public typealias TaskID = Int64
 public typealias ConversationID = Int64
 
+/// A video for a message (aludra, protocol section 10): base64, its type, its length and frames from it, which the model
+/// sees as images. The host saves the video and tells the agent where (aludra's src/videos.ts).
+public struct VideoUpload: Codable, Sendable, Hashable {
+	public var name: String
+	public var mimeType: String
+	public var data: String
+	public var seconds: Double?
+	public var frames: [VideoFrame]
+	public init(name: String, mimeType: String, data: String, seconds: Double?, frames: [VideoFrame]) {
+		self.name = name
+		self.mimeType = mimeType
+		self.data = data
+		self.seconds = seconds
+		self.frames = frames
+	}
+}
+
+/// A frame of a video, `at` seconds in.
+public struct VideoFrame: Codable, Sendable, Hashable {
+	public var mimeType: String
+	public var data: String
+	public var at: Double
+	public init(mimeType: String, data: String, at: Double) {
+		self.mimeType = mimeType
+		self.data = data
+		self.at = at
+	}
+}
+
 /// An image's bytes as the protocol carries them: base64, with its type.
 public struct ImageUpload: Codable, Sendable, Hashable {
 	public var mimeType: String
