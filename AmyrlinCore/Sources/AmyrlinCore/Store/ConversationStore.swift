@@ -7,9 +7,10 @@ public struct PendingSend: Identifiable, Sendable, Hashable {
 	public let id: String
 	public let text: String
 	public let whenBusy: WhenBusy
-	/// Its images and videos, kept for a retry.
+	/// Its images, videos and files, kept for a retry.
 	public var images: [ImageUpload] = []
 	public var videos: [VideoUpload] = []
+	public var files: [FileUpload] = []
 	public var submissionId: SubmissionID?
 	/// Set when the server refused it or its outcome is unknown; the user can retry.
 	public var failure: String?
@@ -64,11 +65,12 @@ public final class ConversationStore {
 
 	// MARK: Commands
 
-	/// Sends a message, with any images and videos. Return sends a follow-up when busy; the steer modifier sends `.steer`.
-	public func send(_ text: String, images: [ImageUpload] = [], videos: [VideoUpload] = [], whenBusy: WhenBusy = .followUp) {
+	/// Sends a message, with any images, videos and files. Return sends a follow-up when busy; the steer modifier sends
+	/// `.steer`.
+	public func send(_ text: String, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = [], whenBusy: WhenBusy = .followUp) {
 		let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-		guard !trimmed.isEmpty || !images.isEmpty || !videos.isEmpty else { return }
-		let pending = PendingSend(id: UUID().uuidString, text: trimmed, whenBusy: whenBusy, images: images, videos: videos)
+		guard !trimmed.isEmpty || !images.isEmpty || !videos.isEmpty || !files.isEmpty else { return }
+		let pending = PendingSend(id: UUID().uuidString, text: trimmed, whenBusy: whenBusy, images: images, videos: videos, files: files)
 		outbox.append(pending)
 		submit(pending)
 	}
@@ -210,7 +212,7 @@ public final class ConversationStore {
 	}
 
 	private func submit(_ pending: PendingSend) {
-		let command = Commands.Submit(conversationId: id, requestId: pending.id, text: pending.text, whenBusy: pending.whenBusy, images: pending.images, videos: pending.videos)
+		let command = Commands.Submit(conversationId: id, requestId: pending.id, text: pending.text, whenBusy: pending.whenBusy, images: pending.images, videos: pending.videos, files: pending.files)
 		Task {
 			do {
 				let result = try await connection.send(command)

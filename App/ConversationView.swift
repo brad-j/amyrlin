@@ -270,9 +270,9 @@ struct ComposerView: View {
 				IconButton("stop.circle", color: Palette.bad) { Task { await store.abort() } }
 					.help("Stop the run (Esc)")
 			}
-			IconButton("photo.badge.plus", color: attachments.isFull ? Palette.ink3 : Palette.ink2) { attachments.pick() }
+			IconButton(host.info?.files == nil ? "photo.badge.plus" : "paperclip", color: attachments.isFull ? Palette.ink3 : Palette.ink2) { attachments.pick() }
 				.disabled(attachments.isFull)
-				.help("Attach images or videos; you can also drop them here or paste them (⌘V)")
+				.help(host.info?.files == nil ? "Attach images or videos; you can also drop them here or paste them (⌘V)" : "Attach images, videos or files; you can also drop them here or paste them (⌘V)")
 			SendButton(enabled: canSend) { send(steer: steer) }
 				.help("Send (Return)")
 		}
@@ -318,10 +318,10 @@ struct ComposerView: View {
 
 	private func send(steer: Bool) {
 		let message = pasted.expand(composition.text)
-		guard canSend, !attachments.videosRefused(by: host.info) else { return }
-		let (images, videos) = attachments.take()
+		guard canSend, !attachments.refused(by: host.info) else { return }
+		let (images, videos, files) = attachments.take()
 		composition.clear()
-		store.send(message, images: images, videos: videos, whenBusy: steer ? .steer : .followUp)
+		store.send(message, images: images, videos: videos, files: files, whenBusy: steer ? .steer : .followUp)
 	}
 }
 

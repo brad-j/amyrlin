@@ -76,8 +76,8 @@ public final class HostStore {
 	}
 
 	/// A new conversation, in `project` when the server has projects, starting with `text` when given.
-	public func createConversation(title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = []) async throws -> ConversationSummary {
-		let result = try await connection.send(Commands.CreateConversation(title: title, settings: settings, project: project, text: text, images: images, videos: videos))
+	public func createConversation(title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = []) async throws -> ConversationSummary {
+		let result = try await connection.send(Commands.CreateConversation(title: title, settings: settings, project: project, text: text, images: images, videos: videos, files: files))
 		state.upsert(result.conversation)
 		return result.conversation
 	}

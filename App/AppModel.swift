@@ -543,10 +543,10 @@ final class AppModel {
 	}
 
 	/// Starts `draft`'s conversation with `text` as its first message, and shows it in the draft's pane.
-	func startConversation(_ draft: Draft, text: String, images: [ImageUpload] = [], videos: [VideoUpload] = []) async -> Bool {
+	func startConversation(_ draft: Draft, text: String, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = []) async -> Bool {
 		guard let machine = machine(draft.machine) else { return false }
 		do {
-			let summary = try await machine.store.createConversation(project: draft.project?.dir, text: text, images: images, videos: videos)
+			let summary = try await machine.store.createConversation(project: draft.project?.dir, text: text, images: images, videos: videos, files: files)
 			let key = ConversationKey(machine: machine.id, conversation: summary.id)
 			// A crossfade: the new conversation is blank for a moment while its first snapshot comes, which cut in as a flash.
 			withAnimation(.row) {

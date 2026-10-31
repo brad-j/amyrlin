@@ -322,7 +322,7 @@ struct TranscriptRowView: View, Equatable {
 			.task { await store.loadEarlier() }
 		case .user(let message, _, let at):
 			if let restore = message.restore { RestoreLine(restore: restore) }
-			InputRow(text: message.text, images: message.images, videos: message.videos, at: at)
+			InputRow(text: message.text, images: message.images, videos: message.videos, files: message.files, at: at)
 		case .text(let text, let streaming):
 			AnswerBlock(id: row.id, text: text, streaming: streaming)
 		case .thinking(let text, let redacted, let streaming):
@@ -336,7 +336,7 @@ struct TranscriptRowView: View, Equatable {
 		case .queued(let item):
 			InputRow(text: item.text.map(UserMessage.withoutNotes) ?? "Queued message", tag: item.mode == .steer ? "steer" : "queued", dim: true)
 		case .pending(let pending):
-			InputRow(text: pending.text, tag: pending.failure == nil ? "sending" : nil, dim: true, pendingImages: pending.images.count, pendingVideos: pending.videos.count, pending: pending)
+			InputRow(text: pending.text, tag: pending.failure == nil ? "sending" : nil, dim: true, pendingImages: pending.images.count, pendingVideos: pending.videos.count, pendingFiles: pending.files.count, pending: pending)
 		}
 	}
 }
@@ -367,11 +367,13 @@ private struct InputRow: View {
 	let text: String
 	var images: [ImageRef] = []
 	var videos: [TranscriptVideo] = []
+	var files: [TranscriptFile] = []
 	var tag: String?
 	var dim = false
-	/// Images and videos not sent yet, shown as counts.
+	/// Images, videos and files not sent yet, shown as counts.
 	var pendingImages = 0
 	var pendingVideos = 0
+	var pendingFiles = 0
 	/// Set while it's the client's own send not yet placed.
 	var pending: PendingSend?
 	/// The message's time, which a turn checkpoint's `message` matches; nil for one not in the transcript yet.
@@ -443,6 +445,15 @@ private struct InputRow: View {
 				}
 				if pendingVideos > 0 {
 					Text(pendingVideos == 1 ? "[1 video]" : "[\(pendingVideos) videos]").font(Typography.uiSmall).foregroundStyle(Palette.ink3)
+				}
+				if pendingFiles > 0 {
+					Text(pendingFiles == 1 ? "[1 file]" : "[\(pendingFiles) files]").font(Typography.uiSmall).foregroundStyle(Palette.ink3)
+				}
+				if !files.isEmpty {
+					Wrapping(spacing: 6) {
+						ForEach(files, id: \.self) { file in TranscriptFileView(file: file) }
+					}
+					.padding(.bottom, text.isEmpty ? 0 : 6)
 				}
 				if !text.isEmpty {
 					Text(text)

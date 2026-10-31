@@ -32,6 +32,19 @@ public enum Commands {
 			public var monthCost: Double?
 			/// Set when messages take videos (aludra, protocol section 10); a host without it gets none.
 			public var videos: VideoLimits?
+			/// Set when messages take files (aludra, protocol section 10); a host without it gets none.
+			public var files: FileLimits?
+		}
+		/// What a message's files may be, and the text length past which the host saves a message to a file.
+		public struct FileLimits: Decodable, Sendable, Hashable {
+			public var maxFiles: Int
+			/// All of a message's files together.
+			public var maxBytes: Int
+			/// Message text longer than this, in UTF-8 bytes, the host saves as a file, keeping its start.
+			public var pasteBytes: Int
+			public var keepDays: Int
+			/// A message's images, videos and files together.
+			public var maxMessageBytes: Int
 		}
 		public struct VideoLimits: Decodable, Sendable, Hashable {
 			public var maxVideos: Int
@@ -116,11 +129,13 @@ public enum Commands {
 			public var images: [ImageUpload]?
 			/// The first message's videos (aludra).
 			public var videos: [VideoUpload]?
+			/// The first message's files (aludra).
+			public var files: [FileUpload]?
 		}
 		public typealias Result = CreatedResult
 		public let params: Params
-		public init(requestId: String = UUID().uuidString, title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = []) {
-			params = Params(requestId: requestId, title: title, settings: settings, project: project, text: text, images: images.isEmpty ? nil : images, videos: videos.isEmpty ? nil : videos)
+		public init(requestId: String = UUID().uuidString, title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = []) {
+			params = Params(requestId: requestId, title: title, settings: settings, project: project, text: text, images: images.isEmpty ? nil : images, videos: videos.isEmpty ? nil : videos, files: files.isEmpty ? nil : files)
 		}
 	}
 
@@ -197,14 +212,16 @@ public enum Commands {
 			public var images: [ImageUpload]?
 			/// Videos with the text (aludra).
 			public var videos: [VideoUpload]?
+			/// Files with the text (aludra).
+			public var files: [FileUpload]?
 		}
 		public struct Result: Decodable, Sendable, Hashable {
 			public var submission: Submission
 			public var duplicate: Bool
 		}
 		public let params: Params
-		public init(conversationId: ConversationID, requestId: String, text: String, whenBusy: WhenBusy = .followUp, images: [ImageUpload] = [], videos: [VideoUpload] = []) {
-			params = Params(conversationId: conversationId, requestId: requestId, text: text, whenBusy: whenBusy, images: images.isEmpty ? nil : images, videos: videos.isEmpty ? nil : videos)
+		public init(conversationId: ConversationID, requestId: String, text: String, whenBusy: WhenBusy = .followUp, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = []) {
+			params = Params(conversationId: conversationId, requestId: requestId, text: text, whenBusy: whenBusy, images: images.isEmpty ? nil : images, videos: videos.isEmpty ? nil : videos, files: files.isEmpty ? nil : files)
 		}
 	}
 
