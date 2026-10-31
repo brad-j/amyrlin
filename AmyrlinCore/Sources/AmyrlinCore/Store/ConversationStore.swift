@@ -169,6 +169,29 @@ public final class ConversationStore {
 		}
 	}
 
+	// MARK: Finding an item
+
+	/// The item a search result named, to scroll to; set by `reveal`, cleared by the transcript once it has.
+	public var revealing: EntryID?
+
+	/// Pages `conversation.history` back until entry `entry` is loaded, then marks it to scroll to. Gives up after
+	/// `maxPages` pages, or when there's nothing earlier, revealing the nearest item loaded.
+	public func reveal(_ entry: EntryID, maxPages: Int = 40) async {
+		for _ in 0..<maxPages {
+			guard let oldest = state.items.first?.id, entry < oldest, state.hasEarlier else { break }
+			await loadEarlier(limit: 200)
+		}
+		revealing = entry
+	}
+
+	/// Waits for the first snapshot, up to `timeout`, so a reveal pages from what's shown.
+	public func waitForSnapshot(timeout: Duration = .seconds(10)) async {
+		let start = ContinuousClock.now
+		while !state.hasSnapshot, ContinuousClock.now - start < timeout {
+			try? await Task.sleep(for: .milliseconds(50))
+		}
+	}
+
 	private func run(_ body: (HostConnection) async throws -> Void) async {
 		do {
 			try await body(connection)

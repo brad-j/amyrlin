@@ -12,6 +12,8 @@ struct SidebarView: View {
 	@Bindable var model: AppModel
 	@FocusState private var focused: Bool
 	@FocusState private var searchFocused: Bool
+	/// What the machines' messages.search found for the query, merged.
+	@State private var messages = MessageResults()
 
 	private var words: [String] { SessionSearch.words(model.sessionQuery) }
 
@@ -30,6 +32,7 @@ struct SidebarView: View {
 					ForEach(model.machines) { machine in
 						MachineSection(machine: machine, model: model, words: words)
 					}
+					if !words.isEmpty { MessagesSection(model: model, results: messages) }
 				}
 				.padding(.horizontal, 16)
 			}
@@ -40,6 +43,20 @@ struct SidebarView: View {
 			.onKeyPress(.upArrow) { move(-1) }
 		}
 		.background(Palette.panel)
+		// Searches each machine's messages as the query settles; a new query cancels the last.
+		.task(id: model.sessionQuery) {
+			let query = model.sessionQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+			guard query.count >= 2 else {
+				messages = MessageResults()
+				return
+			}
+			messages.searching = true
+			try? await Task.sleep(for: .milliseconds(250))
+			guard !Task.isCancelled else { return }
+			let found = await MessageResults.search(query, on: model.machines.filter { $0.store.isConnected })
+			guard !Task.isCancelled else { return }
+			messages = found
+		}
 		.onChange(of: model.focusSearch, initial: true) { _, now in
 			guard now else { return }
 			searchFocused = true
@@ -493,6 +510,158 @@ private struct ProjectRow: View {
 		.contentShape(Rectangle())
 		.onHover { inside in withAnimation(.state) { hovering = inside } }
 	}
+}
+
+/// One search's results from every machine searched, merged: each machine's best first, then their second best, and
+/// so on, since one host's ranks don't compare with another's.
+struct MessageResults {
+	struct Hit: Identifiable {
+		let machine: UUID
+		let result: SearchResult
+		var id: String { "\(machine.uuidString)/\(result.item.isEmpty ? "\(result.entry):\(result.index)" : result.item)" }
+	}
+
+	var hits: [Hit] = []
+	var searching = false
+	/// Why a machine couldn't search, by its name.
+	var failures: [String] = []
+	/// Machines whose aludra has no message search.
+	var unsupported: [String] = []
+
+	/// A snippet with its matched words lit and the « » markers gone.
+	static func snippet(_ text: String) -> AttributedString {
+		var out = AttributedString()
+		for run in SearchSnippet.runs(text) {
+			var piece = AttributedString(run.text)
+			piece.foregroundColor = run.matched ? Palette.ink : Palette.ink3
+			if run.matched { piece.backgroundColor = Palette.selection }
+			out += piece
+		}
+		return out
+	}
+
+	@MainActor static func search(_ query: String, on machines: [AppModel.Machine]) async -> MessageResults {
+		var lists: [(UUID, [SearchResult])] = []
+		var out = MessageResults()
+		// Every machine at once; each answers on its own connection.
+		let searches = machines.map { machine in
+			(machine, Task { @MainActor in try await machine.store.searchMessages(query) })
+		}
+		for (machine, search) in searches {
+			let name = machine.store.state.host?.name ?? machine.store.info?.host.name ?? machine.url.host() ?? "a machine"
+			do {
+				let results = try await search.value
+				if machine.store.has(Commands.SearchMessages.method) { lists.append((machine.id, results)) } else { out.unsupported.append(name) }
+			} catch let error as ProtocolError where error.code == "unknown_method" {
+				out.unsupported.append(name)
+			} catch {
+				out.failures.append("\(name): \((error as? ProtocolError)?.message ?? String(describing: error))")
+			}
+		}
+		// In the sidebar's order of machines, so the merge doesn't change with which answered first.
+		lists.sort { a, b in (machines.firstIndex { $0.id == a.0 } ?? 0) < (machines.firstIndex { $0.id == b.0 } ?? 0) }
+		out.hits = SearchMerge.interleave(lists).map { Hit(machine: $0.machine, result: $0.result) }
+		return out
+	}
+}
+
+/// Under the title matches while searching: messages and answers holding the words, from every machine's
+/// messages.search, each with its session, a snippet with the matched words lit, and archived marked. A click opens the
+/// session at the message.
+private struct MessagesSection: View {
+	let model: AppModel
+	let results: MessageResults
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 0) {
+			Rectangle().fill(Palette.rule).frame(height: 1).padding(.top, 12).padding(.bottom, 8)
+			HStack(spacing: 6) {
+				Text("messages").foregroundStyle(Palette.ink3)
+				Spacer(minLength: 6)
+				if results.searching {
+					Text("searching…").foregroundStyle(Palette.ink3)
+				} else if !results.hits.isEmpty {
+					Text("\(results.hits.count)").foregroundStyle(Palette.ink3).monospacedDigit()
+				}
+			}
+			.font(Typography.projectHeader)
+			.padding(.leading, 2)
+			.padding(.vertical, 3)
+			if !results.searching, results.hits.isEmpty {
+				Text(results.unsupported.count == model.machines.count && !model.machines.isEmpty ? "This aludra can't search messages" : "No messages match")
+					.font(Typography.uiSmall)
+					.foregroundStyle(Palette.ink3)
+					.padding(.vertical, 4)
+			}
+			ForEach(results.hits) { hit in
+				MessageHitRow(model: model, hit: hit, showMachine: model.machines.count > 1)
+			}
+			ForEach(results.failures, id: \.self) { failure in
+				Text(failure).font(Typography.uiSmall).foregroundStyle(Palette.wait).padding(.vertical, 2)
+			}
+			if !results.unsupported.isEmpty, results.unsupported.count < model.machines.count {
+				Text("Not searched: \(results.unsupported.joined(separator: ", ")) (no message search)")
+					.font(Typography.uiSmall).foregroundStyle(Palette.ink3).padding(.vertical, 2)
+			}
+		}
+		.padding(.bottom, 6)
+	}
+}
+
+private struct MessageHitRow: View {
+	let model: AppModel
+	let hit: MessageResults.Hit
+	let showMachine: Bool
+	@State private var hovering = false
+
+	private var machine: AppModel.Machine? { model.machine(hit.machine) }
+	private var colors: [String: Int] { machine?.store.state.projectColors ?? [:] }
+
+	var body: some View {
+		let result = hit.result
+		Button {
+			model.openSearchResult(result, on: hit.machine)
+		} label: {
+			VStack(alignment: .leading, spacing: 2) {
+				HStack(spacing: 6) {
+					Text(result.from == .user ? "❯" : "●")
+						.foregroundStyle(result.from == .user ? Palette.accent : Palette.ink3)
+					Text(result.title.isEmpty ? "Untitled" : result.title)
+						.foregroundStyle(Palette.ink2)
+						.lineLimit(1)
+						.truncationMode(.tail)
+					Spacer(minLength: 4)
+					if result.archived { Text("archived").foregroundStyle(Palette.ink3) }
+					Text(Date(timeIntervalSince1970: TimeInterval(result.at) / 1000).shortAge)
+						.foregroundStyle(Palette.ink3)
+						.monospacedDigit()
+				}
+				.font(Typography.uiSmall)
+				Text(MessageResults.snippet(result.snippet))
+					.font(Typography.uiSansSmall)
+					.lineLimit(3)
+					.fixedSize(horizontal: false, vertical: true)
+				if showMachine, let machine {
+					Text("\(model.name(of: machine)) · \(result.project.isEmpty ? "scratch" : result.project)")
+						.font(Typography.label)
+						.foregroundStyle(Palette.ink3)
+				}
+			}
+			.padding(.leading, 8)
+			.padding(.trailing, 6)
+			.padding(.vertical, 5)
+			.frame(maxWidth: .infinity, alignment: .leading)
+			.background(hovering ? Palette.paper2 : .clear)
+			.overlay(alignment: .leading) {
+				Rectangle().fill(result.project.isEmpty ? Palette.rule2 : Palette.project(result.project, in: colors)).frame(width: 2)
+			}
+			.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.onHover { hovering = $0 }
+		.help("\(result.from == .user ? "Your message" : "An answer") in \(result.title)\(result.project.isEmpty ? "" : " · \(result.project)")\(result.archived ? " (archived)" : "")")
+	}
+
 }
 
 /// A session's state mark, or for an idle session with a finished run not yet read, a filled dot.

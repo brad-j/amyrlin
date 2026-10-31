@@ -19,6 +19,8 @@ struct TranscriptView: View {
 	@State private var chasing = false
 	/// The follow's working values, in a class so that changing them each frame doesn't redraw the transcript.
 	@State private var follow = FollowState()
+	/// A search result's entry for the rows to show; the rows compare it, so a new one reaches them.
+	@State private var target: RevealTarget?
 
 	private struct Geometry: Equatable {
 		var offset: CGFloat = 0
@@ -35,8 +37,13 @@ struct TranscriptView: View {
 	var body: some View {
 		// The rows are their own view: the follow moves the scroll position every frame, and only this wrapper sees it.
 		ScrollView {
-			TranscriptRows(store: store, ledger: ledger, animated: settled) { id in
+			TranscriptRows(store: store, ledger: ledger, animated: settled, target: target) { id in
 				position.scrollTo(id: id, anchor: .top)
+			} reveal: { id in
+				// A search result: stop following the bottom and show the item, its top a little below the header.
+				following = false
+				stopChasing()
+				position.scrollTo(id: id, anchor: UnitPoint(x: 0.5, y: 0.15))
 			}
 			.equatable()
 		}
@@ -82,6 +89,12 @@ struct TranscriptView: View {
 			TimelineView(.animation(paused: !chasing)) { context in
 				Color.clear.onChange(of: context.date) { _, now in step(now) }
 			}
+		}
+		// Watched here: the rows are compared by identity and don't see the store's other changes.
+		.onChange(of: store.revealing, initial: true) { _, entry in
+			guard let entry else { return }
+			store.revealing = nil
+			target = RevealTarget(entry: entry)
 		}
 		.onChange(of: store.state.hasSnapshot, initial: true) { _, has in
 			guard has, !settled else { return }
@@ -165,6 +178,12 @@ struct TranscriptView: View {
 	}
 }
 
+/// A search result's entry to scroll to, new each time one is picked, so picking the same result again scrolls again.
+struct RevealTarget: Equatable {
+	let id = UUID()
+	let entry: EntryID
+}
+
 /// The transcript's rows, animated as they arrive once `animated`. They're in a plain stack, laid out exactly: a lazy
 /// stack estimates the height of rows it hasn't laid out and corrects it as they come and go, which made the content
 /// jump by thousands of points while an answer streamed over a long history. To keep a plain stack cheap, it holds a
@@ -174,17 +193,23 @@ private struct TranscriptRows: View, Equatable {
 	let store: ConversationStore
 	let ledger: RevealLedger
 	let animated: Bool
+	/// A search result's entry to show.
+	let target: RevealTarget?
 	/// Scrolls so row `id` is at the top, after earlier rows are added above it.
 	let keepAtTop: (String) -> Void
+	/// Scrolls to a search result's row and stops following.
+	let reveal: (String) -> Void
 	/// How many times "show earlier" was used.
 	@State private var pages = 0
+	/// The row a search result named, lit for a moment once shown.
+	@State private var lit: String?
 
 	private static let window = 60
 
 	/// The follow moves the scroll position every frame, which rebuilds the view holding this one; comparing the data
 	/// (not the closure) keeps that from rebuilding every row.
 	nonisolated static func == (a: Self, b: Self) -> Bool {
-		a.store === b.store && a.ledger === b.ledger && a.animated == b.animated
+		a.store === b.store && a.ledger === b.ledger && a.animated == b.animated && a.target == b.target
 	}
 
 	var body: some View {
@@ -213,6 +238,7 @@ private struct TranscriptRows: View, Equatable {
 				ReadingColumn(measure: Metrics.measure, margin: 24) {
 					TranscriptRowView(row: row, store: store).equatable()
 				}
+					.background(lit == row.id ? Palette.selection : .clear)
 					.opacity(row.inContext ? 1 : 0.45)
 					.transition(row.isText ? .answerArrival : .rowArrival)
 			}
@@ -220,6 +246,28 @@ private struct TranscriptRows: View, Equatable {
 		.scrollTargetLayout()
 		.padding(.bottom, 8)
 		.animation(animated ? .row : nil, value: rows.map(\.id))
+		.onChange(of: target, initial: true) { _, target in
+			guard let target else { return }
+			showEntry(target.entry, in: rows)
+		}
+	}
+
+	/// Shows a search result's entry: widens the window until its row is in it, scrolls there and lights it briefly.
+	private func showEntry(_ entry: EntryID, in rows: [TranscriptRow]) {
+		guard store.state.hasSnapshot else { return }
+		guard let id = TranscriptLayout.rowID(for: entry, in: rows, state: store.state), let index = rows.firstIndex(where: { $0.id == id }) else { return }
+		let start = startIndex(rows)
+		if index < start { pages += Int((Double(start - index) / Double(Self.window)).rounded(.up)) }
+		Task { @MainActor in
+			// The rows above it are laid out over a few passes, each moving it; scrolling again after each lands on it.
+			for wait in [60, 180, 400] {
+				try? await Task.sleep(for: .milliseconds(wait))
+				reveal(id)
+			}
+			withAnimation(.state) { lit = id }
+			try? await Task.sleep(for: .seconds(1.6))
+			withAnimation(.easeOut(duration: 0.6)) { if lit == id { lit = nil } }
+		}
 	}
 
 	/// The first row shown: `window` rows before the end when the transcript opened (or a fresh snapshot replaced its

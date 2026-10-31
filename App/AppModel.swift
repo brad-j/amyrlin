@@ -577,6 +577,19 @@ final class AppModel {
 		}
 	}
 
+	/// Opens a message search's result: its session in the focused pane (or the pane showing it), scrolled to the item,
+	/// paging history back to it if it's older than what's loaded.
+	func openSearchResult(_ result: SearchResult, on machineID: UUID) {
+		guard let machine = machine(machineID) else { return }
+		let key = ConversationKey(machine: machineID, conversation: result.session)
+		selection = key
+		let store = machine.store.conversation(result.session)
+		Task {
+			await store.waitForSnapshot()
+			await store.reveal(result.entry)
+		}
+	}
+
 	/// Whether Regenerate Title can be offered: the host has `conversations.retitle` and the session has messages.
 	func canRetitle(_ target: ConversationKey) -> Bool {
 		guard let machine = machine(target.machine), machine.store.isConnected, machine.store.has(Commands.RetitleConversation.method),

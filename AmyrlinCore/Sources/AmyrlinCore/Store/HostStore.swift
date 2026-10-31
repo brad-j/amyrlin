@@ -120,6 +120,12 @@ public final class HostStore {
 		return result.written
 	}
 
+	/// Messages and answers matching `query` on this host, best first. Empty without asking when the host lacks it.
+	public func searchMessages(_ query: String, limit: Int = 30) async throws -> [SearchResult] {
+		guard has(Commands.SearchMessages.method) else { return [] }
+		return try await sendExtension(Commands.SearchMessages(query: query, limit: limit)).results
+	}
+
 	/// Picks `project`'s colour on this host, or with nil gives it back its name's.
 	public func setProjectColor(_ project: String, _ color: Int?) async throws {
 		state.projectColors = try await connection.send(Commands.SetProjectColor(project: project, color: color)).projectColors

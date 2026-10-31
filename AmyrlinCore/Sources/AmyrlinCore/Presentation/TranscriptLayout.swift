@@ -272,6 +272,36 @@ public enum TranscriptLayout {
 		return rows
 	}
 
+	/// The row showing entry `entry`, or the nearest one after it with a row: a user item's own row, or the first row of
+	/// an answer's blocks, which are named by the entry before it (`blockID`) and may sit in a folded round. Nil when no
+	/// row comes at or after it.
+	public static func rowID(for entry: EntryID, in rows: [TranscriptRow], state: ConversationState) -> String? {
+		let byID = Dictionary(rows.enumerated().map { ($1.id, $0) }) { first, _ in first }
+		var inRound: [String: Int] = [:]
+		for (index, row) in rows.enumerated() {
+			if case .toolRound(let round) = row.kind { for entry in round.entries { inRound[entry.id] = index } }
+		}
+		let requests = Dictionary(state.submissions.values.compactMap { s in s.entryId.flatMap { e in s.requestId.map { (e, $0) } } }) { first, _ in first }
+		for (offset, item) in state.items.enumerated() where item.id >= entry {
+			let previous = offset > 0 ? state.items[offset - 1].id : nil
+			var candidates = ["item-\(item.id)"]
+			if let request = requests[item.id] { candidates.insert("input-\(request)", at: 0) }
+			if case .assistant(let assistant) = item.body {
+				for (index, block) in assistant.content.enumerated() {
+					if case .toolCall(let call) = block { candidates.append("call-\(call.id)") } else { candidates.append(blockID(after: previous, index)) }
+				}
+			}
+			// The earliest row among the item's, so the reader lands at its start.
+			let found = candidates.compactMap { id -> (Int, String)? in
+				if let index = byID[id] { return (index, id) }
+				if let index = inRound[id] { return (index, rows[index].id) }
+				return nil
+			}.min { $0.0 < $1.0 }
+			if let found { return found.1 }
+		}
+		return nil
+	}
+
 	/// A block of the assistant item after entry `previous`. Streaming blocks get the ids of the item they become,
 	/// which is added after the newest entry; ids by entry ID would change as the stream ends.
 	static func blockID(after previous: EntryID?, _ index: Int) -> String {
