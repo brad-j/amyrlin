@@ -520,6 +520,9 @@ public struct ConversationSummary: Decodable, Sendable, Hashable, Identifiable {
 	public var project: String?
 	public var dir: String?
 
+	/// Whether anything was said in it yet: a session's `updatedAt` is its newest item's time, or `createdAt` with none.
+	public var hasMessages: Bool { updatedAt != createdAt }
+
 	public init(from decoder: any Decoder) throws {
 		let c = try decoder.container(keyedBy: CodingKeys.self)
 		id = try c.decode(ConversationID.self, forKey: .id)

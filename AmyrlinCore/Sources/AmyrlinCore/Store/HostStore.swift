@@ -11,6 +11,9 @@ public final class HostStore {
 	/// The host's settings as last read, on each connect and by `refreshSettings`. Nil until then, and for a host from
 	/// before `settings.get`, which has none to offer.
 	public private(set) var settings: HostSettings?
+	/// aludra's own methods this host answered `unknown_method` to, so the app stops offering them. Cleared on each
+	/// connect, since the machine may come back running a newer aludra.
+	public private(set) var lacking: Set<String> = []
 	/// Set when `host.watch` gave up or ended; the list is then stale.
 	public private(set) var watchProblem: String?
 	/// Told when sessions start needing approval, finish a run or get stuck (SessionAlerts), as `host.watch` reports it.
@@ -44,6 +47,7 @@ public final class HostStore {
 			for await status in connection.statusUpdates {
 				self.status = status
 				if case .connected = status {
+					self.lacking = []
 					await self.refreshInfo()
 					// Apart, so a slow answer doesn't hold up the statuses after it.
 					Task { await self.refreshSettings() }
@@ -91,6 +95,29 @@ public final class HostStore {
 	public func setArchived(_ id: ConversationID, _ archived: Bool) async throws {
 		let result = try await connection.send(Commands.ArchiveConversation(conversationId: id, archived: archived))
 		state.upsert(result.conversation)
+	}
+
+	/// Whether the host has `method`, as far as the app knows: until it answers `unknown_method`, it's taken to.
+	public func has(_ method: String) -> Bool {
+		!lacking.contains(method)
+	}
+
+	/// Sends one of aludra's own commands, noting `unknown_method` so `has` says the host lacks it from then on.
+	public func sendExtension<C: Command>(_ command: C) async throws -> C.Result {
+		do {
+			return try await connection.send(command)
+		} catch let error as ProtocolError where error.code == "unknown_method" {
+			lacking.insert(C.method)
+			throw error
+		}
+	}
+
+	/// Has a model write the title again from the whole conversation; false when no model did and the title stayed.
+	@discardableResult
+	public func retitle(_ id: ConversationID) async throws -> Bool {
+		let result = try await sendExtension(Commands.RetitleConversation(conversationId: id))
+		state.upsert(result.conversation)
+		return result.written
 	}
 
 	/// Picks `project`'s colour on this host, or with nil gives it back its name's.

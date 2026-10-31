@@ -118,10 +118,12 @@ struct UndoBar: View {
 						.lineLimit(1)
 						.truncationMode(.tail)
 					Spacer(minLength: 4)
-					Button("Undo") { withAnimation(.row) { _ = model.undoLast() } }
-						.buttonStyle(.plain)
-						.foregroundStyle(Palette.accent)
-						.help("Undo (⌘Z)")
+					if change.undo != nil {
+						Button("Undo") { withAnimation(.row) { _ = model.undoLast() } }
+							.buttonStyle(.plain)
+							.foregroundStyle(Palette.accent)
+							.help("Undo (⌘Z)")
+					}
 					IconButton("xmark") { model.dismissUndo(change) }
 						.help("Dismiss")
 				}
@@ -160,7 +162,7 @@ enum UndoKey {
 				event.charactersIgnoringModifiers == "z"
 			else { return event }
 			let undone = MainActor.assumeIsolated {
-				guard model.undoable != nil else { return false }
+				guard model.undoable?.undo != nil else { return false }
 				withAnimation(.row) { _ = model.undoLast() }
 				return true
 			}

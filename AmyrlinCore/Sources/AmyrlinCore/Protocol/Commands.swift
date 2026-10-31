@@ -155,6 +155,22 @@ public enum Commands {
 		}
 	}
 
+	/// Has a model write the title again from the whole conversation, replacing any title, one set by hand too
+	/// (aludra's own, outside v1). `written` is false when no model answered and the title stayed. A session with no
+	/// messages is `bad_request`; a host without it answers `unknown_method`.
+	public struct RetitleConversation: Command {
+		public static let method = "conversations.retitle"
+		/// A model call each time, so a lost answer isn't asked again on its own.
+		public static let retriesOnReconnect = false
+		public struct Params: Encodable, Sendable { public var conversationId: ConversationID }
+		public struct Result: Decodable, Sendable, Hashable {
+			public var conversation: ConversationSummary
+			public var written: Bool
+		}
+		public let params: Params
+		public init(conversationId: ConversationID) { params = Params(conversationId: conversationId) }
+	}
+
 	public struct ArchiveConversation: Command {
 		public static let method = "conversations.archive"
 		public static let retriesOnReconnect = true

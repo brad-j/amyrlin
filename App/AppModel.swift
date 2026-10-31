@@ -17,12 +17,13 @@ struct Toast: Identifiable, Equatable {
 	let kind: SessionAlert.Kind
 }
 
-/// A change the undo bar can take back while it shows, by its button or ⌘Z.
+/// A change the undo bar can take back while it shows, by its button or ⌘Z, or with no `undo` a note the bar only
+/// shows, such as how a regenerated title went.
 struct UndoableChange: Identifiable {
 	let id = UUID()
 	/// What was done, as the bar says it: "Archived Fix flaky login test".
 	let title: String
-	let undo: @MainActor () -> Void
+	let undo: (@MainActor () -> Void)?
 }
 
 /// A project in the sidebar: its machine and name, "" for scratch.
@@ -310,12 +311,17 @@ final class AppModel {
 		undoable = UndoableChange(title: title, undo: undo)
 	}
 
+	/// Shows `title` where the undo bar goes, with nothing to undo; it replaces an offered change.
+	func note(_ title: String) {
+		undoable = UndoableChange(title: title, undo: nil)
+	}
+
 	/// Takes back the offered change; false when there's none.
 	@discardableResult
 	func undoLast() -> Bool {
-		guard let change = undoable else { return false }
+		guard let change = undoable, let undo = change.undo else { return false }
 		undoable = nil
-		change.undo()
+		undo()
 		return true
 	}
 
@@ -567,6 +573,34 @@ final class AppModel {
 				try await machine.store.rename(target.conversation, to: title)
 			} catch {
 				self.error = (error as? ProtocolError)?.message ?? String(describing: error)
+			}
+		}
+	}
+
+	/// Whether Regenerate Title can be offered: the host has `conversations.retitle` and the session has messages.
+	func canRetitle(_ target: ConversationKey) -> Bool {
+		guard let machine = machine(target.machine), machine.store.isConnected, machine.store.has(Commands.RetitleConversation.method),
+			let summary = machine.store.state.conversations[target.conversation]
+		else { return false }
+		return summary.hasMessages
+	}
+
+	/// Has the host's model write the session's title again from the whole conversation, replacing the one there, and
+	/// says how it went where the undo bar goes.
+	func retitle(_ target: ConversationKey) {
+		guard let machine = machine(target.machine) else { return }
+		let before = title(of: target)
+		note("Writing a title for \(before)…")
+		Task {
+			do {
+				let written = try await machine.store.retitle(target.conversation)
+				note(written ? "Retitled \(title(of: target))" : "No model answered; the title stayed")
+			} catch let error as ProtocolError where error.code == "bad_request" {
+				note("Nothing to title yet: the session has no messages")
+			} catch let error as ProtocolError where error.code == "unknown_method" {
+				note("This machine's aludra can't regenerate titles")
+			} catch {
+				note("Couldn't regenerate the title: \((error as? ProtocolError)?.message ?? String(describing: error))")
 			}
 		}
 	}

@@ -318,6 +318,10 @@ private struct MachineSection: View {
 				}
 				Divider()
 				Button("Rename…") { model.renaming = key }.disabled(!store.isConnected)
+				// Only hosts that answer conversations.retitle (aludra 2899ef8 and later), and not before a first message.
+				if store.has(Commands.RetitleConversation.method) {
+					Button("Regenerate Title") { model.retitle(key) }.disabled(!model.canRetitle(key))
+				}
 				// Archiving only hides the session; a running one keeps running.
 				if summary.archived {
 					Button("Bring Back from the Archive") { model.setArchived(key, false) }.disabled(!store.isConnected)
