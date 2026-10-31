@@ -122,6 +122,18 @@ func decodeSettings(_ json: String = settingsJSON) throws -> HostSettings {
 		#expect(text.contains(#""backup.keep":10"#), "an integer setting refuses 10.0")
 	}
 
+	/// aludra 3568dcf moved auto-archiving to the host, with a setting the form draws like any other number.
+	@Test func archiveAfterDaysIsANumberLikeAnyOther() throws {
+		let settings = try decodeSettings(#"{"file":"/c.json","settings":[{"key":"archive.afterDays","label":"Archive after (days)","help":"Sessions idle this long, with nothing waiting for you, are archived. One brought back by hand stays. 0 turns it off.","kind":"number","value":3,"default":3,"set":false,"editable":true,"live":true}],"restart":[],"errors":[]}"#)
+		let archive = try setting(settings, "archive.afterDays")
+		#expect(SettingsForm.isEditable(archive))
+		var form = SettingsForm(settings)
+		#expect(form.draft("archive.afterDays") == .text("3"))
+		#expect(form.isAtDefault(archive))
+		form.edit("archive.afterDays", .text("0"))
+		#expect(form.changes == ["archive.afterDays": .value(.number(0))])
+	}
+
 	@Test func valuesShowInALine() {
 		#expect(SettingsForm.shown(.list([])) == "none")
 		#expect(SettingsForm.shown(.list(["a", "b"])) == "a, b")

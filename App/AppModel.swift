@@ -197,11 +197,6 @@ final class AppModel {
 		didSet { UserDefaults.standard.set(openArchives.map(\.uuidString).sorted(), forKey: "openArchives") }
 	}
 
-	/// Sessions brought back from the archive by hand, as "machine/conversation", which `archiveStale` leaves alone.
-	var keptSessions: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "keptSessions") ?? []) {
-		didSet { UserDefaults.standard.set(keptSessions.sorted(), forKey: "keptSessions") }
-	}
-
 	/// Sessions pinned above the projects, in the order arranged, as "machine/conversation". Kept on this Mac only.
 	var pins = PinOrder(UserDefaults.standard.stringArray(forKey: "pinnedSessions") ?? []) {
 		didSet { UserDefaults.standard.set(pins.keys, forKey: "pinnedSessions") }
@@ -242,7 +237,7 @@ final class AppModel {
 		}
 	}
 
-	/// The key `keptSessions` and `pins` store a session by.
+	/// The key `unread` and `pins` store a session by.
 	static func storedKey(_ key: ConversationKey) -> String {
 		"\(key.machine.uuidString)/\(key.conversation)"
 	}
@@ -405,13 +400,9 @@ final class AppModel {
 		NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
 			MainActor.assumeIsolated { self?.markOpenRead() }
 		}
-		// Sessions age without the host saying anything, so look again every minute.
-		Task { [weak self] in
-			while self != nil {
-				self?.archiveStale()
-				try? await Task.sleep(for: .seconds(60))
-			}
-		}
+		// The host archives quiet sessions itself now (aludra 3568dcf); the list the app kept of sessions not to archive
+		// is the host's to keep.
+		UserDefaults.standard.removeObject(forKey: "keptSessions")
 		if let saved = UserDefaults.standard.dictionary(forKey: Self.selectionKey) as? [String: String],
 			let machine = saved["machine"].flatMap(UUID.init(uuidString:)), self.machine(machine) != nil,
 			let conversation = saved["conversation"].flatMap(ConversationID.init)
@@ -581,18 +572,16 @@ final class AppModel {
 	}
 
 	/// Hides a conversation from the sidebar's projects, or with false brings it back; either can be undone. A running
-	/// one keeps running. Archiving unpins it, and undoing pins it again where it was.
+	/// one keeps running. Archiving unpins it, and undoing pins it again where it was. A session brought back stays
+	/// until it's archived again: the host keeps it out of its own archiving.
 	func setArchived(_ target: ConversationKey, _ archived: Bool) {
 		guard let machine = machine(target.machine) else { return }
-		let kept = Self.storedKey(target)
-		let wasKept = keptSessions.contains(kept)
-		let pinIndex = archived ? pins.unpin(kept) : nil
-		if archived { keptSessions.remove(kept) } else { keptSessions.insert(kept) }
+		let key = Self.storedKey(target)
+		let pinIndex = archived ? pins.unpin(key) : nil
 		sendArchived(target.conversation, archived, on: machine)
 		offerUndo("\(archived ? "Archived" : "Brought back") \(title(of: target))") { [weak self] in
 			guard let self else { return }
-			if wasKept { keptSessions.insert(kept) } else { keptSessions.remove(kept) }
-			if let pinIndex { pins.pin(kept, at: pinIndex) }
+			if let pinIndex { pins.pin(key, at: pinIndex) }
 			sendArchived(target.conversation, !archived, on: machine)
 		}
 	}
@@ -609,24 +598,6 @@ final class AppModel {
 
 	private func sendArchived(_ id: ConversationID, _ archived: Bool, on machine: Machine) {
 		sendArchived([id], archived, on: machine)
-	}
-
-	/// Archives each connected machine's sessions that have been idle for `StaleSessions.age`, except ones open in a
-	/// pane or brought back by hand. Not for machines given at launch, which are for screenshots.
-	private func archiveStale() {
-		guard !ephemeral else { return }
-		for machine in machines where machine.store.isConnected && machine.store.state.hasSnapshot {
-			let kept = Set(machine.store.state.conversations.keys.filter { id in
-				let key = ConversationKey(machine: machine.id, conversation: id)
-				return keptSessions.contains(Self.storedKey(key)) || isPinned(key) || isOpen(key)
-			})
-			let stale = StaleSessions.among(machine.store.state.conversations.values, now: .now, kept: kept)
-			guard !stale.isEmpty else { continue }
-			Task {
-				// Quietly: the next look tries again.
-				for id in stale { try? await machine.store.setArchived(id, true) }
-			}
-		}
 	}
 
 	/// The project's sessions that aren't archived; the sidebar shows a project while it has any.

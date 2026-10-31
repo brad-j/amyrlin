@@ -576,6 +576,10 @@ Added 2026-10-29, aludra's own extension like 11:
 
 12. **Videos.** `submit` and `conversations.create` take `videos: [{name, mimeType, data, seconds?, frames?: [{mimeType, data, at}]}]` beside `images`. aludra takes MP4, QuickTime or WebM, at most 2 a message and 40 MB together, checks the bytes are the type named, and takes up to 6 frames each, checked as images. No model takes video, so aludra saves each in its data directory for 14 days and the user message carries a text block `<video name="…" seconds="…" path="…" until="YYYY-MM-DD">…</video>` for the agent, followed by the video's frames as image blocks. The Mac app re-encodes a video to 720p H.264 MP4 (540p if that's over the limit), sends frames from start to end, and shows the note as the video's name, length and how long the host keeps it (`TranscriptVideo`). `host.info` carries `videos: {maxVideos, maxBytes, maxFrames, keepDays}` on a host that takes them; the app sends no video to one without it, since an older aludra drops the field without a word.
 
+Added 2026-10-30, aludra's own extensions like 11 (aludra 2899ef8 to 3568dcf). A host without a method answers `unknown_method`, and one without a `host.info` field leaves it out; the Mac app then offers none of it, so older hosts keep working.
+
+13. **Archiving on the host.** aludra archives a session idle `archive.afterDays` (default 3, `0` for off) with nothing running or waiting, a minute after it starts and hourly, and clients hear of it as `conversation.updated` with `archived: true`, as of any archive. A session brought back with `conversations.archive {archived: false}` is kept: the host leaves it until someone archives it again. `archive.afterDays` is a `number` setting in `settings.get`, so the settings form shows it like any other. The Mac app archives nothing on its own and keeps no list of its own; before 3568dcf it archived sessions three days idle itself, and a host from before that archives nothing.
+
 Deferred, not in v1:
 
 - Withdrawing one queued message (`harness.abortSubmission`). `abort` withdraws all queued inputs.
