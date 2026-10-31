@@ -1,6 +1,7 @@
 import AmyrlinCore
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Machines, and on each its sessions grouped by project, in the inspector's style: small-caps labels, hairlines,
 /// quiet rows. Sessions keep their place as they work, and archived sessions fold away at the end; each row is a
@@ -83,11 +84,12 @@ struct SidebarView: View {
 		let searching = !words.isEmpty
 		return model.machines.flatMap { machine -> [ConversationKey] in
 			if !searching, model.collapsedMachines.contains(machine.id) { return [] }
-			let projects = MachineSection.groups(machine.store, words: words)
+			let pinned = MachineSection.pinned(machine, model: model, words: words)
+			let projects = MachineSection.groups(machine.store, words: words, excluding: Set(pinned.map(\.id)))
 				.filter { searching || !model.isCollapsed(machine: machine.id, project: $0.project) }
 				.flatMap(\.sessions)
 			let archived = searching || model.openArchives.contains(machine.id) ? MachineSection.archived(machine.store, words: words) : []
-			return (projects + archived).map { ConversationKey(machine: machine.id, conversation: $0.id) }
+			return (pinned + projects + archived).map { ConversationKey(machine: machine.id, conversation: $0.id) }
 		}
 	}
 
@@ -118,10 +120,16 @@ private struct MachineSection: View {
 		}
 	}
 
-	/// Sessions matching `words` by project: scratch (sessions in no project) pinned first, then the project with the
-	/// newest session. Ordered by creation, not activity, so a session stays put while it works.
-	static func groups(_ store: HostStore, words: [String]) -> [(project: String, sessions: [ConversationSummary])] {
-		let matching = store.state.active.filter { SessionSearch.matches($0, words: words) }
+	/// The machine's pinned sessions matching `words`, in their arranged order.
+	static func pinned(_ machine: AppModel.Machine, model: AppModel, words: [String]) -> [ConversationSummary] {
+		model.pinnedSessions(on: machine).filter { SessionSearch.matches($0, words: words) }
+	}
+
+	/// Sessions matching `words` by project, leaving out `excluding` (the pinned ones, shown above): scratch (sessions in
+	/// no project) first, then the project with the newest session. Ordered by creation, not activity, so a session
+	/// stays put while it works.
+	static func groups(_ store: HostStore, words: [String], excluding: Set<ConversationID> = []) -> [(project: String, sessions: [ConversationSummary])] {
+		let matching = store.state.active.filter { !excluding.contains($0.id) && SessionSearch.matches($0, words: words) }
 		let byProject = Dictionary(grouping: matching) { $0.project ?? "" }
 		func newestFirst(_ a: ConversationSummary, _ b: ConversationSummary) -> Bool {
 			a.createdAt != b.createdAt ? a.createdAt > b.createdAt : a.id > b.id
@@ -214,9 +222,21 @@ private struct MachineSection: View {
 					.padding(.top, 10)
 			}
 
-			let groups = folded ? [] : Self.groups(store, words: words)
+			let pinned = folded ? [] : Self.pinned(machine, model: model, words: words)
+			let groups = folded ? [] : Self.groups(store, words: words, excluding: Set(pinned.map(\.id)))
 			let archived = folded ? [] : Self.archived(store, words: words)
 			VStack(alignment: .leading, spacing: 10) {
+				// Pinned sessions first, in the order arranged; drop a session on one to put it above.
+				if !pinned.isEmpty {
+					VStack(alignment: .leading, spacing: 0) {
+						Text("pinned")
+							.font(Typography.projectHeader)
+							.foregroundStyle(Palette.ink3)
+							.padding(.leading, 2)
+							.padding(.vertical, 3)
+						sessionRows(pinned, pinned: true)
+					}
+				}
 				ForEach(groups, id: \.project) { group in
 					// A search opens every fold, so its matches show.
 					let collapsed = searching ? .constant(false) : model.collapsedBinding(machine: machine.id, project: group.project)
@@ -270,10 +290,12 @@ private struct MachineSection: View {
 		}
 	}
 
-	private func sessionRows(_ sessions: [ConversationSummary]) -> some View {
+	/// Rows for `sessions`. Every unarchived row can be dragged; `pinned` rows take drops, which put the dragged session
+	/// just above, pinning it if it wasn't.
+	private func sessionRows(_ sessions: [ConversationSummary], pinned: Bool = false) -> some View {
 		ForEach(Array(sessions.enumerated()), id: \.element.id) { index, summary in
 			let key = ConversationKey(machine: machine.id, conversation: summary.id)
-			SessionRow(summary: summary, last: index == sessions.count - 1, selected: model.selection == key, open: model.isOpen(key), colors: store.state.projectColors) {
+			SessionRow(summary: summary, last: index == sessions.count - 1, selected: model.selection == key, open: model.isOpen(key), colors: store.state.projectColors, pinned: pinned) {
 				// ⌘-click opens the session in a pane of its own, beside the focused one.
 				if NSEvent.modifierFlags.contains(.command) {
 					withAnimation(.panel) { model.openInNewPane(key) }
@@ -281,9 +303,18 @@ private struct MachineSection: View {
 					model.selection = key
 				}
 			}
+			.modifier(PinDrag(key: key, archived: summary.archived, dropTarget: pinned, model: model))
 			.contextMenu {
 				Button("Open in New Pane") { withAnimation(.panel) { model.openInNewPane(key) } }
 					.disabled(!model.canSplit || model.isOpen(key))
+				Divider()
+				if !summary.archived {
+					Button(model.isPinned(key) ? "Unpin" : "Pin") { withAnimation(.row) { model.togglePin(key) } }
+				}
+				if pinned {
+					Button("Move Up") { withAnimation(.row) { model.movePin(key, by: -1) } }.disabled(!model.canMovePin(key, by: -1))
+					Button("Move Down") { withAnimation(.row) { model.movePin(key, by: 1) } }.disabled(!model.canMovePin(key, by: 1))
+				}
 				Divider()
 				Button("Rename…") { model.renaming = key }.disabled(!store.isConnected)
 				// Archiving only hides the session; a running one keeps running.
@@ -459,14 +490,44 @@ private struct ProjectRow: View {
 	}
 }
 
+/// Drags a session by its "machine/conversation" key, and on a pinned row takes a dropped one, with a line above the
+/// row while one is over it.
+private struct PinDrag: ViewModifier {
+	let key: ConversationKey
+	let archived: Bool
+	let dropTarget: Bool
+	let model: AppModel
+	@State private var targeted = false
+
+	func body(content: Content) -> some View {
+		if archived {
+			content
+		} else if dropTarget {
+			content
+				.draggable(AppModel.storedKey(key))
+				.dropDestination(for: String.self) { items, _ in
+					guard let dragged = items.first else { return false }
+					return withAnimation(.row) { model.dropPin(dragged, before: key) }
+				} isTargeted: { targeted = $0 }
+				.overlay(alignment: .top) {
+					if targeted { Rectangle().fill(Palette.accent).frame(height: 2).offset(y: -1) }
+				}
+		} else {
+			content.draggable(AppModel.storedKey(key))
+		}
+	}
+}
+
 /// A session in the tree: a guide (├ or └), its state mark, its title, what it was charged if anything, and its age.
 /// The focused pane's session has a wash and a mark at its edge; one open in another pane has a fainter mark only.
+/// A pinned row's guide is in its project's colour, since it sits away from its project.
 private struct SessionRow: View {
 	let summary: ConversationSummary
 	let last: Bool
 	let selected: Bool
 	let open: Bool
 	let colors: [String: Int]
+	var pinned = false
 	let select: () -> Void
 	@State private var hovering = false
 
@@ -474,7 +535,7 @@ private struct SessionRow: View {
 		Button(action: select) {
 			HStack(spacing: 7) {
 				Text(last ? "└" : "├")
-					.foregroundStyle(Palette.rule2)
+					.foregroundStyle(pinned ? summary.project.map { Palette.project($0, in: colors) } ?? Palette.ink3 : Palette.rule2)
 				StateMark(summary.status, size: 10)
 				Text(summary.title)
 					.foregroundStyle(selected ? Palette.ink : Palette.ink2)
@@ -504,6 +565,6 @@ private struct SessionRow: View {
 		}
 		.buttonStyle(.plain)
 		.onHover { hovering = $0 }
-		.help(summary.cost.map { "\(summary.title)\n\(Dollars.text($0)) charged by OpenRouter" } ?? summary.title)
+		.help([summary.title, pinned ? (summary.project ?? "scratch") : nil, summary.cost.map { "\(Dollars.text($0)) charged by OpenRouter" }].compactMap(\.self).joined(separator: "\n"))
 	}
 }

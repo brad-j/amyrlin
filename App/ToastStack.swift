@@ -1,9 +1,10 @@
 import AmyrlinCore
+import AppKit
 import SwiftUI
 
 /// Toasts at the top right of the panes, newest at the bottom: a session out of view that needs you, finished a run or
 /// got stuck. A click opens the session; × dismisses. "Needs you" stays until the approval is answered, the others go
-/// after a few seconds unless the pointer is on them.
+/// after a few seconds unless the pointer is on them. The undo bar sits under them.
 struct ToastStack: View {
 	let model: AppModel
 
@@ -13,6 +14,7 @@ struct ToastStack: View {
 				ToastView(toast: toast, model: model)
 					.transition(.move(edge: .trailing).combined(with: .opacity))
 			}
+			UndoBar(model: model)
 		}
 		.animation(.row, value: model.shownToasts.map(\.id))
 		.padding(.top, Metrics.bar + 10)
@@ -96,5 +98,73 @@ private struct ToastView: View {
 		var place = [summary?.project ?? "scratch"]
 		if model.machines.count > 1, let machine { place.append(model.name(of: machine)) }
 		return ([what] + place).joined(separator: " · ")
+	}
+}
+
+/// The last pin, unpin, archive or removal, under the toasts for a few seconds with Undo. ⌘Z takes it back
+/// too while it shows, even from the composer; after it goes, ⌘Z is the text's undo again.
+struct UndoBar: View {
+	let model: AppModel
+	@State private var hovering = false
+
+	static let lifetime: Duration = .seconds(5)
+
+	var body: some View {
+		ZStack {
+			if let change = model.undoable {
+				HStack(spacing: 12) {
+					Text(change.title)
+						.foregroundStyle(Palette.ink2)
+						.lineLimit(1)
+						.truncationMode(.tail)
+					Spacer(minLength: 4)
+					Button("Undo") { withAnimation(.row) { _ = model.undoLast() } }
+						.buttonStyle(.plain)
+						.foregroundStyle(Palette.accent)
+						.help("Undo (⌘Z)")
+					IconButton("xmark") { model.dismissUndo(change) }
+						.help("Dismiss")
+				}
+				.font(Typography.ui)
+				.padding(.leading, 12)
+				.padding(.trailing, 6)
+				.padding(.vertical, 7)
+				.frame(width: 320 * Typography.scale, alignment: .leading)
+				.background(Palette.paper2)
+				.overlay(Rectangle().stroke(Palette.rule2))
+				.shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+				.onHover { hovering = $0 }
+				.transition(.move(edge: .bottom).combined(with: .opacity))
+				// Restarts when the pointer leaves or a newer change replaces this one.
+				.task(id: "\(change.id)-\(hovering)") {
+					guard !hovering else { return }
+					try? await Task.sleep(for: Self.lifetime)
+					guard !Task.isCancelled else { return }
+					withAnimation(.row) { model.dismissUndo(change) }
+				}
+			}
+		}
+		.animation(.row, value: model.undoable?.id)
+	}
+}
+
+/// ⌘Z answers the undo bar while it shows, wherever the keyboard is.
+enum UndoKey {
+	@MainActor private static var started = false
+
+	@MainActor static func start(_ model: AppModel) {
+		guard !started else { return }
+		started = true
+		NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+			guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+				event.charactersIgnoringModifiers == "z"
+			else { return event }
+			let undone = MainActor.assumeIsolated {
+				guard model.undoable != nil else { return false }
+				withAnimation(.row) { _ = model.undoLast() }
+				return true
+			}
+			return undone ? nil : event
+		}
 	}
 }

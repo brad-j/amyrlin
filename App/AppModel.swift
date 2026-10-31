@@ -17,6 +17,14 @@ struct Toast: Identifiable, Equatable {
 	let kind: SessionAlert.Kind
 }
 
+/// A change the undo bar can take back while it shows, by its button or ⌘Z.
+struct UndoableChange: Identifiable {
+	let id = UUID()
+	/// What was done, as the bar says it: "Archived Fix flaky login test".
+	let title: String
+	let undo: @MainActor () -> Void
+}
+
 /// A project in the sidebar: its machine and name, "" for scratch.
 struct ProjectKey: Hashable {
 	let machine: UUID
@@ -193,6 +201,97 @@ final class AppModel {
 		didSet { UserDefaults.standard.set(keptSessions.sorted(), forKey: "keptSessions") }
 	}
 
+	/// Sessions pinned above the projects, in the order arranged, as "machine/conversation". Kept on this Mac only.
+	var pins = PinOrder(UserDefaults.standard.stringArray(forKey: "pinnedSessions") ?? []) {
+		didSet { UserDefaults.standard.set(pins.keys, forKey: "pinnedSessions") }
+	}
+
+	/// The key `keptSessions` and `pins` store a session by.
+	static func storedKey(_ key: ConversationKey) -> String {
+		"\(key.machine.uuidString)/\(key.conversation)"
+	}
+
+	func isPinned(_ key: ConversationKey) -> Bool {
+		pins.contains(Self.storedKey(key))
+	}
+
+	/// `machine`'s pinned sessions that aren't archived, in their arranged order.
+	func pinnedSessions(on machine: Machine) -> [ConversationSummary] {
+		let prefix = "\(machine.id.uuidString)/"
+		return pins.keys.compactMap { key in
+			guard key.hasPrefix(prefix), let id = ConversationID(key.dropFirst(prefix.count)),
+				let summary = machine.store.state.conversations[id], !summary.archived
+			else { return nil }
+			return summary
+		}
+	}
+
+	private func visiblePins(on machineID: UUID) -> [String] {
+		guard let machine = machine(machineID) else { return [] }
+		return pinnedSessions(on: machine).map { Self.storedKey(ConversationKey(machine: machineID, conversation: $0.id)) }
+	}
+
+	/// Pins a session at the top, or unpins it; either can be undone.
+	func togglePin(_ target: ConversationKey) {
+		let key = Self.storedKey(target)
+		let title = title(of: target)
+		if let index = pins.unpin(key) {
+			offerUndo("Unpinned \(title)") { [weak self] in self?.pins.pin(key, at: index) }
+		} else {
+			pins.pin(key)
+			offerUndo("Pinned \(title)") { [weak self] in self?.pins.unpin(key) }
+		}
+	}
+
+	/// Moves a pinned session one place up (-1) or down (1) among its machine's pins.
+	func movePin(_ target: ConversationKey, by step: Int) {
+		pins.move(Self.storedKey(target), by: step, among: visiblePins(on: target.machine))
+	}
+
+	func canMovePin(_ target: ConversationKey, by step: Int) -> Bool {
+		let visible = visiblePins(on: target.machine)
+		guard let index = visible.firstIndex(of: Self.storedKey(target)) else { return false }
+		return visible.indices.contains(index + step)
+	}
+
+	/// A dragged session dropped on a pinned one: it lands just above, pinned if it wasn't. Only within one machine.
+	func dropPin(_ dragged: String, before target: ConversationKey) -> Bool {
+		let prefix = "\(target.machine.uuidString)/"
+		guard dragged.hasPrefix(prefix), let id = ConversationID(dragged.dropFirst(prefix.count)) else { return false }
+		let visible = visiblePins(on: target.machine)
+		if !pins.contains(dragged) {
+			pins.pin(dragged)
+			let title = title(of: ConversationKey(machine: target.machine, conversation: id))
+			offerUndo("Pinned \(title)") { [weak self] in self?.pins.unpin(dragged) }
+		}
+		pins.place(dragged, before: Self.storedKey(target), among: visible)
+		return true
+	}
+
+	private func title(of key: ConversationKey) -> String {
+		machine(key.machine)?.store.state.conversations[key.conversation]?.title ?? "session"
+	}
+
+	/// The change the undo bar offers; a newer one replaces it.
+	private(set) var undoable: UndoableChange?
+
+	func offerUndo(_ title: String, _ undo: @escaping @MainActor () -> Void) {
+		undoable = UndoableChange(title: title, undo: undo)
+	}
+
+	/// Takes back the offered change; false when there's none.
+	@discardableResult
+	func undoLast() -> Bool {
+		guard let change = undoable else { return false }
+		undoable = nil
+		change.undo()
+		return true
+	}
+
+	func dismissUndo(_ change: UndoableChange) {
+		if undoable?.id == change.id { undoable = nil }
+	}
+
 	/// Folded when true, like `collapsedBinding`.
 	func archiveCollapsedBinding(machine: UUID) -> Binding<Bool> {
 		Binding(
@@ -349,6 +448,8 @@ final class AppModel {
 		guard let index = machines.firstIndex(where: { $0.id == id }) else { return }
 		let machine = machines.remove(at: index)
 		toasts.removeAll { $0.key.machine == id }
+		pins.prune { !$0.hasPrefix("\(id.uuidString)/") }
+		undoable = nil
 		for pane in panes.indices.reversed() where panes[pane].content.machine == id {
 			if panes.count > 1 { closePane(pane) } else { panes[pane].content = .empty }
 		}
@@ -438,18 +539,35 @@ final class AppModel {
 		}
 	}
 
-	/// Hides a conversation from the sidebar's projects, or with false brings it back. A running one keeps running.
+	/// Hides a conversation from the sidebar's projects, or with false brings it back; either can be undone. A running
+	/// one keeps running. Archiving unpins it, and undoing pins it again where it was.
 	func setArchived(_ target: ConversationKey, _ archived: Bool) {
 		guard let machine = machine(target.machine) else { return }
-		let kept = "\(target.machine.uuidString)/\(target.conversation)"
+		let kept = Self.storedKey(target)
+		let wasKept = keptSessions.contains(kept)
+		let pinIndex = archived ? pins.unpin(kept) : nil
 		if archived { keptSessions.remove(kept) } else { keptSessions.insert(kept) }
+		sendArchived(target.conversation, archived, on: machine)
+		offerUndo("\(archived ? "Archived" : "Brought back") \(title(of: target))") { [weak self] in
+			guard let self else { return }
+			if wasKept { keptSessions.insert(kept) } else { keptSessions.remove(kept) }
+			if let pinIndex { pins.pin(kept, at: pinIndex) }
+			sendArchived(target.conversation, !archived, on: machine)
+		}
+	}
+
+	private func sendArchived(_ ids: [ConversationID], _ archived: Bool, on machine: Machine) {
 		Task {
 			do {
-				try await machine.store.setArchived(target.conversation, archived)
+				for id in ids { try await machine.store.setArchived(id, archived) }
 			} catch {
 				self.error = (error as? ProtocolError)?.message ?? String(describing: error)
 			}
 		}
+	}
+
+	private func sendArchived(_ id: ConversationID, _ archived: Bool, on machine: Machine) {
+		sendArchived([id], archived, on: machine)
 	}
 
 	/// Archives each connected machine's sessions that have been idle for `StaleSessions.age`, except ones open in a
@@ -458,7 +576,8 @@ final class AppModel {
 		guard !ephemeral else { return }
 		for machine in machines where machine.store.isConnected && machine.store.state.hasSnapshot {
 			let kept = Set(machine.store.state.conversations.keys.filter { id in
-				keptSessions.contains("\(machine.id.uuidString)/\(id)") || isOpen(ConversationKey(machine: machine.id, conversation: id))
+				let key = ConversationKey(machine: machine.id, conversation: id)
+				return keptSessions.contains(Self.storedKey(key)) || isPinned(key) || isOpen(key)
 			})
 			let stale = StaleSessions.among(machine.store.state.conversations.values, now: .now, kept: kept)
 			guard !stale.isEmpty else { continue }
@@ -475,16 +594,19 @@ final class AppModel {
 	}
 
 	/// Takes a project off the sidebar by archiving its sessions; running ones keep running, and each can be brought back
-	/// from the archive.
+	/// from the archive, or all of them at once with undo.
 	func removeProject(_ target: ProjectKey) {
 		guard let machine = machine(target.machine) else { return }
 		let ids = activeSessions(in: target).map(\.id)
-		Task {
-			do {
-				for id in ids { try await machine.store.setArchived(id, true) }
-			} catch {
-				self.error = (error as? ProtocolError)?.message ?? String(describing: error)
-			}
+		let unpinned = ids.compactMap { id -> (String, Int)? in
+			let key = Self.storedKey(ConversationKey(machine: target.machine, conversation: id))
+			return pins.unpin(key).map { (key, $0) }
+		}
+		sendArchived(ids, true, on: machine)
+		offerUndo("Removed \(target.project.isEmpty ? "scratch" : target.project)") { [weak self] in
+			guard let self else { return }
+			for (key, index) in unpinned.reversed() { pins.pin(key, at: index) }
+			sendArchived(ids, false, on: machine)
 		}
 	}
 

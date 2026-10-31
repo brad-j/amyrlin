@@ -93,6 +93,7 @@ struct MainView: View {
 			}
 			StatusLine(model: model)
 		}
+		.onAppear { UndoKey.start(model) }
 		.background(Palette.paper)
 		.animation(.panel, value: model.showInspector)
 		.animation(.panel, value: model.showSidebar)
