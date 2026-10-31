@@ -272,8 +272,9 @@ struct TranscriptRowView: View, Equatable {
 			}
 			.padding(.vertical, 10)
 			.task { await store.loadEarlier() }
-		case .user(let text, _, let images, let videos):
-			InputRow(text: text, images: images, videos: videos)
+		case .user(let message, _, let at):
+			if let restore = message.restore { RestoreLine(restore: restore) }
+			InputRow(text: message.text, images: message.images, videos: message.videos, at: at)
 		case .text(let text, let streaming):
 			AnswerBlock(id: row.id, text: text, streaming: streaming)
 		case .thinking(let text, let redacted, let streaming):
@@ -285,7 +286,7 @@ struct TranscriptRowView: View, Equatable {
 		case .notice(let notice):
 			NoticeView(notice: notice)
 		case .queued(let item):
-			InputRow(text: item.text.map(TranscriptVideo.withoutNotes) ?? "Queued message", tag: item.mode == .steer ? "steer" : "queued", dim: true)
+			InputRow(text: item.text.map(UserMessage.withoutNotes) ?? "Queued message", tag: item.mode == .steer ? "steer" : "queued", dim: true)
 		case .pending(let pending):
 			InputRow(text: pending.text, tag: pending.failure == nil ? "sending" : nil, dim: true, pendingImages: pending.images.count, pendingVideos: pending.videos.count, pending: pending)
 		}
@@ -325,11 +326,37 @@ private struct InputRow: View {
 	var pendingVideos = 0
 	/// Set while it's the client's own send not yet placed.
 	var pending: PendingSend?
+	/// The message's time, which a turn checkpoint's `message` matches; nil for one not in the transcript yet.
+	var at: Int64?
 	@Environment(ConversationStore.self) private var store
+	@State private var hovering = false
+	@State private var showingCheckpoint: Checkpoint?
+
+	/// The checkpoint taken as this message started its turn, on hosts that take them.
+	private var checkpoint: Checkpoint? { store.checkpoint(forMessageAt: at) }
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 6) {
 			block
+				.overlay(alignment: .topTrailing) {
+					// Only while the pointer is over the message, so the transcript stays quiet.
+					if let checkpoint, hovering {
+						// In the space above the message's box, so it covers none of the words.
+						BracketButton("changes · restore") { showingCheckpoint = checkpoint }
+							.padding(.top, 3)
+							.help("What this turn changed, and putting the files back to before it")
+							.transition(.opacity)
+					}
+				}
+				.onHover { inside in withAnimation(.state) { hovering = inside } }
+				.contextMenu {
+					if let checkpoint {
+						Button("Changes and Restore…") { showingCheckpoint = checkpoint }
+					}
+				}
+				.sheet(item: $showingCheckpoint) { checkpoint in
+					CheckpointSheet(store: store, checkpoint: checkpoint, message: text.isEmpty ? "A message" : String(text.prefix(200)), busy: store.state.isBusy || !store.state.approvals.isEmpty)
+				}
 			Disclosure(open: pending?.failure != nil) {
 				if let pending, let failure = pending.failure {
 					HStack(spacing: 10) {
@@ -386,6 +413,21 @@ private struct InputRow: View {
 		}
 		.padding(.top, 22)
 		.padding(.bottom, 8)
+	}
+}
+
+/// The host's note that the project's files went back to a checkpoint before this message, shown as a line rather
+/// than the note's text, which is for the agent.
+private struct RestoreLine: View {
+	let restore: TranscriptRestore
+
+	var body: some View {
+		Gutter(glyph: "↺", color: Palette.ink3) {
+			Text("files restored to checkpoint \(restore.checkpoint)")
+				.font(Typography.uiSmall)
+				.foregroundStyle(Palette.ink3)
+		}
+		.padding(.top, 18)
 	}
 }
 

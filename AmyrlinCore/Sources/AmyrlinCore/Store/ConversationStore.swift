@@ -29,12 +29,18 @@ public final class ConversationStore {
 	public private(set) var problem: String?
 	/// The last command error, for a transient message in the UI.
 	public var lastError: String?
+	/// The session's checkpoints, oldest first, read after each snapshot and each run's end (aludra's own). Empty for a
+	/// session outside git or one from before checkpoints; nil for a host without them, which answers `unknown_method`.
+	public private(set) var checkpoints: [Checkpoint]? = []
 
 	@ObservationIgnored private let connection: HostConnection
 	@ObservationIgnored private var task: Task<Void, Never>?
 	@ObservationIgnored private var subscription: Subscription<ConversationEvent>?
 	/// Images of the transcript fetched so far; a stored image never changes.
 	@ObservationIgnored private var images: [ImageRef: Data] = [:]
+	@ObservationIgnored private var checkpointRead: Task<Void, Never>?
+	/// Set when a read is asked for while one runs, so another follows it.
+	@ObservationIgnored private var checkpointsStale = false
 
 	init(id: ConversationID, connection: HostConnection) {
 		self.id = id
@@ -50,6 +56,8 @@ public final class ConversationStore {
 	public func stop() {
 		task?.cancel()
 		task = nil
+		checkpointRead?.cancel()
+		checkpointRead = nil
 		if let subscription { Task { await subscription.cancel() } }
 		subscription = nil
 	}
@@ -109,6 +117,58 @@ public final class ConversationStore {
 		}
 	}
 
+	// MARK: Checkpoints
+
+	/// The turn checkpoint taken as the user message sent at `at` started its turn.
+	public func checkpoint(forMessageAt at: Int64?) -> Checkpoint? {
+		guard let at else { return nil }
+		return checkpoints?.last { $0.kind == .turn && $0.message == at }
+	}
+
+	/// Reads the checkpoints again. `unknown_method` means the host has none to offer; other failures keep the last list.
+	public func refreshCheckpoints() async {
+		guard checkpoints != nil else { return }
+		do {
+			checkpoints = try await connection.send(Commands.ListCheckpoints(conversationId: id)).checkpoints
+		} catch let error as ProtocolError where error.code == "unknown_method" {
+			checkpoints = nil
+		} catch {}
+	}
+
+	/// What changed over a checkpoint's turn: from it to the next checkpoint, or to now for the latest.
+	public func changes(at checkpoint: Int) async throws -> Changes {
+		try await connection.send(Commands.CheckpointChanges(conversationId: id, checkpoint: checkpoint)).changes
+	}
+
+	/// One file's diff over a checkpoint's turn.
+	public func diff(at checkpoint: Int, path: String) async throws -> String {
+		try await connection.send(Commands.CheckpointDiff(conversationId: id, checkpoint: checkpoint, path: path)).patch
+	}
+
+	/// Puts the project's files back to `checkpoint`; the result's `undo` puts them back as they were. `busy` while the
+	/// session runs or waits. The list is read again, since the host records a checkpoint first.
+	public func restore(_ checkpoint: Int) async throws -> RestoreResult {
+		let result = try await connection.send(Commands.RestoreCheckpoint(conversationId: id, checkpoint: checkpoint))
+		await refreshCheckpoints()
+		return result
+	}
+
+	/// Reads the checkpoints once the current read, if any, is done; several asks while one runs make one more read.
+	private func readCheckpointsSoon() {
+		guard checkpoints != nil else { return }
+		guard checkpointRead == nil else {
+			checkpointsStale = true
+			return
+		}
+		checkpointRead = Task {
+			repeat {
+				checkpointsStale = false
+				await refreshCheckpoints()
+			} while checkpointsStale && !Task.isCancelled
+			checkpointRead = nil
+		}
+	}
+
 	private func run(_ body: (HostConnection) async throws -> Void) async {
 		do {
 			try await body(connection)
@@ -163,12 +223,15 @@ public final class ConversationStore {
 			switch update {
 			case .events(let events):
 				isResyncing = false
+				let wasBusy = state.isBusy
 				if case .needsResync(let reason) = state.apply(events) {
 					isResyncing = true
 					await subscription.resync(reason: reason)
 				}
 				turns.observe(state, snapshot: events.first?.isSnapshot == true)
 				settleOutbox(afterSnapshot: events.first?.isSnapshot == true)
+				// A turn's checkpoint is taken as it starts, and its changes are final once it ends.
+				if events.first?.isSnapshot == true || wasBusy != state.isBusy { readCheckpointsSoon() }
 			case .resyncing:
 				isResyncing = true
 			case .failed(let reason), .ended(let reason):

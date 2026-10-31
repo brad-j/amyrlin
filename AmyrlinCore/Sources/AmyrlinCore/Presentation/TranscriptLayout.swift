@@ -145,7 +145,8 @@ public enum TranscriptNotice: Sendable, Hashable {
 public struct TranscriptRow: Identifiable, Sendable, Hashable {
 	public enum Kind: Sendable, Hashable {
 		case loadEarlier
-		case user(text: String, kind: String?, images: [ImageRef], videos: [TranscriptVideo])
+		/// `at` is the item's time, which a turn checkpoint's `message` matches.
+		case user(UserMessage, kind: String?, at: Int64?)
 		case text(String, streaming: Bool)
 		case thinking(String, redacted: Bool, streaming: Bool)
 		case toolCall(ToolCallRow)
@@ -190,8 +191,7 @@ public enum TranscriptLayout {
 			switch item.body {
 			case .user(let user):
 				let id = requests[item.id].map { "input-\($0)" } ?? "item-\(item.id)"
-				let message = TranscriptVideo.split(user.content, entryId: item.id)
-				rows.append(TranscriptRow(id: id, kind: .user(text: message.text, kind: user.kind, images: message.images, videos: message.videos), inContext: inContext))
+				rows.append(TranscriptRow(id: id, kind: .user(UserMessage.parse(user.content, entryId: item.id), kind: user.kind, at: item.at), inContext: inContext))
 			case .assistant(let assistant):
 				for (index, block) in assistant.content.enumerated() {
 					let id = blockID(after: previous, index)

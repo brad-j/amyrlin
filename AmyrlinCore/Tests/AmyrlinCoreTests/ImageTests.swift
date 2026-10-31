@@ -48,12 +48,12 @@ import UniformTypeIdentifiers
 		var state = ConversationState()
 		for frame in frames { state.apply(try JSONDecoder().decode([ConversationEvent].self, from: Data(frame.utf8))) }
 		let rows = TranscriptLayout.rows(state: state)
-		guard case .user(let text, _, let images, _)? = rows.first(where: { $0.id == "item-7" })?.kind else {
+		guard case .user(let message, _, _)? = rows.first(where: { $0.id == "item-7" })?.kind else {
 			Issue.record("expected the user row")
 			return
 		}
-		#expect(text == "What's this?", "the image isn't a placeholder in the text")
-		#expect(images == [ImageRef(entryId: 7, index: 1, mimeType: "image/png")])
+		#expect(message.text == "What's this?", "the image isn't a placeholder in the text")
+		#expect(message.images == [ImageRef(entryId: 7, index: 1, mimeType: "image/png")])
 		guard case .toolRound(let round)? = rows.first(where: { $0.id == "round-call-c1" })?.kind, let call = round.calls.first else {
 			Issue.record("expected the call's round")
 			return

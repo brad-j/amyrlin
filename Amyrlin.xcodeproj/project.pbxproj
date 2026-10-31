@@ -10,6 +10,7 @@
 		028D1898FCAEA7252176328A /* IBMPlexSans-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = DDFB70EF4A4D2723E6CD5A71 /* IBMPlexSans-Medium.ttf */; };
 		07A9818150EB8F9E60EC74B8 /* TranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400DB9A82C252E1F657E8D41 /* TranscriptView.swift */; };
 		13C386A29264C6B406732A81 /* IBMPlexSans-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3618134CB70BB36C30D63A38 /* IBMPlexSans-Italic.ttf */; };
+		26567F8F1B7E38BDD600A57D /* ChangesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB76031542E79EB0284260C1 /* ChangesView.swift */; };
 		2C96991DCF40CF1BD5BD099E /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C93A86000CFBD344D169CBB4 /* SidebarView.swift */; };
 		3E246E97702392C8017B1D82 /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6FF507E96091DF46C73B8C0 /* ConversationView.swift */; };
 		3E32CDB71CF450963CCECDB4 /* SpotlightSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87DFD5E4007D9043C9B1A36A /* SpotlightSheet.swift */; };
@@ -64,6 +65,7 @@
 		976BB1CCA2CDFB3AECFBE1CE /* IBMPlexMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Regular.ttf"; sourceTree = "<group>"; };
 		9919763F27220BA381156823 /* Amyrlin.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Amyrlin.entitlements; sourceTree = "<group>"; };
 		A6FF507E96091DF46C73B8C0 /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
+		AB76031542E79EB0284260C1 /* ChangesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangesView.swift; sourceTree = "<group>"; };
 		AF461A4995E4BE2BD97B2667 /* CopyOnSelect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopyOnSelect.swift; sourceTree = "<group>"; };
 		BA8EA64CEF1CD5AC382E123B /* AmyrlinApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmyrlinApp.swift; sourceTree = "<group>"; };
 		BE779E6A013811D3504F3959 /* Streaming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Streaming.swift; sourceTree = "<group>"; };
@@ -139,6 +141,7 @@
 				E43E677CA5F20DE603B53B9F /* AppModel.swift */,
 				96C81C52F22A4378025089DF /* Assets.xcassets */,
 				FFE9608226016C37DE47EB59 /* Attachments.swift */,
+				AB76031542E79EB0284260C1 /* ChangesView.swift */,
 				A6FF507E96091DF46C73B8C0 /* ConversationView.swift */,
 				AF461A4995E4BE2BD97B2667 /* CopyOnSelect.swift */,
 				32EB44117EDC90444E3960B1 /* HostSettingsSheet.swift */,
@@ -259,6 +262,7 @@
 				F6D4E2824150EEE404DCACB5 /* AmyrlinApp.swift in Sources */,
 				FED63C9D31BD47D6F5D4A3BE /* AppModel.swift in Sources */,
 				BB425F65EF15556751759DE3 /* Attachments.swift in Sources */,
+				26567F8F1B7E38BDD600A57D /* ChangesView.swift in Sources */,
 				3E246E97702392C8017B1D82 /* ConversationView.swift in Sources */,
 				E6B1D8EE01648F70CF2A154E /* CopyOnSelect.swift in Sources */,
 				7D6B5101A9362F6BB4C75AC0 /* HostSettingsSheet.swift in Sources */,
