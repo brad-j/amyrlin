@@ -42,6 +42,8 @@ public final class ConversationStore {
 	@ObservationIgnored private var checkpointRead: Task<Void, Never>?
 	/// Set when a read is asked for while one runs, so another follows it.
 	@ObservationIgnored private var checkpointsStale = false
+	/// The `at` of the last user message whose turn the list was read for once something followed it.
+	@ObservationIgnored private var checkpointsReadAfter: Int64?
 
 	init(id: ConversationID, connection: HostConnection) {
 		self.id = id
@@ -155,6 +157,15 @@ public final class ConversationStore {
 		return result
 	}
 
+	/// True once for each user message, the first time an item follows it: its turn's request has started by then.
+	private func turnAnswered() -> Bool {
+		guard let index = state.items.lastIndex(where: { if case .user = $0.body { true } else { false } }),
+			let at = state.items[index].at, index < state.items.count - 1, at != checkpointsReadAfter
+		else { return false }
+		checkpointsReadAfter = at
+		return true
+	}
+
 	/// Reads the checkpoints once the current read, if any, is done; several asks while one runs make one more read.
 	private func readCheckpointsSoon() {
 		guard checkpoints != nil else { return }
@@ -255,8 +266,11 @@ public final class ConversationStore {
 				}
 				turns.observe(state, snapshot: events.first?.isSnapshot == true)
 				settleOutbox(afterSnapshot: events.first?.isSnapshot == true)
-				// A turn's checkpoint is taken as it starts, and its changes are final once it ends.
-				if events.first?.isSnapshot == true || wasBusy != state.isBusy { readCheckpointsSoon() }
+				// A turn's checkpoint is taken as it starts, and its changes are final once it ends. The host takes it just
+				// before the turn's first request, which can be after run.started, so it's read again once the newest
+				// user message has something after it; a run waiting on an approval would otherwise show none until it
+				// ends.
+				if events.first?.isSnapshot == true || wasBusy != state.isBusy || turnAnswered() { readCheckpointsSoon() }
 			case .resyncing:
 				isResyncing = true
 			case .failed(let reason), .ended(let reason):

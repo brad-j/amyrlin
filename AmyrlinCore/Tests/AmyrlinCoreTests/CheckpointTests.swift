@@ -109,6 +109,40 @@ struct CheckpointTests {
 		await host.stop()
 	}
 
+	/// aludra takes a turn's checkpoint just before the turn's first request, which can come after run.started; a run
+	/// that then waits on an approval wouldn't end to read it again. So the list is read again once the newest user
+	/// message has an item after it, once for each message.
+	@Test func checkpointsAreReadAgainOnceATurnIsAnswered() async throws {
+		let store = host.conversation(1)
+		await host.connection.start()
+		store.start()
+		let server = try await transport.nextConnection()
+		try await server.acceptHello()
+		server.respond(try await server.nextRequest("conversation.watch"), result: .object(["subscription": "s1"]))
+		server.event("s1", seq: 0, [.object(["type": "snapshot", "conversation": .object(["id": .number(1)])])])
+		server.respond(try await server.nextRequest("checkpoints.list"), result: .object(["checkpoints": .array([])]))
+		server.event("s1", seq: 1, [
+			.object(["type": "item.added", "item": .object(["id": .number(7), "type": "user", "at": .number(1000), "content": .array([.object(["type": "text", "text": "push"])])])]),
+			.object(["type": "run.started", "inputs": .array([])]),
+		])
+		server.respond(try await server.nextRequest("checkpoints.list"), result: .object(["checkpoints": .array([])]))
+		server.event("s1", seq: 2, [
+			.object(["type": "item.added", "item": .object(["id": .number(8), "type": "assistant", "at": .number(1100), "content": .array([]), "stopReason": "toolUse"])]),
+		])
+		let taken = #"{"checkpoints":[{"at":1050,"tree":"fc47359c","kind":"turn","message":1000,"id":1}]}"#
+		server.respond(try await server.nextRequest("checkpoints.list"), result: try JSONDecoder().decode(JSONValue.self, from: Data(taken.utf8)))
+		#expect(await eventually { store.checkpoint(forMessageAt: 1000)?.id == 1 })
+		// More items in the same turn don't read it again.
+		server.event("s1", seq: 3, [
+			.object(["type": "item.added", "item": .object(["id": .number(9), "type": "assistant", "at": .number(1200), "content": .array([]), "stopReason": "toolUse"])]),
+		])
+		try await Task.sleep(for: .milliseconds(50))
+		let next = Task { await store.abort() }
+		#expect(try await server.nextRequest().method == "abort", "the list was read again within the turn")
+		next.cancel()
+		await host.stop()
+	}
+
 	@Test func aHostWithoutCheckpointsIsAskedOnce() async throws {
 		let store = host.conversation(1)
 		await host.connection.start()
