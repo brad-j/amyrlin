@@ -86,24 +86,47 @@ public struct ToolRound: Sendable, Hashable {
 		calls.compactMap(\.result?.durationMs).reduce(0, +)
 	}
 
-	/// "ran 3 commands · read 2 files", in order of first use.
+	/// The most telling two kinds of call and a count of the rest: "edited 2 files · ran 3 commands · +4 more".
+	/// Changes come first, then commands, other tools and reads last, since reads say least about what a round did.
+	/// Files count once however often they were touched. Failed calls count nowhere; the box says how many failed.
 	public var summary: String {
-		var order: [String] = []
-		var counts: [String: Int] = [:]
-		for call in calls {
-			if counts[call.name] == nil { order.append(call.name) }
-			counts[call.name, default: 0] += 1
+		struct Kind {
+			var rank: Int
+			var first: Int
+			var calls = 0
+			var paths: Set<String> = []
 		}
-		return order.map { name in
-			let n = counts[name] ?? 0
+		var kinds: [String: Kind] = [:]
+		for (index, call) in calls.enumerated() {
+			if case .failed = call.status { continue }
+			var kind = kinds[call.name] ?? Kind(rank: Self.rank(call.name), first: index)
+			kind.calls += 1
+			if let path = call.args["path"]?.stringValue ?? call.args["file_path"]?.stringValue { kind.paths.insert(path) }
+			kinds[call.name] = kind
+		}
+		let ordered = kinds.sorted { ($0.value.rank, $0.value.first) < ($1.value.rank, $1.value.first) }
+		let phrases = ordered.prefix(2).map { name, kind in
+			let files = kind.paths.isEmpty ? kind.calls : kind.paths.count
+			let noun = files == 1 ? "file" : "files"
 			switch name {
-			case "bash": return n == 1 ? "ran 1 command" : "ran \(n) commands"
-			case "read": return n == 1 ? "read 1 file" : "read \(n) files"
-			case "write": return n == 1 ? "wrote 1 file" : "wrote \(n) files"
-			case "edit": return n == 1 ? "edited 1 file" : "edited \(n) files"
-			default: return n == 1 ? "\(name)" : "\(name) ×\(n)"
+			case "bash": return kind.calls == 1 ? "ran 1 command" : "ran \(kind.calls) commands"
+			case "read": return "read \(files) \(noun)"
+			case "write": return "wrote \(files) \(noun)"
+			case "edit": return "edited \(files) \(noun)"
+			default: return kind.calls == 1 ? name : "\(name) ×\(kind.calls)"
 			}
-		}.joined(separator: " · ")
+		}
+		let rest = ordered.dropFirst(2).reduce(0) { $0 + $1.value.calls }
+		return (phrases + (rest > 0 ? ["+\(rest) more"] : [])).joined(separator: " · ")
+	}
+
+	private static func rank(_ name: String) -> Int {
+		switch name {
+		case "edit", "write": 0
+		case "bash": 1
+		case "read": 3
+		default: 2
+		}
 	}
 }
 

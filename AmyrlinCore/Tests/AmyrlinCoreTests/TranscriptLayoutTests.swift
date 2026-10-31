@@ -155,7 +155,22 @@ import Testing
 		let calls = ["bash", "read", "bash", "edit", "read", "read"].enumerated().map { index, name in
 			ToolCallRow(callId: "c\(index)", name: name, args: .object([:]), status: .done, output: "", result: nil)
 		}
-		#expect(ToolRound(entries: calls.map(ToolRound.Entry.call), folded: true).summary == "ran 2 commands · read 3 files · edited 1 file")
+		#expect(ToolRound(entries: calls.map(ToolRound.Entry.call), folded: true).summary == "edited 1 file · ran 2 commands · +3 more")
+	}
+
+	/// Files count once each, failed calls count nowhere, and with only reads left they still show.
+	@Test func roundSummaryCountsFilesAndSkipsFailures() {
+		func call(_ index: Int, _ name: String, _ path: String?, _ status: ToolCallRow.Status = .done) -> ToolRound.Entry {
+			let args: JSONValue = path.map { .object(["path": .string($0)]) } ?? .object([:])
+			return .call(ToolCallRow(callId: "c\(index)", name: name, args: args, status: status, output: "", result: nil))
+		}
+		let edits = ToolRound(entries: [
+			call(0, "edit", "a.swift"), call(1, "edit", "a.swift"), call(2, "edit", "b.swift"),
+			call(3, "bash", nil, .failed(code: nil)), call(4, "read", "c.swift"),
+		], folded: true)
+		#expect(edits.summary == "edited 2 files · read 1 file")
+		let reads = ToolRound(entries: [call(0, "read", "a"), call(1, "read", "b")], folded: true)
+		#expect(reads.summary == "read 2 files")
 	}
 
 	@Test func rowIDsAreUnique() throws {
