@@ -26,6 +26,7 @@ struct SidebarView: View {
 			if !model.machines.isEmpty { search }
 			ScrollView {
 				VStack(alignment: .leading, spacing: 0) {
+					if words.isEmpty { WaitingSection(model: model) }
 					ForEach(model.machines) { machine in
 						MachineSection(machine: machine, model: model, words: words)
 					}
@@ -295,7 +296,7 @@ private struct MachineSection: View {
 	private func sessionRows(_ sessions: [ConversationSummary], pinned: Bool = false) -> some View {
 		ForEach(Array(sessions.enumerated()), id: \.element.id) { index, summary in
 			let key = ConversationKey(machine: machine.id, conversation: summary.id)
-			SessionRow(summary: summary, last: index == sessions.count - 1, selected: model.selection == key, open: model.isOpen(key), colors: store.state.projectColors, pinned: pinned) {
+			SessionRow(summary: summary, last: index == sessions.count - 1, selected: model.selection == key, open: model.isOpen(key), colors: store.state.projectColors, pinned: pinned, unread: model.isUnread(key)) {
 				// ⌘-click opens the session in a pane of its own, beside the focused one.
 				if NSEvent.modifierFlags.contains(.command) {
 					withAnimation(.panel) { model.openInNewPane(key) }
@@ -490,6 +491,112 @@ private struct ProjectRow: View {
 	}
 }
 
+/// A session's state mark, or for an idle session with a finished run not yet read, a filled dot.
+private struct UnreadableMark: View {
+	let status: ConversationStatus
+	let unread: Bool
+
+	var body: some View {
+		if unread, status == .idle {
+			Circle().fill(Palette.accent).frame(width: 8, height: 8).frame(width: 10, height: 10)
+		} else {
+			StateMark(status, size: 10)
+		}
+	}
+}
+
+/// Sessions on any machine waiting on Brad, above the machines: asking to allow a call, stuck, or done with a run he
+/// hasn't opened. The mark says why; opening one reads it, and a finished run can be read from its menu without opening it.
+/// Gone while nothing waits, and while searching, when the tree shows every match.
+private struct WaitingSection: View {
+	let model: AppModel
+
+	var body: some View {
+		let waiting = model.waiting
+		if !waiting.isEmpty {
+			VStack(alignment: .leading, spacing: 0) {
+				HStack(spacing: 6) {
+					Text("waiting on you").foregroundStyle(Palette.wait)
+					Spacer(minLength: 6)
+					Text("\(waiting.count)").foregroundStyle(Palette.ink3).monospacedDigit()
+				}
+				.font(Typography.projectHeader)
+				.padding(.leading, 2)
+				.padding(.trailing, 6)
+				.padding(.vertical, 3)
+				ForEach(waiting, id: \.key) { item in
+					WaitingRow(model: model, key: item.key, summary: item.summary, reason: item.reason)
+				}
+			}
+			.padding(.top, 18)
+			.padding(.bottom, 4)
+		}
+	}
+}
+
+private struct WaitingRow: View {
+	let model: AppModel
+	let key: ConversationKey
+	let summary: ConversationSummary
+	let reason: WaitingOnYou.Reason
+	@State private var hovering = false
+
+	private var machine: AppModel.Machine? { model.machine(key.machine) }
+	private var colors: [String: Int] { machine?.store.state.projectColors ?? [:] }
+
+	/// Said in the help only; the mark says it in the row, leaving the title room.
+	private var why: String {
+		switch reason {
+		case .approval: "Needs you to allow a tool call"
+		case .stuck: "Stuck"
+		case .reply: "Finished a run you haven't read"
+		}
+	}
+
+	var body: some View {
+		let selected = model.selection == key
+		Button {
+			if NSEvent.modifierFlags.contains(.command) {
+				withAnimation(.panel) { model.openInNewPane(key) }
+			} else {
+				model.selection = key
+			}
+		} label: {
+			HStack(spacing: 7) {
+				UnreadableMark(status: summary.status, unread: reason == .reply)
+				Text(summary.title)
+					.foregroundStyle(selected ? Palette.ink : Palette.ink2)
+					.lineLimit(1)
+					.truncationMode(.tail)
+				Spacer(minLength: 6)
+				Text(Date(timeIntervalSince1970: TimeInterval(summary.updatedAt) / 1000).shortAge)
+					.foregroundStyle(Palette.ink3)
+					.monospacedDigit()
+			}
+			.font(Typography.ui)
+			.padding(.leading, 8)
+			.padding(.trailing, 6)
+			.padding(.vertical, 4)
+			.background(selected ? (summary.project.map { Palette.projectWash($0, in: colors) } ?? Palette.selection) : hovering ? Palette.paper2 : .clear)
+			// The project's colour at the edge says where the session lives, since it sits away from its project.
+			.overlay(alignment: .leading) {
+				Rectangle().fill(summary.project.map { Palette.project($0, in: colors) } ?? Palette.rule2).frame(width: 2)
+			}
+			.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.onHover { hovering = $0 }
+		.help([summary.title, why, [machine.map(model.name(of:)), summary.project ?? "scratch"].compactMap(\.self).joined(separator: " · ")].joined(separator: "\n"))
+		.contextMenu {
+			Button("Open in New Pane") { withAnimation(.panel) { model.openInNewPane(key) } }
+				.disabled(!model.canSplit || model.isOpen(key))
+			if reason == .reply {
+				Button("Mark as Read") { withAnimation(.row) { model.markRead(key) } }
+			}
+		}
+	}
+}
+
 /// Drags a session by its "machine/conversation" key, and on a pinned row takes a dropped one, with a line above the
 /// row while one is over it.
 private struct PinDrag: ViewModifier {
@@ -528,6 +635,7 @@ private struct SessionRow: View {
 	let open: Bool
 	let colors: [String: Int]
 	var pinned = false
+	var unread = false
 	let select: () -> Void
 	@State private var hovering = false
 
@@ -536,7 +644,7 @@ private struct SessionRow: View {
 			HStack(spacing: 7) {
 				Text(last ? "└" : "├")
 					.foregroundStyle(pinned ? summary.project.map { Palette.project($0, in: colors) } ?? Palette.ink3 : Palette.rule2)
-				StateMark(summary.status, size: 10)
+				UnreadableMark(status: summary.status, unread: unread)
 				Text(summary.title)
 					.foregroundStyle(selected ? Palette.ink : Palette.ink2)
 					.lineLimit(1)

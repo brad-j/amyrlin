@@ -74,8 +74,9 @@ final class AppModel {
 	private(set) var panes = [Pane(content: .empty)] {
 		didSet {
 			saveSelection()
-			// A session opened in a pane shows what its toast said.
+			// A session opened in a pane shows what its toast said, and its finished run is read.
 			toasts.removeAll { isOpen($0.key) }
+			markOpenRead()
 		}
 	}
 	/// The index of the pane with focus.
@@ -204,6 +205,41 @@ final class AppModel {
 	/// Sessions pinned above the projects, in the order arranged, as "machine/conversation". Kept on this Mac only.
 	var pins = PinOrder(UserDefaults.standard.stringArray(forKey: "pinnedSessions") ?? []) {
 		didSet { UserDefaults.standard.set(pins.keys, forKey: "pinnedSessions") }
+	}
+
+	/// Sessions whose finished run hasn't been looked at, as "machine/conversation": a run ended while the session was
+	/// out of view or the app was behind. Opening one reads it. Kept on this Mac only.
+	var unread: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "unreadSessions") ?? []) {
+		didSet { if !ephemeral { UserDefaults.standard.set(unread.sorted(), forKey: "unreadSessions") } }
+	}
+
+	func isUnread(_ key: ConversationKey) -> Bool {
+		unread.contains(Self.storedKey(key))
+	}
+
+	func markRead(_ key: ConversationKey) {
+		unread.remove(Self.storedKey(key))
+	}
+
+	/// Reads every session open in a pane, while the app is in front, where they can be seen.
+	private func markOpenRead() {
+		guard NSApplication.shared.isActive else { return }
+		let open = Set(panes.compactMap { pane -> String? in
+			if case .conversation(let key) = pane.content { return Self.storedKey(key) }
+			return nil
+		})
+		if !unread.isDisjoint(with: open) { unread.subtract(open) }
+	}
+
+	/// Sessions waiting on Brad on every machine, in the sidebar's order of machines: asking to allow a call, stuck, or
+	/// done with a run he hasn't read.
+	var waiting: [(key: ConversationKey, summary: ConversationSummary, reason: WaitingOnYou.Reason)] {
+		machines.flatMap { machine in
+			WaitingOnYou.among(machine.store.state.conversations.values) { id in
+				self.isUnread(ConversationKey(machine: machine.id, conversation: id))
+			}
+			.map { (key: ConversationKey(machine: machine.id, conversation: $0.summary.id), summary: $0.summary, reason: $0.reason) }
+		}
 	}
 
 	/// The key `keptSessions` and `pins` store a session by.
@@ -365,6 +401,10 @@ final class AppModel {
 		}
 		save()
 		for machine in machines { machine.store.start() }
+		// Coming back to the app reads the sessions open in its panes.
+		NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+			MainActor.assumeIsolated { self?.markOpenRead() }
+		}
 		// Sessions age without the host saying anything, so look again every minute.
 		Task { [weak self] in
 			while self != nil {
@@ -448,6 +488,7 @@ final class AppModel {
 		guard let index = machines.firstIndex(where: { $0.id == id }) else { return }
 		let machine = machines.remove(at: index)
 		toasts.removeAll { $0.key.machine == id }
+		unread = unread.filter { !$0.hasPrefix("\(id.uuidString)/") }
 		pins.prune { !$0.hasPrefix("\(id.uuidString)/") }
 		undoable = nil
 		for pane in panes.indices.reversed() where panes[pane].content.machine == id {
@@ -645,6 +686,7 @@ final class AppModel {
 		for alert in alerts {
 			let key = ConversationKey(machine: machine, conversation: alert.summary.id)
 			if isOpen(key), NSApplication.shared.isActive { continue }
+			if alert.kind == .done { unread.insert(Self.storedKey(key)) }
 			toasts.removeAll { $0.key == key }
 			toasts.append(Toast(key: key, kind: alert.kind))
 		}
