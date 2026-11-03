@@ -34,6 +34,9 @@ public enum Commands {
 			public var videos: VideoLimits?
 			/// Set when messages take files (aludra, protocol section 10); a host without it gets none.
 			public var files: FileLimits?
+			/// True when the agent can publish pages (`publish_page`) and `conversation.page` serves them (aludra, protocol
+			/// section 10); a client shows them inline only then.
+			public var pages: Bool?
 		}
 		/// What a message's files may be, and the text length past which the host saves a message to a file.
 		public struct FileLimits: Decodable, Sendable, Hashable {
@@ -238,6 +241,22 @@ public enum Commands {
 		public let params: Params
 		public init(conversationId: ConversationID, entryId: EntryID, index: Int) {
 			params = Params(conversationId: conversationId, entryId: entryId, index: index)
+		}
+	}
+
+	/// A page the agent published with `publish_page`, by the `page` its result's details name (aludra). Pages never
+	/// change once published.
+	public struct ConversationPage: Command {
+		public static let method = "conversation.page"
+		public static let retriesOnReconnect = true
+		public struct Params: Encodable, Sendable {
+			public var conversationId: ConversationID
+			public var page: JSONValue
+		}
+		public typealias Result = PublishedPage
+		public let params: Params
+		public init(conversationId: ConversationID, page: JSONValue) {
+			params = Params(conversationId: conversationId, page: page)
 		}
 	}
 

@@ -22,7 +22,7 @@ struct ConversationView: View {
 			} else if store.isResyncing || !host.isConnected {
 				Banner(text: host.isConnected ? "Catching up" : "Reconnecting to \(host.url.host() ?? "the host")", color: Palette.wait)
 			}
-			FillSpace { TranscriptView(store: store) }
+			FillSpace { TranscriptView(store: store, showsPages: host.info?.pages == true) }
 			VStack(spacing: 8) {
 				// An approval rises in above the composer and drops away once answered, instead of popping.
 				ForEach(store.state.approvals) { approval in

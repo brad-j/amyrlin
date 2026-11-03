@@ -7,6 +7,8 @@ import SwiftUI
 /// bottom, or the arrow, follows again. Rows arriving fade up into place, and streamed text reveals at `RevealPace`.
 struct TranscriptView: View {
 	let store: ConversationStore
+	/// The host's `host.info` `pages`: published pages show inline only then.
+	var showsPages = false
 	@State private var ledger = RevealLedger()
 	@State private var position = ScrollPosition(edge: .bottom)
 	/// Whether the transcript keeps to the bottom as it grows. Only the user's own scrolling changes it.
@@ -37,7 +39,7 @@ struct TranscriptView: View {
 	var body: some View {
 		// The rows are their own view: the follow moves the scroll position every frame, and only this wrapper sees it.
 		ScrollView {
-			TranscriptRows(store: store, ledger: ledger, animated: settled, target: target) { id in
+			TranscriptRows(store: store, ledger: ledger, animated: settled, target: target, showsPages: showsPages) { id in
 				position.scrollTo(id: id, anchor: .top)
 			} reveal: { id in
 				// A search result: stop following the bottom and show the item, its top a little below the header.
@@ -195,6 +197,7 @@ private struct TranscriptRows: View, Equatable {
 	let animated: Bool
 	/// A search result's entry to show.
 	let target: RevealTarget?
+	let showsPages: Bool
 	/// Scrolls so row `id` is at the top, after earlier rows are added above it.
 	let keepAtTop: (String) -> Void
 	/// Scrolls to a search result's row and stops following.
@@ -209,11 +212,11 @@ private struct TranscriptRows: View, Equatable {
 	/// The follow moves the scroll position every frame, which rebuilds the view holding this one; comparing the data
 	/// (not the closure) keeps that from rebuilding every row.
 	nonisolated static func == (a: Self, b: Self) -> Bool {
-		a.store === b.store && a.ledger === b.ledger && a.animated == b.animated && a.target == b.target
+		a.store === b.store && a.ledger === b.ledger && a.animated == b.animated && a.target == b.target && a.showsPages == b.showsPages
 	}
 
 	var body: some View {
-		let rows = TranscriptLayout.rows(state: store.state, outbox: store.outbox)
+		let rows = TranscriptLayout.rows(state: store.state, outbox: store.outbox, pages: showsPages)
 		let _ = prime(rows)
 		let start = startIndex(rows)
 		VStack(spacing: 0) {
@@ -331,6 +334,8 @@ struct TranscriptRowView: View, Equatable {
 			ToolCallView(call: call)
 		case .toolRound(let round):
 			ToolRoundView(round: round)
+		case .page(let page):
+			PageView(page: page)
 		case .notice(let notice):
 			NoticeView(notice: notice)
 		case .queued(let item):

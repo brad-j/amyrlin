@@ -151,6 +151,8 @@ public struct TranscriptRow: Identifiable, Sendable, Hashable {
 		case thinking(String, redacted: Bool, streaming: Bool)
 		case toolCall(ToolCallRow)
 		case toolRound(ToolRound)
+		/// A page the agent published, shown in place of its `publish_page` call on a host with pages.
+		case page(TranscriptPage)
 		case notice(TranscriptNotice)
 		case queued(InboxItem)
 		case pending(PendingSend)
@@ -163,7 +165,9 @@ public struct TranscriptRow: Identifiable, Sendable, Hashable {
 }
 
 public enum TranscriptLayout {
-	public static func rows(state: ConversationState, outbox: [PendingSend] = []) -> [TranscriptRow] {
+	/// `pages` is the host's `host.info` `pages`: only then is a `publish_page` result shown as its page. A page row
+	/// keeps its call's ID, so the call becomes the page in place once its result lands.
+	public static func rows(state: ConversationState, outbox: [PendingSend] = [], pages: Bool = false) -> [TranscriptRow] {
 		var rows: [TranscriptRow] = []
 		if state.hasEarlier { rows.append(TranscriptRow(id: "load-earlier", kind: .loadEarlier, inContext: false)) }
 
@@ -202,6 +206,10 @@ public enum TranscriptLayout {
 						rows.append(TranscriptRow(id: id, kind: .thinking(text, redacted: redacted, streaming: false), inContext: inContext))
 					case .toolCall(let call):
 						shownCalls.insert(call.id)
+						if pages, let page = results[call.id].flatMap(TranscriptPage.from) {
+							rows.append(TranscriptRow(id: "call-\(call.id)", kind: .page(page), inContext: inContext))
+							continue
+						}
 						let pendingInRun = state.isBusy && item.id == lastAssistant
 						rows.append(TranscriptRow(
 							id: "call-\(call.id)",
@@ -221,6 +229,10 @@ public enum TranscriptLayout {
 			case .toolResult(let result):
 				// Shown with its call. A result whose call is outside the window gets a row of its own.
 				if !shownCalls.contains(result.callId) {
+					if pages, let page = TranscriptPage.from(result) {
+						rows.append(TranscriptRow(id: "call-\(result.callId)", kind: .page(page), inContext: inContext))
+						continue
+					}
 					let call = ToolCallBlock(id: result.callId, name: result.toolName, args: .object([:]))
 					rows.append(TranscriptRow(id: "call-\(result.callId)", kind: .toolCall(toolRow(call, result: result, resultEntry: item.id, state: state, inRun: false)), inContext: inContext))
 				}

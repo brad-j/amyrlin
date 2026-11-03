@@ -402,9 +402,13 @@ final class AppModel {
 		}
 		save()
 		for machine in machines { machine.store.start() }
-		// Coming back to the app reads the sessions open in its panes.
+		// Coming back to the app reads the sessions open in its panes, and drops their toasts from while it was away.
 		NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-			MainActor.assumeIsolated { self?.markOpenRead() }
+			MainActor.assumeIsolated {
+				guard let self else { return }
+				self.toasts.removeAll { self.isOpen($0.key) }
+				self.markOpenRead()
+			}
 		}
 		// The host archives quiet sessions itself now (aludra 3568dcf); the list the app kept of sessions not to archive
 		// is the host's to keep.

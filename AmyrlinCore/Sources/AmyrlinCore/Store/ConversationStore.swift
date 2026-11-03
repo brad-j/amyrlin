@@ -39,6 +39,8 @@ public final class ConversationStore {
 	@ObservationIgnored private var subscription: Subscription<ConversationEvent>?
 	/// Images of the transcript fetched so far; a stored image never changes.
 	@ObservationIgnored private var images: [ImageRef: Data] = [:]
+	/// Pages fetched so far, or being fetched, by the host's name for them; a published page never changes.
+	@ObservationIgnored private var pages: [JSONValue: Task<PublishedPage, any Error>] = [:]
 	@ObservationIgnored private var checkpointRead: Task<Void, Never>?
 	/// Set when a read is asked for while one runs, so another follows it.
 	@ObservationIgnored private var checkpointsStale = false
@@ -220,6 +222,22 @@ public final class ConversationStore {
 		guard let data = Data(base64Encoded: result.data) else { throw ProtocolError(code: "internal", message: "The image came back unreadable") }
 		images[ref] = data
 		return data
+	}
+
+	/// A page the agent published, fetched once from the host; asks while it's on its way share the one fetch. A failed
+	/// fetch isn't kept, so the next ask tries again.
+	public func page(_ page: JSONValue) async throws -> PublishedPage {
+		if let task = pages[page] { return try await task.value }
+		let connection = connection
+		let id = id
+		let task = Task { try await connection.send(Commands.ConversationPage(conversationId: id, page: page)) }
+		pages[page] = task
+		do {
+			return try await task.value
+		} catch {
+			pages[page] = nil
+			throw error
+		}
 	}
 
 	private func submit(_ pending: PendingSend) {
