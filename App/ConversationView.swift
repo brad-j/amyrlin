@@ -14,6 +14,13 @@ struct ConversationView: View {
 	/// The task's result page, or the conversation. A sandbox task opens on its result; a local one has only the
 	/// conversation.
 	@State private var tab: TaskTab = .result
+	/// The ship confirmation is open at the top of the result page.
+	#if DEBUG
+	// `--args -openShip` opens the confirmation, for screenshots; nothing is sent until its button is pressed.
+	@State private var confirmingShip = ProcessInfo.processInfo.arguments.contains("-openShip")
+	#else
+	@State private var confirmingShip = false
+	#endif
 
 	private var summary: ConversationSummary? { host.state.conversations[store.id] }
 	private var hasResult: Bool { summary?.sandbox != nil }
@@ -23,7 +30,10 @@ struct ConversationView: View {
 		VStack(spacing: 0) {
 			ConversationHeader(title: summary?.title ?? store.conversation?.title ?? "Conversation", project: summary?.project, dir: summary?.dir, colors: host.state.projectColors, busy: store.isBusy, rename: rename)
 			if let summary, hasResult {
-				TaskHeader(summary: summary, host: host, tab: $tab)
+				TaskHeader(summary: summary, host: host, tab: $tab) {
+					tab = .result
+					withAnimation(.row) { confirmingShip = true }
+				}
 			}
 			// Under the header, so the header stays in line with the side columns' bands.
 			if let problem = store.problem {
@@ -33,8 +43,13 @@ struct ConversationView: View {
 			}
 			if hasResult && tab == .result {
 				FillSpace {
-					ResultView(task: task, summary: summary) { option in
-						store.send(option)
+					VStack(spacing: 0) {
+						if let summary {
+							ShipPanel(summary: summary, host: host, task: task, confirming: $confirmingShip) { store.send($0) }
+						}
+						ResultView(task: task, summary: summary) { option in
+							store.send(option)
+						}
 					}
 				}
 			} else {
@@ -419,6 +434,8 @@ struct TaskHeader: View {
 	let summary: ConversationSummary
 	let host: HostStore
 	@Binding var tab: TaskTab
+	let ship: () -> Void
+	@Environment(AppModel.self) private var model: AppModel?
 
 	var body: some View {
 		HStack(alignment: .firstTextBaseline, spacing: 14) {
@@ -437,10 +454,40 @@ struct TaskHeader: View {
 			Spacer(minLength: 12)
 			Text(state.text).foregroundStyle(state.color)
 			Text(place).foregroundStyle(Palette.ink3).lineLimit(1).truncationMode(.middle)
+			if canShip {
+				Button("Ship", action: ship)
+					.buttonStyle(QuietButton(fill: Palette.accent, ink: Palette.accentInk))
+					.help("Land this work upstream; you confirm where first")
+			}
+			if let model {
+				Menu {
+					SandboxMenu(model: model, host: host, summary: summary)
+				} label: {
+					Image(systemName: "ellipsis")
+						.font(.system(size: 13 * Typography.scale, weight: .light))
+						.foregroundStyle(Palette.ink3)
+						.frame(minWidth: 18 * Typography.scale, minHeight: 18 * Typography.scale)
+						.contentShape(Rectangle())
+				}
+				.menuStyle(.button)
+				.buttonStyle(.plain)
+				.menuIndicator(.hidden)
+				.fixedSize()
+				.help("More for this task")
+			}
 		}
+		.padding(.vertical, canShip ? 4 : 0)
 		.font(Typography.ui)
 		.padding(.horizontal, 16)
 		.overlay(alignment: .bottom) { Rectangle().fill(Palette.rule).frame(height: 1) }
+	}
+
+	/// Work that came home and hasn't landed, with the sandbox still there, the host connected and nothing running.
+	private var canShip: Bool {
+		guard let sandbox = summary.sandbox, host.isConnected, summary.status != .busy, summary.hasMessages else { return false }
+		guard sandbox.state == .ready || sandbox.state == .paused else { return false }
+		if case .shipped = host.state.ships[summary.id] { return false }
+		return true
 	}
 
 	private var state: (text: String, color: Color) {
