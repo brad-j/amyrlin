@@ -2,10 +2,11 @@ import AmyrlinCore
 import AppKit
 import SwiftUI
 
-/// The task list: every session on every machine, grouped by what it needs from you (TaskGroups): needs you, running,
-/// ready and done, then the archive folded away. Each row is a mark, the title, its age, and under it the host's line
-/// of where it stands. A row from a machine other than the home one names it. The scope switcher at the top narrows
-/// the list to one project; All shows everything.
+/// The task list: a section per machine, each its sessions grouped by what they need from you (TaskGroups): needs
+/// you, running, ready and done (the newest eight until asked for more), then the archive folded away. A machine's
+/// header folds its section, saying while folded whether anything needs you. Each row is a mark, the title, its age,
+/// and under it the project and the host's line of where it stands. The scope switcher at the top narrows the list to
+/// one project; All shows everything.
 /// ↑ and ↓ move between tasks while the list or its search has focus.
 struct SidebarView: View {
 	@Bindable var model: AppModel
@@ -17,8 +18,30 @@ struct SidebarView: View {
 
 	private var words: [String] { SessionSearch.words(model.sessionQuery) }
 
+	private var searching: Bool { !words.isEmpty }
+
+	/// The machines the list shows: every one, or the scoped project's.
+	private var shownMachines: [AppModel.Machine] {
+		if case .project(let machine, _) = model.scope { return model.machines.filter { $0.id == machine } }
+		return model.machines
+	}
+
+	/// One machine's groups, with done cut to the newest few unless opened or searching; the count left out is returned.
+	private func groups(on machine: AppModel.Machine) -> (groups: [(group: TaskGroups.Group, items: [TaskEntry])], hiddenDone: Int) {
+		var groups = TaskGroups.grouped(model.tasks(on: machine, matching: words), summary: \.summary, ship: \.ship)
+		var hidden = 0
+		if !searching, !model.expandedDone.contains(machine.id), let index = groups.firstIndex(where: { $0.group == .done }) {
+			hidden = max(groups[index].items.count - AppModel.doneLimit, 0)
+			groups[index].items = Array(groups[index].items.prefix(AppModel.doneLimit))
+		}
+		return (groups, hidden)
+	}
+
+	private func folded(_ machine: AppModel.Machine) -> Bool {
+		!searching && model.foldedMachines.contains(machine.id)
+	}
+
 	var body: some View {
-		let groups = TaskGroups.grouped(model.tasks(matching: words), summary: \.summary, ship: \.ship)
 		let archived = archiveOpen || !words.isEmpty ? model.archivedTasks(matching: words) : []
 		VStack(spacing: 0) {
 			HeaderBar {
@@ -32,19 +55,9 @@ struct SidebarView: View {
 			}
 			ScrollView {
 				LazyVStack(alignment: .leading, spacing: 0) {
-					MachineTrouble(model: model)
-					ForEach(groups, id: \.group) { group in
-						GroupLabel(title: group.group.title, color: group.group == .needsYou ? Palette.wait : Palette.ink3, count: group.items.count)
-						ForEach(group.items) { entry in
-							row(entry)
-						}
-					}
-					if groups.isEmpty, model.machines.contains(where: { $0.store.state.hasSnapshot }) {
-						Text(words.isEmpty ? (model.scope == .all ? "No tasks" : "No tasks in this project") : "No matching tasks")
-							.font(Typography.ui)
-							.foregroundStyle(Palette.ink3)
-							.padding(.horizontal, 12)
-							.padding(.vertical, 10)
+					// A stack per machine: the groups' ids repeat from one machine to the next.
+					ForEach(shownMachines) { machine in
+						VStack(alignment: .leading, spacing: 0) { machineSection(machine) }
 					}
 					archive(archived)
 					if !words.isEmpty { MessagesSection(model: model, results: messages).padding(.horizontal, 12) }
@@ -79,6 +92,47 @@ struct SidebarView: View {
 		}
 	}
 
+	@ViewBuilder private func machineSection(_ machine: AppModel.Machine) -> some View {
+		let folded = folded(machine)
+		let (groups, hiddenDone) = groups(on: machine)
+		MachineHeader(model: model, machine: machine, folded: folded, waiting: groups.first { $0.group == .needsYou }?.items.count ?? 0) {
+			withAnimation(.easeInOut(duration: 0.15)) {
+				if model.foldedMachines.contains(machine.id) { model.foldedMachines.remove(machine.id) } else { model.foldedMachines.insert(machine.id) }
+			}
+		}
+		if !folded {
+			if let trouble = MachineHeader.trouble(machine.store.status) {
+				Text(trouble)
+					.font(Typography.uiSmall)
+					.foregroundStyle(Palette.ink3)
+					.fixedSize(horizontal: false, vertical: true)
+					.textSelection(.enabled)
+					.padding(.horizontal, 12)
+					.padding(.top, 2)
+			}
+			ForEach(groups, id: \.group) { group in
+				GroupLabel(title: group.group.title, color: group.group == .needsYou ? Palette.wait : Palette.ink3, count: group.items.count + (group.group == .done ? hiddenDone : 0))
+				ForEach(group.items) { entry in
+					row(entry)
+				}
+				if group.group == .done, hiddenDone > 0 || model.expandedDone.contains(machine.id) {
+					MoreLine(text: hiddenDone > 0 ? "show \(hiddenDone) more" : "show fewer") {
+						withAnimation(.easeInOut(duration: 0.15)) {
+							if model.expandedDone.contains(machine.id) { model.expandedDone.remove(machine.id) } else { model.expandedDone.insert(machine.id) }
+						}
+					}
+				}
+			}
+			if groups.isEmpty, machine.store.state.hasSnapshot {
+				Text(searching ? "No matching tasks" : model.scope == .all ? "No tasks" : "No tasks in this project")
+					.font(Typography.uiSmall)
+					.foregroundStyle(Palette.ink3)
+					.padding(.horizontal, 12)
+					.padding(.top, 8)
+			}
+		}
+	}
+
 	private func row(_ entry: TaskEntry) -> some View {
 		let machine = model.machine(entry.key.machine)
 		return TaskRow(
@@ -87,7 +141,8 @@ struct SidebarView: View {
 			open: model.isOpen(entry.key),
 			unread: model.isUnread(entry.key),
 			showProject: model.scope == .all,
-			machineTag: model.machineTag(entry.key.machine),
+			// The section names the machine; an archived row, listed apart, names its own.
+			machineTag: entry.summary.archived ? model.machineTag(entry.key.machine) : nil,
 			connected: machine?.store.isConnected ?? false,
 			colors: machine?.store.state.projectColors ?? [:]
 		) {
@@ -160,9 +215,9 @@ struct SidebarView: View {
 
 	/// Every task the list shows, in order.
 	private var ordered: [ConversationKey] {
-		let groups = TaskGroups.grouped(model.tasks(matching: words), summary: \.summary, ship: \.ship)
+		let shown = shownMachines.filter { !folded($0) }.flatMap { groups(on: $0).groups.flatMap(\.items).map(\.key) }
 		let archived = archiveOpen || !words.isEmpty ? model.archivedTasks(matching: words) : []
-		return groups.flatMap(\.items).map(\.key) + archived.map(\.key)
+		return shown + archived.map(\.key)
 	}
 
 	private func move(_ step: Int) -> KeyPress.Result {
@@ -344,31 +399,68 @@ private struct MachinesMenu: View {
 	}
 }
 
-/// A machine that can't connect says why at the top of the list, since its tasks are missing or stale.
-private struct MachineTrouble: View {
+/// A machine's section header: its connection, its name, and while folded how many tasks need you. A click folds it.
+private struct MachineHeader: View {
 	let model: AppModel
+	let machine: AppModel.Machine
+	let folded: Bool
+	let waiting: Int
+	let toggle: () -> Void
+	@State private var hovering = false
 
 	var body: some View {
-		ForEach(model.machines) { machine in
-			if let trouble = trouble(machine.store.status) {
-				VStack(alignment: .leading, spacing: 2) {
-					Text("\(model.name(of: machine)) · \(MachinesMenu.status(machine.store.status))").foregroundStyle(Palette.wait)
-					Text(trouble).foregroundStyle(Palette.ink3).fixedSize(horizontal: false, vertical: true)
+		Button(action: toggle) {
+			HStack(spacing: 8) {
+				StatusDot(color: Palette.color(for: machine.store.status), pulsing: !machine.store.isConnected)
+				Text(model.name(of: machine)).foregroundStyle(Palette.ink)
+				if model.isThisMac(machine) { Text("this Mac").foregroundStyle(Palette.ink3) }
+				Text(folded ? "▸" : "▾").foregroundStyle(Palette.ink3).opacity(hovering || folded ? 1 : 0)
+				Spacer(minLength: 6)
+				if !machine.store.isConnected {
+					Text(MachinesMenu.status(machine.store.status)).foregroundStyle(Palette.wait)
+				} else if folded, waiting > 0 {
+					Text("\(waiting) needs you").foregroundStyle(Palette.wait)
 				}
-				.font(Typography.uiSmall)
-				.textSelection(.enabled)
-				.padding(.horizontal, 12)
-				.padding(.top, 10)
 			}
+			.font(Typography.uiStrong)
+			.padding(.horizontal, 12)
+			.padding(.top, 16)
+			.padding(.bottom, 2)
+			.contentShape(Rectangle())
 		}
+		.buttonStyle(.plain)
+		.onHover { hovering = $0 }
+		.help("\(folded ? "Show" : "Hide") \(model.name(of: machine))'s tasks")
 	}
 
-	private func trouble(_ status: HostConnection.Status) -> String? {
+	/// Why a machine isn't connected, once a try has failed.
+	static func trouble(_ status: HostConnection.Status) -> String? {
 		switch status {
 		case .waiting(_, let error): error
 		case .failed(let reason): reason
 		default: nil
 		}
+	}
+}
+
+/// `show 11 more`, quiet, under a group.
+private struct MoreLine: View {
+	let text: String
+	let action: () -> Void
+	@State private var hovering = false
+
+	var body: some View {
+		Button(action: action) {
+			Text(text)
+				.font(Typography.uiSmall)
+				.foregroundStyle(hovering ? Palette.ink2 : Palette.ink3)
+				.padding(.leading, 30)
+				.padding(.vertical, 4)
+				.frame(maxWidth: .infinity, alignment: .leading)
+				.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.onHover { hovering = $0 }
 	}
 }
 

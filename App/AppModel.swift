@@ -199,12 +199,24 @@ final class AppModel {
 
 	/// Unarchived tasks in the list's scope on every machine, matching the search's `words`.
 	func tasks(matching words: [String] = []) -> [TaskEntry] {
-		machines.flatMap { machine in
-			machine.store.state.active
-				.filter { inScope($0, on: machine.id) && SessionSearch.matches($0, words: words) }
-				.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ships[$0.id]) }
-		}
+		machines.flatMap { tasks(on: $0, matching: words) }
 	}
+
+	/// Unarchived tasks in scope on one machine.
+	func tasks(on machine: Machine, matching words: [String] = []) -> [TaskEntry] {
+		machine.store.state.active
+			.filter { inScope($0, on: machine.id) && SessionSearch.matches($0, words: words) }
+			.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ships[$0.id]) }
+	}
+
+	/// Machines whose section in the task list is folded to its header, kept across launches.
+	var foldedMachines: Set<UUID> = Set((UserDefaults.standard.stringArray(forKey: "foldedMachines") ?? []).compactMap(UUID.init(uuidString:))) {
+		didSet { if !ephemeral { UserDefaults.standard.set(foldedMachines.map(\.uuidString).sorted(), forKey: "foldedMachines") } }
+	}
+
+	/// Machines whose done group shows every task rather than the newest `doneLimit`.
+	var expandedDone: Set<UUID> = []
+	static let doneLimit = 8
 
 	/// The ten most recently active archived tasks in scope, or with words every match.
 	func archivedTasks(matching words: [String] = []) -> [TaskEntry] {
