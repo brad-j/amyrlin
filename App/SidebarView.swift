@@ -1,40 +1,55 @@
 import AmyrlinCore
 import AppKit
 import SwiftUI
-import UniformTypeIdentifiers
 
-/// Machines, and on each its sessions grouped by project, in the inspector's style: small-caps labels, hairlines,
-/// quiet rows. Sessions keep their place as they work, and archived sessions fold away at the end; each row is a
-/// state mark, a title and an age.
-/// ↑ and ↓ move between sessions while the sidebar or its search has focus. The search, under the header, narrows the
-/// tree to matching sessions, open whatever their folds. A click on a machine's header folds it to that one line.
+/// The task list: every session on every machine, grouped by what it needs from you (TaskGroups): needs you, running,
+/// ready and done, then the archive folded away. Each row is a mark, the title, its age, and under it the host's line
+/// of where it stands. A row from a machine other than the home one names it. The scope switcher at the top narrows
+/// the list to one project; All shows everything.
+/// ↑ and ↓ move between tasks while the list or its search has focus.
 struct SidebarView: View {
 	@Bindable var model: AppModel
 	@FocusState private var focused: Bool
 	@FocusState private var searchFocused: Bool
 	/// What the machines' messages.search found for the query, merged.
 	@State private var messages = MessageResults()
+	@State private var archiveOpen = false
 
 	private var words: [String] { SessionSearch.words(model.sessionQuery) }
 
 	var body: some View {
+		let groups = TaskGroups.grouped(model.tasks(matching: words), summary: \.summary, ship: \.ship)
+		let archived = archiveOpen || !words.isEmpty ? model.archivedTasks(matching: words) : []
 		VStack(spacing: 0) {
 			HeaderBar {
-				Text("machines").font(Typography.label).foregroundStyle(Palette.ink3).textCase(.uppercase)
-				Spacer()
-				IconButton("plus") { model.isAddingMachine = true }
-					.help("Add a machine (⇧⌘N)")
+				ScopeSwitcher(model: model)
+				Spacer(minLength: 8)
+				MachinesMenu(model: model)
 			}
-			if !model.machines.isEmpty { search }
+			if !model.machines.isEmpty {
+				NewTaskButton(model: model)
+				search
+			}
 			ScrollView {
-				VStack(alignment: .leading, spacing: 0) {
-					if words.isEmpty { WaitingSection(model: model) }
-					ForEach(model.machines) { machine in
-						MachineSection(machine: machine, model: model, words: words)
+				LazyVStack(alignment: .leading, spacing: 0) {
+					MachineTrouble(model: model)
+					ForEach(groups, id: \.group) { group in
+						GroupLabel(title: group.group.title, color: group.group == .needsYou ? Palette.wait : Palette.ink3, count: group.items.count)
+						ForEach(group.items) { entry in
+							row(entry)
+						}
 					}
-					if !words.isEmpty { MessagesSection(model: model, results: messages) }
+					if groups.isEmpty, model.machines.contains(where: { $0.store.state.hasSnapshot }) {
+						Text(words.isEmpty ? (model.scope == .all ? "No tasks" : "No tasks in this project") : "No matching tasks")
+							.font(Typography.ui)
+							.foregroundStyle(Palette.ink3)
+							.padding(.horizontal, 12)
+							.padding(.vertical, 10)
+					}
+					archive(archived)
+					if !words.isEmpty { MessagesSection(model: model, results: messages).padding(.horizontal, 12) }
 				}
-				.padding(.horizontal, 16)
+				.padding(.bottom, 12)
 			}
 			.focusable()
 			.focusEffectDisabled()
@@ -64,11 +79,57 @@ struct SidebarView: View {
 		}
 	}
 
-	/// `/` and the query, in the picker's style; ↩ opens the first match and esc clears the query, then leaves.
+	private func row(_ entry: TaskEntry) -> some View {
+		let machine = model.machine(entry.key.machine)
+		return TaskRow(
+			entry: entry,
+			selected: model.selection == entry.key,
+			open: model.isOpen(entry.key),
+			unread: model.isUnread(entry.key),
+			showProject: model.scope == .all,
+			machineTag: model.machineTag(entry.key.machine),
+			connected: machine?.store.isConnected ?? false,
+			colors: machine?.store.state.projectColors ?? [:]
+		) {
+			// ⌘-click opens the task in a pane of its own, beside the focused one.
+			if NSEvent.modifierFlags.contains(.command) {
+				withAnimation(.panel) { model.openInNewPane(entry.key) }
+			} else {
+				model.selection = entry.key
+			}
+		}
+		.contextMenu { TaskMenu(model: model, entry: entry) }
+	}
+
+	@ViewBuilder private func archive(_ archived: [TaskEntry]) -> some View {
+		if model.machines.contains(where: { !$0.store.state.archived.isEmpty }) {
+			Button {
+				withAnimation(.easeInOut(duration: 0.15)) { archiveOpen.toggle() }
+			} label: {
+				HStack(spacing: 6) {
+					Text(archiveOpen || !words.isEmpty ? "▾" : "▸")
+					Text("archived")
+					Spacer()
+				}
+				.font(Typography.label)
+				.textCase(.uppercase)
+				.foregroundStyle(Palette.ink3)
+				.padding(.horizontal, 12)
+				.padding(.top, 16)
+				.padding(.bottom, 4)
+				.contentShape(Rectangle())
+			}
+			.buttonStyle(.plain)
+			.help(archiveOpen ? "Hide the archive" : "Show the ten most recent archived tasks; a search looks through all of them")
+			ForEach(archived) { entry in row(entry) }
+		}
+	}
+
+	/// `/` and the query; ↩ opens the first match and esc clears the query, then leaves.
 	private var search: some View {
 		HStack(spacing: 8) {
 			Text("/").font(Typography.uiStrong).foregroundStyle(searchFocused || !words.isEmpty ? Palette.accent : Palette.ink3)
-			TextField("", text: $model.sessionQuery, prompt: Text("search sessions").foregroundStyle(Palette.ink3))
+			TextField("", text: $model.sessionQuery, prompt: Text("search tasks").foregroundStyle(Palette.ink3))
 				.textFieldStyle(.plain)
 				.font(Typography.ui)
 				.foregroundStyle(Palette.ink)
@@ -93,22 +154,15 @@ struct SidebarView: View {
 		.frame(minHeight: 28 * Typography.scale)
 		.background(Palette.paper2)
 		.overlay(Rectangle().stroke(searchFocused ? Palette.rule2 : Palette.rule))
-		.padding(.horizontal, 16)
-		.padding(.top, 12)
+		.padding(.horizontal, 12)
+		.padding(.bottom, 4)
 	}
 
-	/// Every session the sidebar shows, in order; folded projects are skipped unless searching.
+	/// Every task the list shows, in order.
 	private var ordered: [ConversationKey] {
-		let searching = !words.isEmpty
-		return model.machines.flatMap { machine -> [ConversationKey] in
-			if !searching, model.collapsedMachines.contains(machine.id) { return [] }
-			let pinned = MachineSection.pinned(machine, model: model, words: words)
-			let projects = MachineSection.groups(machine.store, words: words, excluding: Set(pinned.map(\.id)))
-				.filter { searching || !model.isCollapsed(machine: machine.id, project: $0.project) }
-				.flatMap(\.sessions)
-			let archived = searching || model.openArchives.contains(machine.id) ? MachineSection.archived(machine.store, words: words) : []
-			return (pinned + projects + archived).map { ConversationKey(machine: machine.id, conversation: $0.id) }
-		}
+		let groups = TaskGroups.grouped(model.tasks(matching: words), summary: \.summary, ship: \.ship)
+		let archived = archiveOpen || !words.isEmpty ? model.archivedTasks(matching: words) : []
+		return groups.flatMap(\.items).map(\.key) + archived.map(\.key)
 	}
 
 	private func move(_ step: Int) -> KeyPress.Result {
@@ -120,395 +174,411 @@ struct SidebarView: View {
 	}
 }
 
-private struct MachineSection: View {
-	let machine: AppModel.Machine
+/// A group's label: small caps and how many it holds.
+private struct GroupLabel: View {
+	let title: String
+	let color: Color
+	let count: Int
+
+	var body: some View {
+		HStack(spacing: 6) {
+			Text(title).foregroundStyle(color)
+			Spacer(minLength: 6)
+			Text("\(count)").foregroundStyle(Palette.ink3).monospacedDigit()
+		}
+		.font(Typography.label)
+		.textCase(.uppercase)
+		.padding(.horizontal, 12)
+		.padding(.top, 14)
+		.padding(.bottom, 4)
+	}
+}
+
+/// `+ New task ⌘N`, under the header.
+private struct NewTaskButton: View {
 	let model: AppModel
-	/// The search's words; none shows every session.
-	let words: [String]
 	@State private var hovering = false
 
-	private var store: HostStore { machine.store }
-	private var searching: Bool { !words.isEmpty }
-	/// Folded to its header; a search opens it, so its matches show.
-	private var folded: Bool { !searching && model.collapsedMachines.contains(machine.id) }
-
-	private func toggleFold() {
-		withAnimation(.easeInOut(duration: 0.15)) {
-			if model.collapsedMachines.contains(machine.id) { model.collapsedMachines.remove(machine.id) } else { model.collapsedMachines.insert(machine.id) }
-		}
-	}
-
-	/// The machine's pinned sessions matching `words`, in their arranged order.
-	static func pinned(_ machine: AppModel.Machine, model: AppModel, words: [String]) -> [ConversationSummary] {
-		model.pinnedSessions(on: machine).filter { SessionSearch.matches($0, words: words) }
-	}
-
-	/// Sessions matching `words` by project, leaving out `excluding` (the pinned ones, shown above): scratch (sessions in
-	/// no project) first, then the project with the newest session. Ordered by creation, not activity, so a session
-	/// stays put while it works.
-	static func groups(_ store: HostStore, words: [String], excluding: Set<ConversationID> = []) -> [(project: String, sessions: [ConversationSummary])] {
-		let matching = store.state.active.filter { !excluding.contains($0.id) && SessionSearch.matches($0, words: words) }
-		let byProject = Dictionary(grouping: matching) { $0.project ?? "" }
-		func newestFirst(_ a: ConversationSummary, _ b: ConversationSummary) -> Bool {
-			a.createdAt != b.createdAt ? a.createdAt > b.createdAt : a.id > b.id
-		}
-		return byProject
-			.map { (project: $0.key, sessions: $0.value.sorted(by: newestFirst)) }
-			.sorted { a, b in
-				if a.project.isEmpty != b.project.isEmpty { return a.project.isEmpty }
-				let (ca, cb) = (a.sessions.first?.createdAt ?? 0, b.sessions.first?.createdAt ?? 0)
-				return ca != cb ? ca > cb : a.project < b.project
+	var body: some View {
+		let on = model.isWritingNewTask
+		Button { model.newTask() } label: {
+			HStack(spacing: 8) {
+				Text("+").foregroundStyle(Palette.accent)
+				Text("New task").foregroundStyle(on || hovering ? Palette.ink : Palette.ink2)
+				Spacer()
+				if let combo = Shortcuts.shared.combo(.newSession) {
+					Text(combo.display).font(Typography.uiSmall).foregroundStyle(Palette.ink3)
+				}
 			}
+			.font(Typography.ui)
+			.padding(.horizontal, 10)
+			.frame(minHeight: 28 * Typography.scale)
+			.background(on ? Palette.paper2 : .clear)
+			.overlay(Rectangle().stroke(on ? Palette.accent : Palette.rule2))
+			.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.onHover { hovering = $0 }
+		.padding(.horizontal, 12)
+		.padding(.top, 10)
+		.padding(.bottom, 8)
+		.help("Start a task")
+	}
+}
+
+/// The header's scope: `All projects ▾`, or the project in its colour with its machine when it isn't the home one. The
+/// menu lists the projects that have tasks, most recently active first, and All.
+private struct ScopeSwitcher: View {
+	let model: AppModel
+
+	private struct Choice: Hashable {
+		let machine: UUID
+		let name: String
+		let last: Int64
 	}
 
-	/// The ten most recently active archived sessions; a search looks through all of them.
-	static func archived(_ store: HostStore, words: [String]) -> [ConversationSummary] {
-		let matching = store.state.archived.filter { SessionSearch.matches($0, words: words) }
-		return words.isEmpty ? Array(matching.prefix(10)) : matching
+	private var choices: [Choice] {
+		var latest: [Choice: Int64] = [:]
+		for machine in model.machines {
+			for summary in machine.store.state.active {
+				let choice = Choice(machine: machine.id, name: summary.project ?? "", last: 0)
+				latest[choice] = max(latest[choice] ?? 0, summary.updatedAt)
+			}
+		}
+		return latest.map { Choice(machine: $0.key.machine, name: $0.key.name, last: $0.value) }.sorted { $0.last > $1.last }
 	}
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 0) {
-			HStack(spacing: 9) {
-				Image(systemName: "desktopcomputer")
-					.font(.system(size: 13 * Typography.scale, weight: .light))
-					.foregroundStyle(Palette.ink2)
-					.overlay(alignment: .bottomTrailing) {
-						StatusDot(color: Palette.color(for: store.status), pulsing: !store.isConnected)
-							.padding(1.5)
-							.background(Circle().fill(Palette.panel))
-							.offset(x: 4, y: 3)
-					}
-				Text(model.name(of: machine))
-					.font(Typography.machineHeader)
-					.foregroundStyle(Palette.ink)
-					.lineLimit(1)
-				// The fold's mark only while the pointer is over the machine or it's folded, so the header stays quiet.
-				Text(folded ? "▸" : "▾")
-					.font(Typography.projectHeader)
-					.foregroundStyle(Palette.ink3)
-					.opacity(hovering || folded ? 1 : 0)
-				Spacer()
-				if folded {
-					let note = foldedNote(store.state.conversations.values.filter { !$0.archived || $0.status == .needsApproval })
-					Text(note)
-						.font(Typography.projectHeader)
-						.foregroundStyle(note == "needs you" ? Palette.wait : note == "working" ? Palette.accent : Palette.ink3)
-				}
-				if let month = store.state.monthCost {
-					Text("\(Dollars.text(month)) this month")
-						.font(Typography.uiSmall)
-						.foregroundStyle(Palette.ink3)
-						.monospacedDigit()
-						.lineLimit(1)
-						.help("What OpenRouter charged this calendar month on this machine. Claude Code and ChatGPT plans aren't counted.")
-				}
-				// Shown while the pointer is over the machine, so the header stays quiet otherwise.
-				Menu { machineMenu } label: {
-					Image(systemName: "ellipsis")
-						.font(.system(size: 13 * Typography.scale, weight: .light))
-						.foregroundStyle(Palette.ink3)
-						.frame(minWidth: 18 * Typography.scale, minHeight: 18 * Typography.scale)
-						.contentShape(Rectangle())
-				}
-				.menuStyle(.button)
-				.buttonStyle(.plain)
-				.menuIndicator(.hidden)
-				.fixedSize()
-				.opacity(hovering ? 1 : 0)
-				.help("Machine")
-				IconButton("square.and.pencil", color: store.isConnected ? Palette.accent : Palette.ink3) {
-					model.newConversationMachine = machine.id
-				}
-				.help("New session (pick a project)")
-				.disabled(!store.isConnected)
-			}
-			// No rule: the icon and full ink mark a machine, and space separates one from the next.
-			.padding(.top, 18)
-			.padding(.bottom, 8)
-			.contentShape(Rectangle())
-			.onTapGesture(perform: toggleFold)
-			.onHover { inside in withAnimation(.state) { hovering = inside } }
-			.help("\(statusHelp). Click to \(folded ? "show" : "hide") its sessions.")
-			.contextMenu { machineMenu }
-			if let trouble {
-				Text(trouble)
-					.font(Typography.uiSmall)
-					.foregroundStyle(Palette.wait)
-					.fixedSize(horizontal: false, vertical: true)
-					.textSelection(.enabled)
-					.padding(.top, 10)
-			}
-
-			let pinned = folded ? [] : Self.pinned(machine, model: model, words: words)
-			let groups = folded ? [] : Self.groups(store, words: words, excluding: Set(pinned.map(\.id)))
-			let archived = folded ? [] : Self.archived(store, words: words)
-			VStack(alignment: .leading, spacing: 10) {
-				// Pinned sessions first, in the order arranged; drop a session on one to put it above.
-				if !pinned.isEmpty {
-					VStack(alignment: .leading, spacing: 0) {
-						Text("pinned")
-							.font(Typography.projectHeader)
-							.foregroundStyle(Palette.ink3)
-							.padding(.leading, 2)
-							.padding(.vertical, 3)
-						sessionRows(pinned, pinned: true)
-					}
-				}
-				ForEach(groups, id: \.project) { group in
-					// A search opens every fold, so its matches show.
-					let collapsed = searching ? .constant(false) : model.collapsedBinding(machine: machine.id, project: group.project)
-					VStack(alignment: .leading, spacing: 0) {
-						let name = group.project.isEmpty ? "scratch" : group.project
-						ProjectRow(
-							name: name,
-							color: group.project.isEmpty ? Palette.ink3 : Palette.project(group.project, in: store.state.projectColors),
-							collapsed: collapsed,
-							note: collapsed.wrappedValue ? foldedNote(group.sessions) : nil,
-							held: collapsed.wrappedValue ? held(group.sessions) : nil,
-							mark: group.project.isEmpty ? Palette.accent : Palette.project(group.project, in: store.state.projectColors),
-							wash: group.project.isEmpty ? Palette.selection : Palette.projectWash(group.project, in: store.state.projectColors),
-							newSession: store.isConnected ? { newSession(in: group) } : nil
-						)
-						.contextMenu {
-							Button("New Session in \(name)") { newSession(in: group) }.disabled(!store.isConnected)
-							if !group.project.isEmpty, store.isConnected { colourMenu(group.project) }
-							Divider()
-							Button("Remove from Sidebar…") { model.removingProject = ProjectKey(machine: machine.id, project: group.project) }
-								.disabled(!store.isConnected)
-						}
-						if !collapsed.wrappedValue {
-							sessionRows(group.sessions)
-						}
-					}
-				}
-				// Archived sessions last, folded until opened; a session needing approval still shows in the fold.
-				if !archived.isEmpty {
-					let collapsed = searching ? .constant(false) : model.archiveCollapsedBinding(machine: machine.id)
-					VStack(alignment: .leading, spacing: 0) {
-						// A hairline sets the archive apart from the projects above it.
-						Rectangle().fill(Palette.rule).frame(height: 1).padding(.bottom, 8)
-						ProjectRow(name: "archived", color: Palette.ink3, collapsed: collapsed, note: collapsed.wrappedValue ? archiveNote(archived) : nil, held: collapsed.wrappedValue ? held(archived) : nil)
-						if !collapsed.wrappedValue { sessionRows(archived) }
-					}
-				}
-			}
-			.padding(.bottom, 6)
-			if searching, store.state.hasSnapshot, groups.isEmpty, archived.isEmpty {
-				Text("No matching sessions")
-					.font(Typography.ui)
-					.foregroundStyle(Palette.ink3)
-					.padding(.vertical, 6)
-			} else if !folded, store.state.hasSnapshot, store.state.conversations.isEmpty {
-				Text("No sessions yet")
-					.font(Typography.ui)
-					.foregroundStyle(Palette.ink3)
-					.padding(.vertical, 6)
-			}
-		}
-	}
-
-	/// Rows for `sessions`. Every unarchived row can be dragged; `pinned` rows take drops, which put the dragged session
-	/// just above, pinning it if it wasn't.
-	private func sessionRows(_ sessions: [ConversationSummary], pinned: Bool = false) -> some View {
-		ForEach(Array(sessions.enumerated()), id: \.element.id) { index, summary in
-			let key = ConversationKey(machine: machine.id, conversation: summary.id)
-			SessionRow(summary: summary, last: index == sessions.count - 1, selected: model.selection == key, open: model.isOpen(key), colors: store.state.projectColors, pinned: pinned, unread: model.isUnread(key)) {
-				// ⌘-click opens the session in a pane of its own, beside the focused one.
-				if NSEvent.modifierFlags.contains(.command) {
-					withAnimation(.panel) { model.openInNewPane(key) }
-				} else {
-					model.selection = key
-				}
-			}
-			.modifier(PinDrag(key: key, archived: summary.archived, dropTarget: pinned, model: model))
-			.contextMenu {
-				Button("Open in New Pane") { withAnimation(.panel) { model.openInNewPane(key) } }
-					.disabled(!model.canSplit || model.isOpen(key))
-				Divider()
-				if !summary.archived {
-					Button(model.isPinned(key) ? "Unpin" : "Pin") { withAnimation(.row) { model.togglePin(key) } }
-				}
-				if pinned {
-					Button("Move Up") { withAnimation(.row) { model.movePin(key, by: -1) } }.disabled(!model.canMovePin(key, by: -1))
-					Button("Move Down") { withAnimation(.row) { model.movePin(key, by: 1) } }.disabled(!model.canMovePin(key, by: 1))
-				}
-				Divider()
-				Button("Rename…") { model.renaming = key }.disabled(!store.isConnected)
-				// Only hosts that answer conversations.retitle (aludra 2899ef8 and later), and not before a first message.
-				if store.has(Commands.RetitleConversation.method) {
-					Button("Regenerate Title") { model.retitle(key) }.disabled(!model.canRetitle(key))
-				}
-				// Archiving only hides the session; a running one keeps running.
-				if summary.archived {
-					Button("Bring Back from the Archive") { model.setArchived(key, false) }.disabled(!store.isConnected)
-				} else {
-					Button("Archive") { model.setArchived(key, true) }.disabled(!store.isConnected)
-				}
-			}
-		}
-	}
-
-	/// Opens an empty session in the group's project, or scratch's; the picker when the host doesn't list the project.
-	private func newSession(in group: (project: String, sessions: [ConversationSummary])) {
-		guard !group.project.isEmpty else {
-			model.openDraft(on: machine.id, project: nil)
-			return
-		}
-		let projects = store.info?.projects ?? []
-		let dir = group.sessions.lazy.compactMap(\.dir).first
-		if let project = projects.first(where: { $0.dir == dir }) ?? projects.first(where: { $0.name == group.project }) {
-			model.openDraft(on: machine.id, project: project)
-		} else {
-			model.newConversationMachine = machine.id
-		}
-	}
-
-	/// The machine's commands, in its ⋯ menu and its right-click menu.
-	@ViewBuilder private var machineMenu: some View {
-		if case .waiting = store.status {
-			Button("Reconnect Now") { Task { await store.reconnect() } }
-		}
-		Button(folded ? "Show Sessions" : "Hide Sessions", action: toggleFold)
-		Button("Collapse All Projects") {
-			withAnimation(.easeInOut(duration: 0.15)) {
-				model.collapsedMachines.remove(machine.id)
-				model.setAllProjectsCollapsed(true, on: machine)
-			}
-		}
-		Button("Expand All Projects") {
-			withAnimation(.easeInOut(duration: 0.15)) {
-				model.collapsedMachines.remove(machine.id)
-				model.setAllProjectsCollapsed(false, on: machine)
-			}
-		}
-		Divider()
-		// Only hosts that answer settings.get (aludra 861c0f3 and later) have settings to show.
-		if store.settings != nil {
-			Button("Settings…") { model.hostSettingsMachine = machine.id }
-				.disabled(!store.isConnected)
-		}
-		Button("Copy Address") {
-			NSPasteboard.general.clearContents()
-			NSPasteboard.general.setString(machine.url.absoluteString, forType: .string)
-		}
-		Divider()
-		Button("Remove Machine…", role: .destructive) { model.removingMachine = machine.id }
-	}
-
-	/// Picks the project's colour on this machine, for names whose hashed colours clash; Automatic goes back to the name's.
-	@ViewBuilder private func colourMenu(_ project: String) -> some View {
-		let picked = store.state.projectColors[project]
-		Menu("Colour") {
-			Button(picked == nil ? "✓ Automatic" : "Automatic") { model.setProjectColor(project, nil, on: machine) }
+		Menu {
+			Button(model.scope == .all ? "✓ All projects" : "All projects") { model.scope = .all }
 			Divider()
-			ForEach(ProjectColor.names.indices, id: \.self) { index in
-				Button {
-					model.setProjectColor(project, index, on: machine)
-				} label: {
-					Label {
-						Text(picked == index ? "✓ \(ProjectColor.names[index])" : ProjectColor.names[index])
-					} icon: {
-						Image(nsImage: Palette.swatch(index))
-					}
+			ForEach(choices, id: \.self) { choice in
+				let scope = TaskScope.project(machine: choice.machine, name: choice.name)
+				let label = (choice.name.isEmpty ? "scratch" : choice.name) + (model.machineTag(choice.machine).map { " · \($0)" } ?? "")
+				Button(model.scope == scope ? "✓ \(label)" : label) { model.scope = scope }
+			}
+		} label: {
+			HStack(spacing: 6) {
+				switch model.scope {
+				case .all:
+					Text("All projects").foregroundStyle(Palette.ink2)
+				case .project(let machineID, let name):
+					let colors = model.machine(machineID)?.store.state.projectColors ?? [:]
+					Text(name.isEmpty ? "scratch" : name).foregroundStyle(name.isEmpty ? Palette.ink2 : Palette.project(name, in: colors))
+					if let tag = model.machineTag(machineID) { Text(tag).foregroundStyle(Palette.ink3) }
 				}
+				Text("▾").foregroundStyle(Palette.ink3)
+			}
+			.font(Typography.ui)
+		}
+		.menuStyle(.button)
+		.buttonStyle(.plain)
+		.menuIndicator(.hidden)
+		.fixedSize()
+		.help("Show every project's tasks, or one project's")
+	}
+}
+
+/// The machines, in a menu at the header's right: each with its connection, its settings and removal, and Add Machine.
+/// The dot is green while every machine is connected, amber or red otherwise.
+private struct MachinesMenu: View {
+	let model: AppModel
+
+	private var worst: Color {
+		let statuses = model.machines.map(\.store.status)
+		if statuses.contains(where: { if case .failed = $0 { true } else { false } }) { return Palette.bad }
+		if statuses.contains(where: { if case .connected = $0 { false } else { true } }) { return Palette.wait }
+		return Palette.add
+	}
+
+	var body: some View {
+		Menu {
+			ForEach(model.machines) { machine in
+				Menu(menuTitle(machine)) {
+					if case .waiting = machine.store.status {
+						Button("Reconnect Now") { Task { await machine.store.reconnect() } }
+					}
+					if machine.store.settings != nil {
+						Button("Settings…") { model.hostSettingsMachine = machine.id }.disabled(!machine.store.isConnected)
+					}
+					Button("Copy Address") {
+						NSPasteboard.general.clearContents()
+						NSPasteboard.general.setString(machine.url.absoluteString, forType: .string)
+					}
+					Divider()
+					Button("Remove Machine…", role: .destructive) { model.removingMachine = machine.id }
+				}
+			}
+			if !model.machines.isEmpty { Divider() }
+			Button("Add Machine…") { model.isAddingMachine = true }
+		} label: {
+			HStack(spacing: 6) {
+				StatusDot(color: model.machines.isEmpty ? Palette.ink3 : worst)
+				Image(systemName: "desktopcomputer")
+					.font(.system(size: 12 * Typography.scale, weight: .light))
+					.foregroundStyle(Palette.ink3)
+			}
+			.frame(minHeight: 18 * Typography.scale)
+			.contentShape(Rectangle())
+		}
+		.menuStyle(.button)
+		.buttonStyle(.plain)
+		.menuIndicator(.hidden)
+		.fixedSize()
+		.help(model.machines.map { "\(model.name(of: $0)): \(Self.status($0.store.status))" }.joined(separator: "\n"))
+	}
+
+	private func menuTitle(_ machine: AppModel.Machine) -> String {
+		let month = machine.store.state.monthCost.map { " · \(Dollars.text($0)) this month" } ?? ""
+		return "\(model.name(of: machine)) · \(Self.status(machine.store.status))\(month)"
+	}
+
+	static func status(_ status: HostConnection.Status) -> String {
+		switch status {
+		case .connected: "connected"
+		case .connecting: "connecting"
+		case .waiting: "reconnecting"
+		case .failed: "can't connect"
+		case .idle, .stopped: "not connected"
+		}
+	}
+}
+
+/// A machine that can't connect says why at the top of the list, since its tasks are missing or stale.
+private struct MachineTrouble: View {
+	let model: AppModel
+
+	var body: some View {
+		ForEach(model.machines) { machine in
+			if let trouble = trouble(machine.store.status) {
+				VStack(alignment: .leading, spacing: 2) {
+					Text("\(model.name(of: machine)) · \(MachinesMenu.status(machine.store.status))").foregroundStyle(Palette.wait)
+					Text(trouble).foregroundStyle(Palette.ink3).fixedSize(horizontal: false, vertical: true)
+				}
+				.font(Typography.uiSmall)
+				.textSelection(.enabled)
+				.padding(.horizontal, 12)
+				.padding(.top, 10)
 			}
 		}
 	}
 
-	/// Whether a fold hides the focused pane's session, or only one open in another pane.
-	private func held(_ sessions: [ConversationSummary]) -> ProjectRow.Held? {
-		let keys = sessions.map { ConversationKey(machine: machine.id, conversation: $0.id) }
-		if keys.contains(where: { $0 == model.selection }) { return .selected }
-		return keys.contains(where: model.isOpen) ? .open : nil
-	}
-
-	/// What a folded project still says: how many sessions, and whether one needs you or is working.
-	private func foldedNote(_ sessions: [ConversationSummary]) -> String {
-		if sessions.contains(where: { $0.status == .needsApproval }) { return "needs you" }
-		if sessions.contains(where: { $0.status == .busy }) { return "working" }
-		return "\(sessions.count)"
-	}
-
-	/// A folded archive's note: only whether one needs you or is working, since it always holds ten.
-	private func archiveNote(_ sessions: [ConversationSummary]) -> String? {
-		let note = foldedNote(sessions)
-		return note == "needs you" || note == "working" ? note : nil
-	}
-
-	/// Why the machine isn't connected and what to do, once a try has failed.
-	private var trouble: String? {
-		switch store.status {
+	private func trouble(_ status: HostConnection.Status) -> String? {
+		switch status {
 		case .waiting(_, let error): error
 		case .failed(let reason): reason
 		default: nil
 		}
 	}
+}
 
-	private var statusHelp: String {
-		switch store.status {
-		case .connected: "Connected to \(machine.url.absoluteString)"
-		case .connecting: "Connecting to \(machine.url.absoluteString)"
-		case .waiting(let delay, let error): "Reconnecting in \(delay.formatted(.units(allowed: [.seconds], fractionalPart: .show(length: 1)))): \(error)"
-		case .failed(let reason): reason
-		case .idle, .stopped: "Not connected"
+/// A task's menu, on its row and in its header.
+struct TaskMenu: View {
+	let model: AppModel
+	let entry: TaskEntry
+
+	var body: some View {
+		let key = entry.key
+		let store = model.machine(key.machine)?.store
+		let connected = store?.isConnected ?? false
+		Button("Open in New Pane") { withAnimation(.panel) { model.openInNewPane(key) } }
+			.disabled(!model.canSplit || model.isOpen(key))
+		if model.isUnread(key) {
+			Button("Mark as Read") { withAnimation(.row) { model.markRead(key) } }
+		}
+		Divider()
+		Button("Rename…") { model.renaming = key }.disabled(!connected)
+		// Only hosts that answer conversations.retitle (aludra 2899ef8 and later), and not before a first message.
+		if store?.has(Commands.RetitleConversation.method) == true {
+			Button("Regenerate Title") { model.retitle(key) }.disabled(!model.canRetitle(key))
+		}
+		if let project = entry.summary.project, let store, store.state.projectColors[project] != nil || connected {
+			ColourMenu(model: model, project: project, machine: key.machine)
+		}
+		Divider()
+		// Archiving only hides the task; a running one keeps running.
+		if entry.summary.archived {
+			Button("Bring Back from the Archive") { model.setArchived(key, false) }.disabled(!connected)
+		} else {
+			Button("Archive") { model.setArchived(key, true) }.disabled(!connected)
 		}
 	}
 }
 
-/// A project in the tree: `▾ name`, folding its sessions; folded, a count or what needs attention. With `newSession`,
-/// a new-session icon shows while the pointer is over the row. A fold over an open session marks the row as the
-/// session's would be, so the session can still be found: a wash and a mark for the focused pane's, a fainter mark for
-/// another pane's.
-private struct ProjectRow: View {
-	enum Held { case selected, open }
-
-	let name: String
-	let color: Color
-	@Binding var collapsed: Bool
-	let note: String?
-	var held: Held? = nil
-	var mark: Color = Palette.accent
-	var wash: Color = Palette.selection
-	var newSession: (() -> Void)? = nil
-	@State private var hovering = false
-	/// Tracked apart from `hovering`: the icon's own hover takes the row's away, which hid it under the pointer.
-	@State private var hoveringIcon = false
+/// Picks a project's colour on its machine, for names whose hashed colours clash; Automatic goes back to the name's.
+private struct ColourMenu: View {
+	let model: AppModel
+	let project: String
+	let machine: UUID
 
 	var body: some View {
-		HStack(spacing: 4) {
-			Button {
-				withAnimation(.easeInOut(duration: 0.15)) { collapsed.toggle() }
-			} label: {
-				HStack(spacing: 6) {
-					Text(collapsed ? "▸" : "▾").foregroundStyle(Palette.ink3)
-					Text(name).foregroundStyle(color).lineLimit(1)
-					Spacer(minLength: 6)
-					if let note {
-						Text(note)
-							.foregroundStyle(note == "needs you" ? Palette.wait : note == "working" ? Palette.accent : Palette.ink3)
+		if let machine = model.machine(machine) {
+			let picked = machine.store.state.projectColors[project]
+			Menu("\(project) Colour") {
+				Button(picked == nil ? "✓ Automatic" : "Automatic") { model.setProjectColor(project, nil, on: machine) }
+				Divider()
+				ForEach(ProjectColor.names.indices, id: \.self) { index in
+					Button {
+						model.setProjectColor(project, index, on: machine)
+					} label: {
+						Label {
+							Text(picked == index ? "✓ \(ProjectColor.names[index])" : ProjectColor.names[index])
+						} icon: {
+							Image(nsImage: Palette.swatch(index))
+						}
 					}
 				}
-				.font(Typography.projectHeader)
-				.padding(.leading, 2)
-				.padding(.vertical, 3)
-				.background(held == .selected ? wash : .clear)
-				.overlay(alignment: .leading) {
-					if let held { Rectangle().fill(mark).frame(width: 2).opacity(held == .selected ? 1 : 0.5) }
-				}
-				.contentShape(Rectangle())
-			}
-			.buttonStyle(.plain)
-			.help(held == nil ? (collapsed ? "Show \(name)" : "Hide \(name)") : "Show \(name), which holds an open session")
-			if let newSession {
-				IconButton("square.and.pencil", action: newSession)
-					.help("New session in \(name)")
-					.onHover { hoveringIcon = $0 }
-					.opacity(hovering || hoveringIcon ? 1 : 0)
 			}
 		}
-		.contentShape(Rectangle())
-		.onHover { inside in withAnimation(.state) { hovering = inside } }
+	}
+}
+
+/// A task: its mark, title and age, and under them its project (in All), its machine when it isn't the home one, and
+/// the host's line of where it stands. The focused pane's task has a wash and its project's colour at its edge; one
+/// open in another pane has a fainter edge.
+private struct TaskRow: View {
+	let entry: TaskEntry
+	let selected: Bool
+	let open: Bool
+	let unread: Bool
+	let showProject: Bool
+	let machineTag: String?
+	let connected: Bool
+	let colors: [String: Int]
+	let select: () -> Void
+	@State private var hovering = false
+
+	private var summary: ConversationSummary { entry.summary }
+	private var need: TaskGroups.Need? { TaskGroups.need(summary, ship: entry.ship) }
+	private var group: TaskGroups.Group { TaskGroups.group(summary, ship: entry.ship) }
+
+	var body: some View {
+		Button(action: select) {
+			VStack(alignment: .leading, spacing: 2) {
+				HStack(spacing: 8) {
+					TaskMark(summary: summary, need: need, group: group, unread: unread)
+					Text(summary.title.isEmpty ? "New task" : summary.title)
+						.font(Typography.uiSans)
+						.foregroundStyle(selected ? Palette.ink : Palette.ink2)
+						.lineLimit(1)
+						.truncationMode(.tail)
+					Spacer(minLength: 6)
+					Text(Date(timeIntervalSince1970: TimeInterval(summary.updatedAt) / 1000).shortAge)
+						.font(Typography.uiSmall)
+						.foregroundStyle(Palette.ink3)
+						.monospacedDigit()
+				}
+				HStack(spacing: 6) {
+					if showProject {
+						Text(summary.project ?? "scratch")
+							.foregroundStyle(summary.project.map { Palette.project($0, in: colors) } ?? Palette.ink3)
+							.layoutPriority(1)
+					}
+					if let machineTag {
+						Text(machineTag)
+							.foregroundStyle(Palette.ink2)
+							.padding(.horizontal, 4)
+							.overlay(Rectangle().stroke(Palette.rule2))
+							.layoutPriority(1)
+					}
+					if let line = Self.line(summary, ship: entry.ship) {
+						Text(line).foregroundStyle(lineColor).lineLimit(1).truncationMode(.tail)
+					}
+				}
+				.font(Typography.uiSansSmall)
+				.padding(.leading, 18)
+				.lineLimit(1)
+			}
+			.padding(.horizontal, 12)
+			.padding(.vertical, 6)
+			.opacity(connected ? 1 : 0.55)
+			.background(selected ? (summary.project.map { Palette.projectWash($0, in: colors) } ?? Palette.selection) : hovering ? Palette.paper2 : .clear)
+			.overlay(alignment: .leading) {
+				if selected || open {
+					Rectangle().fill(summary.project.map { Palette.project($0, in: colors) } ?? Palette.accent).frame(width: 2).opacity(selected ? 1 : 0.5)
+				}
+			}
+			.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.onHover { hovering = $0 }
+		.help(help)
+	}
+
+	private var lineColor: Color {
+		switch need {
+		case .approval, .question: Palette.wait
+		case .stuck, .shipStopped, .checksFail: Palette.bad
+		case nil: group == .ready ? Palette.add : Palette.ink3
+		}
+	}
+
+	/// The host's line, or failing one what the app knows: a stopped or landed ship, a failed or removed sandbox.
+	static func line(_ summary: ConversationSummary, ship: ShipOutcome?) -> String? {
+		switch ship {
+		case .shipped(let to, let pushed, _, _, let pr) where summary.status != .busy:
+			return pr != nil ? "PR open · \(pushed)" : to == .main ? "Live on \(pushed.replacingOccurrences(of: "origin/", with: ""))" : "Pushed to \(pushed)"
+		case .stopped(_, let reason) where summary.status != .busy:
+			return "Ship stopped: \(reason)"
+		default: break
+		}
+		if summary.sandbox?.state == .failed { return "Sandbox failed: \(summary.sandbox?.reason ?? "no reason given")" }
+		if summary.status == .needsApproval, summary.line == nil { return "Waiting for your approval" }
+		if summary.status == .stuck, summary.line == nil { return "Stuck: \(summary.stuck?.reason ?? "no reason given")" }
+		return summary.line
+	}
+
+	private var help: String {
+		var where_: String
+		if let sandbox = summary.sandbox {
+			where_ = "in a sandbox (\(sandbox.branch))"
+			if sandbox.state == .removed { where_ += ", removed" }
+		} else {
+			where_ = "here, in the project's checkout"
+		}
+		let machine = machineTag.map { " on \($0)" } ?? ""
+		let why: String? = switch need {
+		case .approval: "Asks to allow a tool call"
+		case .question: "Asks you something"
+		case .stuck: "Stuck"
+		case .shipStopped: "Its ship stopped; nothing was pushed"
+		case .checksFail: "Its checks fail"
+		case nil: unread ? "Finished a run you haven't read" : nil
+		}
+		return [summary.title, why, "\(summary.project ?? "scratch")\(machine) · runs \(where_)", connected ? nil : "Its machine isn't connected"]
+			.compactMap(\.self).joined(separator: "\n")
+	}
+}
+
+/// A task's mark: a spinner while it runs or its sandbox is made, an amber diamond when it asks, a red cross when it's
+/// stuck or failing, a green dot when it's ready to ship, a purple dot for a finished run not yet read, and a quiet
+/// check once done.
+private struct TaskMark: View {
+	let summary: ConversationSummary
+	let need: TaskGroups.Need?
+	let group: TaskGroups.Group
+	let unread: Bool
+
+	var body: some View {
+		Group {
+			switch (need, group) {
+			case (.approval?, _), (.question?, _):
+				StateMark(.waiting, size: 10)
+			case (.some, _):
+				StateMark(.failed, size: 10)
+			case (nil, .running):
+				StateMark(.running, size: 10)
+			case (nil, .ready):
+				Circle().fill(unread ? Palette.accent : Palette.add).frame(width: 8, height: 8)
+			default:
+				if unread {
+					Circle().fill(Palette.accent).frame(width: 8, height: 8)
+				} else {
+					StateMark(.done, size: 9)
+				}
+			}
+		}
+		.frame(width: 10, height: 10)
 	}
 }
 
@@ -664,188 +734,3 @@ private struct MessageHitRow: View {
 
 }
 
-/// A session's state mark, or for an idle session with a finished run not yet read, a filled dot.
-private struct UnreadableMark: View {
-	let status: ConversationStatus
-	let unread: Bool
-
-	var body: some View {
-		if unread, status == .idle {
-			Circle().fill(Palette.accent).frame(width: 8, height: 8).frame(width: 10, height: 10)
-		} else {
-			StateMark(status, size: 10)
-		}
-	}
-}
-
-/// Sessions on any machine waiting on Brad, above the machines: asking to allow a call, stuck, or done with a run he
-/// hasn't opened. The mark says why; opening one reads it, and a finished run can be read from its menu without opening it.
-/// Gone while nothing waits, and while searching, when the tree shows every match.
-private struct WaitingSection: View {
-	let model: AppModel
-
-	var body: some View {
-		let waiting = model.waiting
-		if !waiting.isEmpty {
-			VStack(alignment: .leading, spacing: 0) {
-				HStack(spacing: 6) {
-					Text("waiting on you").foregroundStyle(Palette.wait)
-					Spacer(minLength: 6)
-					Text("\(waiting.count)").foregroundStyle(Palette.ink3).monospacedDigit()
-				}
-				.font(Typography.projectHeader)
-				.padding(.leading, 2)
-				.padding(.trailing, 6)
-				.padding(.vertical, 3)
-				ForEach(waiting, id: \.key) { item in
-					WaitingRow(model: model, key: item.key, summary: item.summary, reason: item.reason)
-				}
-			}
-			.padding(.top, 18)
-			.padding(.bottom, 4)
-		}
-	}
-}
-
-private struct WaitingRow: View {
-	let model: AppModel
-	let key: ConversationKey
-	let summary: ConversationSummary
-	let reason: WaitingOnYou.Reason
-	@State private var hovering = false
-
-	private var machine: AppModel.Machine? { model.machine(key.machine) }
-	private var colors: [String: Int] { machine?.store.state.projectColors ?? [:] }
-
-	/// Said in the help only; the mark says it in the row, leaving the title room.
-	private var why: String {
-		switch reason {
-		case .approval: "Needs you to allow a tool call"
-		case .stuck: "Stuck"
-		case .reply: "Finished a run you haven't read"
-		}
-	}
-
-	var body: some View {
-		let selected = model.selection == key
-		Button {
-			if NSEvent.modifierFlags.contains(.command) {
-				withAnimation(.panel) { model.openInNewPane(key) }
-			} else {
-				model.selection = key
-			}
-		} label: {
-			HStack(spacing: 7) {
-				UnreadableMark(status: summary.status, unread: reason == .reply)
-				Text(summary.title)
-					.foregroundStyle(selected ? Palette.ink : Palette.ink2)
-					.lineLimit(1)
-					.truncationMode(.tail)
-				Spacer(minLength: 6)
-				Text(Date(timeIntervalSince1970: TimeInterval(summary.updatedAt) / 1000).shortAge)
-					.foregroundStyle(Palette.ink3)
-					.monospacedDigit()
-			}
-			.font(Typography.ui)
-			.padding(.leading, 8)
-			.padding(.trailing, 6)
-			.padding(.vertical, 4)
-			.background(selected ? (summary.project.map { Palette.projectWash($0, in: colors) } ?? Palette.selection) : hovering ? Palette.paper2 : .clear)
-			// The project's colour at the edge says where the session lives, since it sits away from its project.
-			.overlay(alignment: .leading) {
-				Rectangle().fill(summary.project.map { Palette.project($0, in: colors) } ?? Palette.rule2).frame(width: 2)
-			}
-			.contentShape(Rectangle())
-		}
-		.buttonStyle(.plain)
-		.onHover { hovering = $0 }
-		.help([summary.title, why, [machine.map(model.name(of:)), summary.project ?? "scratch"].compactMap(\.self).joined(separator: " · ")].joined(separator: "\n"))
-		.contextMenu {
-			Button("Open in New Pane") { withAnimation(.panel) { model.openInNewPane(key) } }
-				.disabled(!model.canSplit || model.isOpen(key))
-			if reason == .reply {
-				Button("Mark as Read") { withAnimation(.row) { model.markRead(key) } }
-			}
-		}
-	}
-}
-
-/// Drags a session by its "machine/conversation" key, and on a pinned row takes a dropped one, with a line above the
-/// row while one is over it.
-private struct PinDrag: ViewModifier {
-	let key: ConversationKey
-	let archived: Bool
-	let dropTarget: Bool
-	let model: AppModel
-	@State private var targeted = false
-
-	func body(content: Content) -> some View {
-		if archived {
-			content
-		} else if dropTarget {
-			content
-				.draggable(AppModel.storedKey(key))
-				.dropDestination(for: String.self) { items, _ in
-					guard let dragged = items.first else { return false }
-					return withAnimation(.row) { model.dropPin(dragged, before: key) }
-				} isTargeted: { targeted = $0 }
-				.overlay(alignment: .top) {
-					if targeted { Rectangle().fill(Palette.accent).frame(height: 2).offset(y: -1) }
-				}
-		} else {
-			content.draggable(AppModel.storedKey(key))
-		}
-	}
-}
-
-/// A session in the tree: a guide (├ or └), its state mark, its title, what it was charged if anything, and its age.
-/// The focused pane's session has a wash and a mark at its edge; one open in another pane has a fainter mark only.
-/// A pinned row's guide is in its project's colour, since it sits away from its project.
-private struct SessionRow: View {
-	let summary: ConversationSummary
-	let last: Bool
-	let selected: Bool
-	let open: Bool
-	let colors: [String: Int]
-	var pinned = false
-	var unread = false
-	let select: () -> Void
-	@State private var hovering = false
-
-	var body: some View {
-		Button(action: select) {
-			HStack(spacing: 7) {
-				Text(last ? "└" : "├")
-					.foregroundStyle(pinned ? summary.project.map { Palette.project($0, in: colors) } ?? Palette.ink3 : Palette.rule2)
-				UnreadableMark(status: summary.status, unread: unread)
-				Text(summary.title)
-					.foregroundStyle(selected ? Palette.ink : Palette.ink2)
-					.lineLimit(1)
-					.truncationMode(.tail)
-				Spacer(minLength: 6)
-				if let cost = summary.cost {
-					Text(Dollars.text(cost))
-						.foregroundStyle(Palette.ink3)
-						.monospacedDigit()
-				}
-				Text(Date(timeIntervalSince1970: TimeInterval(summary.updatedAt) / 1000).shortAge)
-					.foregroundStyle(Palette.ink3)
-					.monospacedDigit()
-			}
-			.font(Typography.ui)
-			.padding(.leading, 2)
-			.padding(.trailing, 6)
-			.padding(.vertical, 4)
-			.background(selected ? (summary.project.map { Palette.projectWash($0, in: colors) } ?? Palette.selection) : hovering ? Palette.paper2 : .clear)
-			.overlay(alignment: .leading) {
-				if selected || open {
-					Rectangle().fill(summary.project.map { Palette.project($0, in: colors) } ?? Palette.accent).frame(width: 2).opacity(selected ? 1 : 0.5)
-				}
-			}
-			.contentShape(Rectangle())
-		}
-		.buttonStyle(.plain)
-		.onHover { hovering = $0 }
-		.help([summary.title, pinned ? (summary.project ?? "scratch") : nil, summary.cost.map { "\(Dollars.text($0)) charged by OpenRouter" }].compactMap(\.self).joined(separator: "\n"))
-	}
-}

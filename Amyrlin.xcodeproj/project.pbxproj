@@ -10,6 +10,7 @@
 		028D1898FCAEA7252176328A /* IBMPlexSans-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = DDFB70EF4A4D2723E6CD5A71 /* IBMPlexSans-Medium.ttf */; };
 		07A9818150EB8F9E60EC74B8 /* TranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400DB9A82C252E1F657E8D41 /* TranscriptView.swift */; };
 		0BD88D68EC8E7BC4DB9157C5 /* PageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2702908FD664FF4F6A043665 /* PageView.swift */; };
+		1248FDA282F6D0E7D85F834A /* NewTaskView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A72F07E532A9DF9A920B891 /* NewTaskView.swift */; };
 		13C386A29264C6B406732A81 /* IBMPlexSans-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3618134CB70BB36C30D63A38 /* IBMPlexSans-Italic.ttf */; };
 		26567F8F1B7E38BDD600A57D /* ChangesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB76031542E79EB0284260C1 /* ChangesView.swift */; };
 		2C96991DCF40CF1BD5BD099E /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C93A86000CFBD344D169CBB4 /* SidebarView.swift */; };
@@ -21,10 +22,10 @@
 		56CE6422E3B3831193FF9A23 /* IBMPlexSans-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 13F17275495AE76F72E4E16A /* IBMPlexSans-Regular.ttf */; };
 		64AF8D8A16667DA8AC293491 /* AmyrlinCore in Frameworks */ = {isa = PBXBuildFile; productRef = D81DEB64327AF2DB380257AB /* AmyrlinCore */; };
 		69C6F996831A0BD3655E6F57 /* TextSize.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5E0486C01575E9101504707 /* TextSize.swift */; };
-		701C56D4979C4B1DDCDDA1E1 /* NewConversationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4607A3DCCB13BC46E7BFEE87 /* NewConversationSheet.swift */; };
 		7A73813C52844C39E18EAFB6 /* IBMPlexMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = DFF2CAC8723A9AFF68FD4BC3 /* IBMPlexMono-Italic.ttf */; };
 		7D6B5101A9362F6BB4C75AC0 /* HostSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32EB44117EDC90444E3960B1 /* HostSettingsSheet.swift */; };
 		85512BAEA1E94D90F28128D2 /* IBMPlexSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3E255489E001362E5060D2BF /* IBMPlexSans-SemiBold.ttf */; };
+		89B56ACEC25856EB13894199 /* ProjectsHome.swift in Sources */ = {isa = PBXBuildFile; fileRef = B458FB5947E5C2962775ACC6 /* ProjectsHome.swift */; };
 		8E52101B16CC6899E2A5B21F /* IBMPlexMono-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FACC027B3134DED45C50F173 /* IBMPlexMono-SemiBold.ttf */; };
 		934A96A2063E455D29F2F089 /* IBMPlexSans-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CA27715EC3AA23942F53B817 /* IBMPlexSans-BoldItalic.ttf */; };
 		A310D309B47461DC9CC59F99 /* IBMPlexSans-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 426443675E16744793344942 /* IBMPlexSans-Bold.ttf */; };
@@ -35,6 +36,7 @@
 		BB425F65EF15556751759DE3 /* Attachments.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFE9608226016C37DE47EB59 /* Attachments.swift */; };
 		BB5F0295682B4C9A63F7354D /* IBMPlexMono-Light.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0275445E3DEAA77259883236 /* IBMPlexMono-Light.ttf */; };
 		C498641CC1BFBED15AF6256C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 96C81C52F22A4378025089DF /* Assets.xcassets */; };
+		C5E2155998A6A87CBC571EF1 /* DebugSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE3CD0D1BB17707A39BF254B /* DebugSnapshot.swift */; };
 		C6C2B99C10C1E17992E316B2 /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F46883B3C2B7443F8A34EB5 /* InspectorView.swift */; };
 		CCB8CBF3B5AABAE0AEAE85C7 /* IBMPlexMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F5FE85A895879393A37D7CB0 /* IBMPlexMono-Bold.ttf */; };
 		E6B1D8EE01648F70CF2A154E /* CopyOnSelect.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF461A4995E4BE2BD97B2667 /* CopyOnSelect.swift */; };
@@ -56,8 +58,8 @@
 		3F46883B3C2B7443F8A34EB5 /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
 		400DB9A82C252E1F657E8D41 /* TranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptView.swift; sourceTree = "<group>"; };
 		426443675E16744793344942 /* IBMPlexSans-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexSans-Bold.ttf"; sourceTree = "<group>"; };
-		4607A3DCCB13BC46E7BFEE87 /* NewConversationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewConversationSheet.swift; sourceTree = "<group>"; };
 		46CC484C10EE38B5F76742D7 /* AmyrlinCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = AmyrlinCore; path = AmyrlinCore; sourceTree = SOURCE_ROOT; };
+		5A72F07E532A9DF9A920B891 /* NewTaskView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewTaskView.swift; sourceTree = "<group>"; };
 		683EB059DBE7F4081E821D7B /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
 		74CFC7E014E5733957E6AE35 /* IBMPlexSans-Light.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexSans-Light.ttf"; sourceTree = "<group>"; };
 		76BF3D6C015E28B6A54E13C2 /* ToastStack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastStack.swift; sourceTree = "<group>"; };
@@ -69,6 +71,7 @@
 		A6FF507E96091DF46C73B8C0 /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
 		AB76031542E79EB0284260C1 /* ChangesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangesView.swift; sourceTree = "<group>"; };
 		AF461A4995E4BE2BD97B2667 /* CopyOnSelect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopyOnSelect.swift; sourceTree = "<group>"; };
+		B458FB5947E5C2962775ACC6 /* ProjectsHome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsHome.swift; sourceTree = "<group>"; };
 		BA8EA64CEF1CD5AC382E123B /* AmyrlinApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmyrlinApp.swift; sourceTree = "<group>"; };
 		BE779E6A013811D3504F3959 /* Streaming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Streaming.swift; sourceTree = "<group>"; };
 		C93A86000CFBD344D169CBB4 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
@@ -78,6 +81,7 @@
 		DFF2CAC8723A9AFF68FD4BC3 /* IBMPlexMono-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Italic.ttf"; sourceTree = "<group>"; };
 		E098E2DEA603F2E95964E60C /* IBMPlexMono-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Medium.ttf"; sourceTree = "<group>"; };
 		E43E677CA5F20DE603B53B9F /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		EE3CD0D1BB17707A39BF254B /* DebugSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugSnapshot.swift; sourceTree = "<group>"; };
 		F5E0486C01575E9101504707 /* TextSize.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextSize.swift; sourceTree = "<group>"; };
 		F5FE85A895879393A37D7CB0 /* IBMPlexMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Bold.ttf"; sourceTree = "<group>"; };
 		F9F1EDA367D84F1E12969C30 /* IBMPlex-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "IBMPlex-OFL.txt"; sourceTree = "<group>"; };
@@ -146,12 +150,14 @@
 				AB76031542E79EB0284260C1 /* ChangesView.swift */,
 				A6FF507E96091DF46C73B8C0 /* ConversationView.swift */,
 				AF461A4995E4BE2BD97B2667 /* CopyOnSelect.swift */,
+				EE3CD0D1BB17707A39BF254B /* DebugSnapshot.swift */,
 				32EB44117EDC90444E3960B1 /* HostSettingsSheet.swift */,
 				D8613CB42BCC02047555BA2C /* Info.plist */,
 				3F46883B3C2B7443F8A34EB5 /* InspectorView.swift */,
 				683EB059DBE7F4081E821D7B /* MarkdownView.swift */,
-				4607A3DCCB13BC46E7BFEE87 /* NewConversationSheet.swift */,
+				5A72F07E532A9DF9A920B891 /* NewTaskView.swift */,
 				2702908FD664FF4F6A043665 /* PageView.swift */,
+				B458FB5947E5C2962775ACC6 /* ProjectsHome.swift */,
 				13540D33A9E587C2354E258B /* Shortcuts.swift */,
 				C93A86000CFBD344D169CBB4 /* SidebarView.swift */,
 				87DFD5E4007D9043C9B1A36A /* SpotlightSheet.swift */,
@@ -268,11 +274,13 @@
 				26567F8F1B7E38BDD600A57D /* ChangesView.swift in Sources */,
 				3E246E97702392C8017B1D82 /* ConversationView.swift in Sources */,
 				E6B1D8EE01648F70CF2A154E /* CopyOnSelect.swift in Sources */,
+				C5E2155998A6A87CBC571EF1 /* DebugSnapshot.swift in Sources */,
 				7D6B5101A9362F6BB4C75AC0 /* HostSettingsSheet.swift in Sources */,
 				C6C2B99C10C1E17992E316B2 /* InspectorView.swift in Sources */,
 				A72E7A31DF98C83FA8A34DCE /* MarkdownView.swift in Sources */,
-				701C56D4979C4B1DDCDDA1E1 /* NewConversationSheet.swift in Sources */,
+				1248FDA282F6D0E7D85F834A /* NewTaskView.swift in Sources */,
 				0BD88D68EC8E7BC4DB9157C5 /* PageView.swift in Sources */,
+				89B56ACEC25856EB13894199 /* ProjectsHome.swift in Sources */,
 				4052569961C01BB910F9A139 /* Shortcuts.swift in Sources */,
 				2C96991DCF40CF1BD5BD099E /* SidebarView.swift in Sources */,
 				3E32CDB71CF450963CCECDB4 /* SpotlightSheet.swift in Sources */,

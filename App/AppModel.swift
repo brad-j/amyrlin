@@ -26,17 +26,33 @@ struct UndoableChange: Identifiable {
 	let undo: (@MainActor () -> Void)?
 }
 
-/// A project in the sidebar: its machine and name, "" for scratch.
-struct ProjectKey: Hashable {
-	let machine: UUID
-	let project: String
+/// A session in the task list, with what it takes to draw and group it.
+struct TaskEntry: Identifiable {
+	let key: ConversationKey
+	let summary: ConversationSummary
+	let ship: ShipOutcome?
+	var id: ConversationKey { key }
 }
 
-/// A conversation not created yet: a project picked, no message sent. The first message creates it on the host.
-struct Draft: Hashable {
-	let machine: UUID
-	/// Nil for a no-project session: the host gives it a scratch directory of its own.
-	let project: ProjectInfo?
+/// Where the task list looks: every project on every machine, or one project on one machine.
+enum TaskScope: Hashable {
+	case all
+	/// A project by its name on a machine; "" is scratch.
+	case project(machine: UUID, name: String)
+}
+
+/// A task not started yet: its project and where it will run. The first message creates it on the host. One is kept
+/// for the app, so its text and choices stay while other tasks are looked at.
+@MainActor @Observable
+final class NewTask {
+	var machine: UUID?
+	/// Nil for scratch: the host gives it a directory of its own.
+	var project: ProjectInfo?
+	/// Runs its tools in a sandbox, when the project can take one.
+	var sandbox = true
+	/// Set once a project is picked by hand, or the default could be worked out; until then the box looks again as
+	/// machines load their projects.
+	var settled = false
 }
 
 /// One pane of the middle column. Split, the column shows its panes side by side; one has focus, and the sidebar, the
@@ -46,13 +62,13 @@ struct Pane: Identifiable, Equatable {
 		/// A pane split off and not given a session yet.
 		case empty
 		case conversation(ConversationKey)
-		case draft(Draft)
+		/// The new-task box; there's one, wherever it shows.
+		case newTask
 
 		var machine: UUID? {
 			switch self {
-			case .empty: nil
 			case .conversation(let key): key.machine
-			case .draft(let draft): draft.machine
+			case .empty, .newTask: nil
 			}
 		}
 	}
@@ -107,10 +123,9 @@ final class AppModel {
 			}
 		}
 	}
-	/// The focused pane's draft, shown in place of a conversation until its first message is sent.
-	var draft: Draft? {
-		guard panes.indices.contains(focus), case .draft(let draft) = panes[focus].content else { return nil }
-		return draft
+	/// Whether the focused pane shows the new-task box.
+	var isWritingNewTask: Bool {
+		panes.indices.contains(focus) && panes[focus].content == .newTask
 	}
 
 	/// Whether a conversation shows in any pane, focused or not.
@@ -158,51 +173,6 @@ final class AppModel {
 		focus += 1
 	}
 
-	/// Folded project groups in the sidebar, as "machine/project", kept across launches.
-	var collapsedProjects: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "collapsedProjects") ?? []) {
-		didSet { UserDefaults.standard.set(collapsedProjects.sorted(), forKey: "collapsedProjects") }
-	}
-
-	func collapsedBinding(machine: UUID, project: String) -> Binding<Bool> {
-		let key = "\(machine.uuidString)/\(project)"
-		return Binding(
-			get: { self.collapsedProjects.contains(key) },
-			set: { folded in
-				if folded { self.collapsedProjects.insert(key) } else { self.collapsedProjects.remove(key) }
-			}
-		)
-	}
-
-	func isCollapsed(machine: UUID, project: String) -> Bool {
-		collapsedProjects.contains("\(machine.uuidString)/\(project)")
-	}
-
-	/// Folds or opens every project on `machine` the sidebar shows, and its archive.
-	func setAllProjectsCollapsed(_ folded: Bool, on machine: Machine) {
-		let projects = Set(machine.store.state.active.map { $0.project ?? "" }).map { "\(machine.id.uuidString)/\($0)" }
-		if folded {
-			collapsedProjects.formUnion(projects)
-			openArchives.remove(machine.id)
-		} else {
-			collapsedProjects.subtract(projects)
-		}
-	}
-
-	/// Machines folded to their header in the sidebar, kept across launches.
-	var collapsedMachines: Set<UUID> = Set((UserDefaults.standard.stringArray(forKey: "collapsedMachines") ?? []).compactMap(UUID.init(uuidString:))) {
-		didSet { UserDefaults.standard.set(collapsedMachines.map(\.uuidString).sorted(), forKey: "collapsedMachines") }
-	}
-
-	/// Machines whose Archived group is open in the sidebar. It starts folded, unlike projects, so this keeps the open ones.
-	var openArchives: Set<UUID> = Set((UserDefaults.standard.stringArray(forKey: "openArchives") ?? []).compactMap(UUID.init(uuidString:))) {
-		didSet { UserDefaults.standard.set(openArchives.map(\.uuidString).sorted(), forKey: "openArchives") }
-	}
-
-	/// Sessions pinned above the projects, in the order arranged, as "machine/conversation". Kept on this Mac only.
-	var pins = PinOrder(UserDefaults.standard.stringArray(forKey: "pinnedSessions") ?? []) {
-		didSet { UserDefaults.standard.set(pins.keys, forKey: "pinnedSessions") }
-	}
-
 	/// Sessions whose finished run hasn't been looked at, as "machine/conversation": a run ended while the session was
 	/// out of view or the app was behind. Opening one reads it. Kept on this Mac only.
 	var unread: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "unreadSessions") ?? []) {
@@ -227,77 +197,55 @@ final class AppModel {
 		if !unread.isDisjoint(with: open) { unread.subtract(open) }
 	}
 
-	/// Sessions waiting on Brad on every machine, in the sidebar's order of machines: asking to allow a call, stuck, or
-	/// done with a run he hasn't read.
-	var waiting: [(key: ConversationKey, summary: ConversationSummary, reason: WaitingOnYou.Reason)] {
+	/// Unarchived tasks in the list's scope on every machine, matching the search's `words`.
+	func tasks(matching words: [String] = []) -> [TaskEntry] {
 		machines.flatMap { machine in
-			WaitingOnYou.among(machine.store.state.conversations.values) { id in
-				self.isUnread(ConversationKey(machine: machine.id, conversation: id))
-			}
-			.map { (key: ConversationKey(machine: machine.id, conversation: $0.summary.id), summary: $0.summary, reason: $0.reason) }
+			machine.store.state.active
+				.filter { inScope($0, on: machine.id) && SessionSearch.matches($0, words: words) }
+				.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ships[$0.id]) }
 		}
 	}
 
-	/// The key `unread` and `pins` store a session by.
+	/// The ten most recently active archived tasks in scope, or with words every match.
+	func archivedTasks(matching words: [String] = []) -> [TaskEntry] {
+		let all = machines.flatMap { machine in
+			machine.store.state.archived
+				.filter { inScope($0, on: machine.id) && SessionSearch.matches($0, words: words) }
+				.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ships[$0.id]) }
+		}
+		.sorted { $0.summary.updatedAt > $1.summary.updatedAt }
+		return words.isEmpty ? Array(all.prefix(10)) : all
+	}
+
+	private func inScope(_ summary: ConversationSummary, on machine: UUID) -> Bool {
+		switch scope {
+		case .all: true
+		case .project(let scoped, let name): scoped == machine && (summary.project ?? "") == name
+		}
+	}
+
+	/// The machine the list doesn't name on its rows: the first with a sandbox host, else the first. Rows from any
+	/// other machine carry its name.
+	var homeMachine: UUID? {
+		(machines.first { $0.store.sandboxes != nil } ?? machines.first)?.id
+	}
+
+	/// The tag a row from `machine` carries, or nil for the home machine (and when there's only one).
+	func machineTag(_ machineID: UUID) -> String? {
+		guard machines.count > 1, machineID != homeMachine, let machine = machine(machineID) else { return nil }
+		return isThisMac(machine) ? "Mac" : name(of: machine)
+	}
+
+	/// Whether `machine` is the Mac the app runs on, by its host name.
+	func isThisMac(_ machine: Machine) -> Bool {
+		let local = (Host.current().localizedName ?? ProcessInfo.processInfo.hostName).lowercased()
+		let name = name(of: machine).lowercased()
+		return !name.isEmpty && (local.hasPrefix(name) || ProcessInfo.processInfo.hostName.lowercased().hasPrefix(name))
+	}
+
+	/// The key `unread` stores a session by.
 	static func storedKey(_ key: ConversationKey) -> String {
 		"\(key.machine.uuidString)/\(key.conversation)"
-	}
-
-	func isPinned(_ key: ConversationKey) -> Bool {
-		pins.contains(Self.storedKey(key))
-	}
-
-	/// `machine`'s pinned sessions that aren't archived, in their arranged order.
-	func pinnedSessions(on machine: Machine) -> [ConversationSummary] {
-		let prefix = "\(machine.id.uuidString)/"
-		return pins.keys.compactMap { key in
-			guard key.hasPrefix(prefix), let id = ConversationID(key.dropFirst(prefix.count)),
-				let summary = machine.store.state.conversations[id], !summary.archived
-			else { return nil }
-			return summary
-		}
-	}
-
-	private func visiblePins(on machineID: UUID) -> [String] {
-		guard let machine = machine(machineID) else { return [] }
-		return pinnedSessions(on: machine).map { Self.storedKey(ConversationKey(machine: machineID, conversation: $0.id)) }
-	}
-
-	/// Pins a session at the top, or unpins it; either can be undone.
-	func togglePin(_ target: ConversationKey) {
-		let key = Self.storedKey(target)
-		let title = title(of: target)
-		if let index = pins.unpin(key) {
-			offerUndo("Unpinned \(title)") { [weak self] in self?.pins.pin(key, at: index) }
-		} else {
-			pins.pin(key)
-			offerUndo("Pinned \(title)") { [weak self] in self?.pins.unpin(key) }
-		}
-	}
-
-	/// Moves a pinned session one place up (-1) or down (1) among its machine's pins.
-	func movePin(_ target: ConversationKey, by step: Int) {
-		pins.move(Self.storedKey(target), by: step, among: visiblePins(on: target.machine))
-	}
-
-	func canMovePin(_ target: ConversationKey, by step: Int) -> Bool {
-		let visible = visiblePins(on: target.machine)
-		guard let index = visible.firstIndex(of: Self.storedKey(target)) else { return false }
-		return visible.indices.contains(index + step)
-	}
-
-	/// A dragged session dropped on a pinned one: it lands just above, pinned if it wasn't. Only within one machine.
-	func dropPin(_ dragged: String, before target: ConversationKey) -> Bool {
-		let prefix = "\(target.machine.uuidString)/"
-		guard dragged.hasPrefix(prefix), let id = ConversationID(dragged.dropFirst(prefix.count)) else { return false }
-		let visible = visiblePins(on: target.machine)
-		if !pins.contains(dragged) {
-			pins.pin(dragged)
-			let title = title(of: ConversationKey(machine: target.machine, conversation: id))
-			offerUndo("Pinned \(title)") { [weak self] in self?.pins.unpin(dragged) }
-		}
-		pins.place(dragged, before: Self.storedKey(target), among: visible)
-		return true
 	}
 
 	private func title(of key: ConversationKey) -> String {
@@ -329,15 +277,6 @@ final class AppModel {
 		if undoable?.id == change.id { undoable = nil }
 	}
 
-	/// Folded when true, like `collapsedBinding`.
-	func archiveCollapsedBinding(machine: UUID) -> Binding<Bool> {
-		Binding(
-			get: { !self.openArchives.contains(machine) },
-			set: { folded in
-				if folded { self.openArchives.remove(machine) } else { self.openArchives.insert(machine) }
-			}
-		)
-	}
 	/// Closed at launch; ⌥⌘I or the header's inspector button opens it.
 	var showInspector = false
 	var showSidebar = true
@@ -363,15 +302,30 @@ final class AppModel {
 	/// Sessions that need approval, finished a run or got stuck while out of view, oldest first.
 	private(set) var toasts: [Toast] = []
 	static let maxToasts = 4
-	/// The project whose removal from the sidebar is being confirmed.
-	var removingProject: ProjectKey?
-	/// The machine a new conversation is being started on, while its sheet is open.
-	var newConversationMachine: UUID?
+	/// The new task being written.
+	let newTask = NewTask()
+	/// Picking the new task's project, from every machine.
+	var pickingProject = false
 	/// The machine whose aludra settings are open.
 	var hostSettingsMachine: UUID?
 	/// A failed app-level action, shown once in the window.
 	var error: String?
 
+	/// What the task list shows, kept across launches.
+	var scope: TaskScope = .all {
+		didSet {
+			guard !ephemeral else { return }
+			if case .project(let machine, let name) = scope {
+				UserDefaults.standard.set(["machine": machine.uuidString, "project": name], forKey: Self.scopeKey)
+			} else {
+				UserDefaults.standard.removeObject(forKey: Self.scopeKey)
+			}
+		}
+	}
+	/// The home's project table lists every project, not only recent ones.
+	var showAllProjects = false
+
+	private static let scopeKey = "taskScope"
 	private static let defaultsKey = "machines"
 	private static let selectionKey = "selection"
 	private let client = ClientInfo(
@@ -411,8 +365,15 @@ final class AppModel {
 			}
 		}
 		// The host archives quiet sessions itself now (aludra 3568dcf); the list the app kept of sessions not to archive
-		// is the host's to keep.
-		UserDefaults.standard.removeObject(forKey: "keptSessions")
+		// is the host's to keep. Pins and folds went with the project tree.
+		for key in ["keptSessions", "pinnedSessions", "collapsedProjects", "collapsedMachines", "openArchives"] {
+			UserDefaults.standard.removeObject(forKey: key)
+		}
+		if let saved = UserDefaults.standard.dictionary(forKey: Self.scopeKey) as? [String: String],
+			let machine = saved["machine"].flatMap(UUID.init(uuidString:)), self.machine(machine) != nil, let name = saved["project"]
+		{
+			scope = .project(machine: machine, name: name)
+		}
 		if let saved = UserDefaults.standard.dictionary(forKey: Self.selectionKey) as? [String: String],
 			let machine = saved["machine"].flatMap(UUID.init(uuidString:)), self.machine(machine) != nil,
 			let conversation = saved["conversation"].flatMap(ConversationID.init)
@@ -432,6 +393,8 @@ final class AppModel {
 		{
 			openInNewPane(ConversationKey(machine: first.id, conversation: conversation))
 		}
+		// `--args -openNewTask` opens the new-task box, for screenshots.
+		if ProcessInfo.processInfo.arguments.contains("-openNewTask") { newTask() }
 		// `--args -openAddMachine` shows the Add Machine sheet at launch, for screenshots.
 		if ProcessInfo.processInfo.arguments.contains("-openAddMachine") {
 			Task {
@@ -440,10 +403,11 @@ final class AppModel {
 			}
 		}
 		// `open Amyrlin.app --args -openPicker` shows the project picker at launch, for screenshots.
-		if ProcessInfo.processInfo.arguments.contains("-openPicker"), let first = machines.first {
+		if ProcessInfo.processInfo.arguments.contains("-openPicker") {
 			Task {
 				try? await Task.sleep(for: .seconds(2))
-				newConversationMachine = first.id
+				newTask()
+				pickingProject = true
 			}
 		}
 		// `--args -openHostSettings` shows the first machine's settings at launch, for screenshots.
@@ -467,13 +431,10 @@ final class AppModel {
 				removingMachine = first.id
 			}
 		}
-		// `--args -showInspector` opens the inspector, which starts closed, `-hideSidebar` closes the sidebar, and
-		// `-openDraft` opens a no-project draft on the first machine, for screenshots.
+		// `--args -showInspector` opens the inspector, which starts closed, and `-hideSidebar` closes the sidebar, for
+		// screenshots.
 		if ProcessInfo.processInfo.arguments.contains("-showInspector") { showInspector = true }
 		if ProcessInfo.processInfo.arguments.contains("-hideSidebar") { showSidebar = false }
-		if ProcessInfo.processInfo.arguments.contains("-openDraft"), let first = machines.first {
-			openDraft(on: first.id, project: nil)
-		}
 		#endif
 	}
 
@@ -490,7 +451,8 @@ final class AppModel {
 		let machine = machines.remove(at: index)
 		toasts.removeAll { $0.key.machine == id }
 		unread = unread.filter { !$0.hasPrefix("\(id.uuidString)/") }
-		pins.prune { !$0.hasPrefix("\(id.uuidString)/") }
+		if case .project(id, _) = scope { scope = .all }
+		if newTask.machine == id { newTask.machine = nil; newTask.project = nil }
 		undoable = nil
 		for pane in panes.indices.reversed() where panes[pane].content.machine == id {
 			if panes.count > 1 { closePane(pane) } else { panes[pane].content = .empty }
@@ -525,37 +487,67 @@ final class AppModel {
 		return composition
 	}
 
-	/// Opens an empty conversation for `project` in the focused pane; nothing is created on the host until the first
-	/// message.
-	func openDraft(on machine: UUID, project: ProjectInfo?) {
-		panes[focus].content = .draft(Draft(machine: machine, project: project))
-	}
-
-	/// Shows the sidebar if it's hidden and puts the keyboard in its search (⌘F).
-	func searchSessions() {
-		if !showSidebar { withAnimation(.panel) { showSidebar = true } }
-		focusSearch = true
-	}
-
-	/// Opens the project picker on the first connected machine (⌘N).
-	func newSession() {
-		guard let machine = machines.first(where: { $0.store.isConnected }) ?? machines.first else {
+	/// Opens the new-task box in the focused pane (⌘N), or focuses the pane already showing it. Its project is the
+	/// list's, else the one last picked, else the newest session's on the first connected machine.
+	func newTask(in project: ProjectInfo? = nil, on machineID: UUID? = nil) {
+		guard !machines.isEmpty else {
 			isAddingMachine = true
 			return
 		}
-		newConversationMachine = machine.id
+		if let machineID, let project {
+			choose(project, on: machineID)
+		} else if case .project(let machineID, let name) = scope, let machine = machine(machineID) {
+			if newTask.machine != machineID || (newTask.project?.name ?? "") != name {
+				choose(machine.store.projects.first { $0.name == name }, on: machineID)
+			}
+		} else if !newTask.settled || newTask.machine.flatMap(machine) == nil {
+			chooseDefaultProject()
+		}
+		if let index = panes.firstIndex(where: { $0.content == .newTask }) {
+			focus = index
+		} else {
+			panes[focus].content = .newTask
+		}
 	}
 
-	/// Starts `draft`'s conversation with `text` as its first message, and shows it in the draft's pane.
-	func startConversation(_ draft: Draft, text: String, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = []) async -> Bool {
-		guard let machine = machine(draft.machine) else { return false }
+	/// Sets the new task's project; it runs in a sandbox when the project can take one.
+	func choose(_ project: ProjectInfo?, on machineID: UUID) {
+		newTask.machine = machineID
+		newTask.project = project
+		newTask.sandbox = sandboxRefusal(for: project, on: machineID) == nil
+		newTask.settled = true
+	}
+
+	/// The project of the newest task on the home machine (the one with sandboxes), or on the first connected one.
+	/// Not settled while that machine hasn't listed its projects, so the box tries again once it has.
+	func chooseDefaultProject() {
+		guard let machine = homeMachine.flatMap(machine) ?? machines.first(where: { $0.store.isConnected }) ?? machines.first else { return }
+		let projects = machine.store.projects
+		let newest = machine.store.state.active.first { summary in projects.contains { $0.name == summary.project } }
+		choose(projects.first { $0.name == newest?.project } ?? projects.first, on: machine.id)
+		newTask.settled = !projects.isEmpty
+	}
+
+	/// Why the new task can't run in a sandbox, or nil when it can.
+	func sandboxRefusal(for project: ProjectInfo?, on machineID: UUID) -> String? {
+		guard let machine = machine(machineID) else { return "the machine isn't in the app" }
+		guard machine.store.sandboxes != nil else { return "\(name(of: machine)) has no sandbox host" }
+		guard let project else { return "a scratch task has no project to copy" }
+		let current = machine.store.projects.first { $0.dir == project.dir } ?? project
+		return current.checkout?.sandboxRefusal
+	}
+
+	/// Starts the new task with `text` as its first message, shows it where the box was, and clears the box.
+	func startTask(text: String, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = []) async -> Bool {
+		guard let machineID = newTask.machine, let machine = machine(machineID) else { return false }
+		let sandbox = newTask.sandbox && sandboxRefusal(for: newTask.project, on: machineID) == nil
 		do {
-			let summary = try await machine.store.createConversation(project: draft.project?.dir, text: text, images: images, videos: videos, files: files)
+			let summary = try await machine.store.createConversation(project: newTask.project?.dir, text: text, images: images, videos: videos, files: files, sandbox: sandbox)
 			let key = ConversationKey(machine: machine.id, conversation: summary.id)
 			// A crossfade: the new conversation is blank for a moment while its first snapshot comes, which cut in as a flash.
 			withAnimation(.row) {
-				// The draft's pane, which may have lost focus while the host made the session.
-				if let pane = panes.firstIndex(where: { $0.content == .draft(draft) }) {
+				// The box's pane, which may have lost focus while the host made the session.
+				if let pane = panes.firstIndex(where: { $0.content == .newTask }) {
 					panes[pane].content = .conversation(key)
 					focus = pane
 				} else {
@@ -567,6 +559,12 @@ final class AppModel {
 			self.error = (error as? ProtocolError)?.message ?? String(describing: error)
 			return false
 		}
+	}
+
+	/// Shows the sidebar if it's hidden and puts the keyboard in its search (⌘F).
+	func searchSessions() {
+		if !showSidebar { withAnimation(.panel) { showSidebar = true } }
+		focusSearch = true
 	}
 
 	/// Gives a conversation a new title on its host.
@@ -622,18 +620,14 @@ final class AppModel {
 		}
 	}
 
-	/// Hides a conversation from the sidebar's projects, or with false brings it back; either can be undone. A running
-	/// one keeps running. Archiving unpins it, and undoing pins it again where it was. A session brought back stays
-	/// until it's archived again: the host keeps it out of its own archiving.
+	/// Hides a task from the list, or with false brings it back; either can be undone. A running one keeps running. A
+	/// session brought back stays until it's archived again: the host keeps it out of its own archiving. Archiving a
+	/// sandbox task removes its sandbox once its commits are home.
 	func setArchived(_ target: ConversationKey, _ archived: Bool) {
 		guard let machine = machine(target.machine) else { return }
-		let key = Self.storedKey(target)
-		let pinIndex = archived ? pins.unpin(key) : nil
 		sendArchived(target.conversation, archived, on: machine)
 		offerUndo("\(archived ? "Archived" : "Brought back") \(title(of: target))") { [weak self] in
-			guard let self else { return }
-			if let pinIndex { pins.pin(key, at: pinIndex) }
-			sendArchived(target.conversation, !archived, on: machine)
+			self?.sendArchived(target.conversation, !archived, on: machine)
 		}
 	}
 
@@ -649,28 +643,6 @@ final class AppModel {
 
 	private func sendArchived(_ id: ConversationID, _ archived: Bool, on machine: Machine) {
 		sendArchived([id], archived, on: machine)
-	}
-
-	/// The project's sessions that aren't archived; the sidebar shows a project while it has any.
-	func activeSessions(in target: ProjectKey) -> [ConversationSummary] {
-		machine(target.machine)?.store.state.active.filter { ($0.project ?? "") == target.project } ?? []
-	}
-
-	/// Takes a project off the sidebar by archiving its sessions; running ones keep running, and each can be brought back
-	/// from the archive, or all of them at once with undo.
-	func removeProject(_ target: ProjectKey) {
-		guard let machine = machine(target.machine) else { return }
-		let ids = activeSessions(in: target).map(\.id)
-		let unpinned = ids.compactMap { id -> (String, Int)? in
-			let key = Self.storedKey(ConversationKey(machine: target.machine, conversation: id))
-			return pins.unpin(key).map { (key, $0) }
-		}
-		sendArchived(ids, true, on: machine)
-		offerUndo("Removed \(target.project.isEmpty ? "scratch" : target.project)") { [weak self] in
-			guard let self else { return }
-			for (key, index) in unpinned.reversed() { pins.pin(key, at: index) }
-			sendArchived(ids, false, on: machine)
-		}
 	}
 
 	/// Picks `project`'s colour on `machine`, or with nil gives it back its name's.

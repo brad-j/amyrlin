@@ -23,7 +23,7 @@ struct AmyrlinApp: App {
 		.commands {
 			// One window: ⌘N starts a session instead of opening another window.
 			CommandGroup(replacing: .newItem) {
-				Button("New Session…") { model.newSession() }
+				Button("New Task") { model.newTask() }
 					.keyboardShortcut(.newSession, in: shortcuts)
 				Button("Open Project…") { model.showingSpotlight.toggle() }
 					.keyboardShortcut(.openProject, in: shortcuts)
@@ -36,7 +36,7 @@ struct AmyrlinApp: App {
 					.keyboardShortcut(.toggleSidebar, in: shortcuts)
 				Button(model.showInspector ? "Hide Inspector" : "Show Inspector") { withAnimation(.panel) { model.showInspector.toggle() } }
 					.keyboardShortcut(.toggleInspector, in: shortcuts)
-				Button("Search Sessions") { model.searchSessions() }
+				Button("Search Tasks") { model.searchSessions() }
 					.keyboardShortcut(.searchSessions, in: shortcuts)
 				Divider()
 				Button("Split Right") { withAnimation(.panel) { model.splitRight() } }
@@ -93,7 +93,12 @@ struct MainView: View {
 			}
 			StatusLine(model: model)
 		}
-		.onAppear { UndoKey.start(model) }
+		.onAppear {
+			UndoKey.start(model)
+			#if DEBUG
+			DebugSnapshot.start()
+			#endif
+		}
 		.background(Palette.paper)
 		.animation(.panel, value: model.showInspector)
 		.animation(.panel, value: model.showSidebar)
@@ -113,9 +118,6 @@ struct MainView: View {
 		.sheet(item: Binding(get: { model.renaming.map(RenameRef.init) }, set: { model.renaming = $0?.conversation })) { ref in
 			RenameSheet(model: model, target: ref.conversation)
 		}
-		.sheet(item: Binding(get: { model.newConversationMachine.flatMap(model.machine) .map(MachineRef.init) }, set: { model.newConversationMachine = $0?.id })) { ref in
-			NewConversationSheet(model: model, machine: ref.machine)
-		}
 		.sheet(item: Binding(get: { model.hostSettingsMachine.flatMap(model.machine).map(MachineRef.init) }, set: { model.hostSettingsMachine = $0?.id })) { ref in
 			HostSettingsSheet(model: model, machine: ref.machine)
 		}
@@ -131,19 +133,6 @@ struct MainView: View {
 		} message: {
 			let name = model.removingMachine.flatMap(model.machine).map(model.name) ?? "the machine"
 			Text("Its sessions stay on \(name). Add it again any time with its address.")
-		}
-		.alert(
-			"Remove \(model.removingProject.map { $0.project.isEmpty ? "scratch" : $0.project } ?? "this project") from the sidebar?",
-			isPresented: Binding(get: { model.removingProject != nil }, set: { if !$0 { model.removingProject = nil } })
-		) {
-			Button("Cancel", role: .cancel) { model.removingProject = nil }
-			Button("Remove") {
-				if let target = model.removingProject { model.removeProject(target) }
-				model.removingProject = nil
-			}
-		} message: {
-			let count = model.removingProject.map { model.activeSessions(in: $0).count } ?? 0
-			Text("Its \(count == 1 ? "session moves" : "\(count) sessions move") to the archive, where any can be brought back. A running session keeps running.")
 		}
 		.alert("Something went wrong", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
 			Button("OK") { model.error = nil }
@@ -198,14 +187,9 @@ struct MainView: View {
 			} else {
 				emptyPane
 			}
-		case .draft(let draft):
-			if let machine = model.machine(draft.machine) {
-				DraftView(model: model, machine: machine, project: draft.project, composition: model.composition(for: content))
-					.id(draft.project?.dir ?? "no project")
-					.transition(.opacity)
-			} else {
-				emptyPane
-			}
+		case .newTask:
+			NewTaskView(model: model, composition: model.composition(for: content))
+				.transition(.opacity)
 		case .empty:
 			emptyPane
 		}
@@ -224,10 +208,7 @@ struct MainView: View {
 					Spacer()
 					PaneCloseButton()
 				}
-				Text("Select a session, or ⌘N for a new one")
-					.font(Typography.ui)
-					.foregroundStyle(Palette.ink3)
-					.frame(maxWidth: .infinity, maxHeight: .infinity)
+				ProjectsHome(model: model)
 			}
 			.background(Palette.paper)
 			.overlay(alignment: .bottomLeading) { SidebarToggle().padding(10) }
@@ -255,10 +236,10 @@ private struct StatusLine: View {
 					Text("needs you").foregroundStyle(Palette.wait).padding(.trailing, 14)
 				}
 				RunClock(turns: store.turns)
-			} else if let draft = model.draft, let machine = model.machine(draft.machine) {
+			} else if model.isWritingNewTask, let machine = model.newTask.machine.flatMap(model.machine) {
 				host(machine.store)
-				place(project: draft.project?.name, dir: draft.project?.dir, colors: machine.store.state.projectColors)
-				segment("new session")
+				place(project: model.newTask.project?.name, dir: model.newTask.project?.dir, colors: machine.store.state.projectColors)
+				segment("new task")
 				Spacer(minLength: 8)
 			} else {
 				ForEach(Array(model.machines.enumerated()), id: \.element.id) { index, machine in

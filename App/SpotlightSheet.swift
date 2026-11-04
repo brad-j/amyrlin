@@ -18,7 +18,7 @@ struct SpotlightSheet: View {
 		ProjectSpotlight.search(query, in: connected.map { machine in
 			ProjectSpotlight.Source(
 				machine: machine.id,
-				projects: machine.store.info?.projects ?? [],
+				projects: machine.store.projects,
 				sessions: Array(machine.store.state.conversations.values)
 			)
 		})
@@ -157,7 +157,7 @@ struct SpotlightSheet: View {
 
 	private func open(_ result: ProjectSpotlight.Result<UUID>?) {
 		guard let result else { return }
-		model.openDraft(on: result.machine, project: result.project)
+		model.newTask(in: result.project, on: result.machine)
 		dismiss()
 	}
 }

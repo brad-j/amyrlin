@@ -14,10 +14,10 @@ enum ShortcutCommand: String, CaseIterable, Identifiable {
 
 	var title: String {
 		switch self {
-		case .newSession: "New Session…"
+		case .newSession: "New Task"
 		case .openProject: "Open Project…"
 		case .addMachine: "Add Machine…"
-		case .searchSessions: "Search Sessions"
+		case .searchSessions: "Search Tasks"
 		case .showShortcuts: "Keyboard Shortcuts"
 		case .toggleSidebar: "Show or Hide Sidebar"
 		case .toggleInspector: "Show or Hide Inspector"
@@ -207,7 +207,7 @@ struct ShortcutsSheet: View {
 		([["⌘", "V"]], "Paste images or long text"),
 	]
 	private static let sidebar: [(caps: [[String]], title: String)] = [
-		([["↑"], ["↓"]], "Move between sessions"),
+		([["↑"], ["↓"]], "Move between tasks"),
 		([["⌘", "click"]], "Open in a new pane"),
 		([["↩"]], "Open the first match"),
 		([["esc"]], "Clear the search"),
