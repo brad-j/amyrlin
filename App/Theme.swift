@@ -1,4 +1,5 @@
 import AmyrlinCore
+import AppKit
 import SwiftUI
 
 /* Hallmark · redesign · genre: atmospheric (technical) · macrostructure: transcript-first app, console chrome
@@ -325,18 +326,83 @@ struct StateMark: View {
 	}
 }
 
-/// A quarter arc turning once every 0.9 s.
-struct Spinner: View {
+/// A quarter arc turning once every 0.9 s. Core Animation turns it, off the main thread: a SwiftUI animation that
+/// changes each frame, a TimelineView or a repeating one, lays out the whole window again on every frame, which took
+/// about 45% of the main thread whenever a session was running.
+struct Spinner: NSViewRepresentable {
 	let color: Color
 
-	var body: some View {
-		TimelineView(.animation) { context in
-			let angle = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.9) / 0.9 * 360
-			ZStack {
-				Circle().stroke(color.opacity(0.22), lineWidth: 1.6)
-				Circle().trim(from: 0, to: 0.28).stroke(color, style: StrokeStyle(lineWidth: 1.6, lineCap: .round)).rotationEffect(.degrees(angle))
-			}
+	func makeNSView(context: Context) -> SpinnerView {
+		SpinnerView()
+	}
+
+	func updateNSView(_ view: SpinnerView, context: Context) {
+		view.color = NSColor(color)
+	}
+}
+
+final class SpinnerView: NSView {
+	private let track = CAShapeLayer()
+	private let arc = CAShapeLayer()
+	private static let lineWidth: CGFloat = 1.6
+
+	var color: NSColor = .white {
+		didSet { applyColor() }
+	}
+
+	override init(frame: NSRect) {
+		super.init(frame: frame)
+		wantsLayer = true
+		for shape in [track, arc] {
+			shape.fillColor = nil
+			shape.lineWidth = Self.lineWidth
+			layer?.addSublayer(shape)
 		}
+		arc.lineCap = .round
+		arc.strokeEnd = 0.28
+		applyColor()
+	}
+
+	required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+	override func layout() {
+		super.layout()
+		CATransaction.begin()
+		CATransaction.setDisableActions(true)
+		let inset = Self.lineWidth / 2
+		let path = CGPath(ellipseIn: bounds.insetBy(dx: inset, dy: inset), transform: nil)
+		for shape in [track, arc] {
+			shape.frame = bounds
+			shape.path = path
+		}
+		CATransaction.commit()
+		spin()
+	}
+
+	override func viewDidMoveToWindow() {
+		super.viewDidMoveToWindow()
+		spin()
+	}
+
+	/// Starts the turn once the arc is in a window; it keeps going until the view goes.
+	private func spin() {
+		guard window != nil, arc.animation(forKey: "spin") == nil else { return }
+		let turn = CABasicAnimation(keyPath: "transform.rotation.z")
+		turn.fromValue = 0
+		// Negative turns clockwise: the layer's y axis points up.
+		turn.toValue = -2 * Double.pi
+		turn.duration = 0.9
+		turn.repeatCount = .infinity
+		turn.isRemovedOnCompletion = false
+		arc.add(turn, forKey: "spin")
+	}
+
+	private func applyColor() {
+		CATransaction.begin()
+		CATransaction.setDisableActions(true)
+		track.strokeColor = color.withAlphaComponent(color.alphaComponent * 0.22).cgColor
+		arc.strokeColor = color.cgColor
+		CATransaction.commit()
 	}
 }
 

@@ -23,6 +23,10 @@ struct TranscriptView: View {
 	@State private var follow = FollowState()
 	/// A search result's entry for the rows to show; the rows compare it, so a new one reaches them.
 	@State private var target: RevealTarget?
+	/// Within 400 points of the top.
+	@State private var nearTop = false
+	/// The rows are shorter than the scroll view.
+	@State private var fits = false
 
 	private struct Geometry: Equatable {
 		var offset: CGFloat = 0
@@ -39,7 +43,9 @@ struct TranscriptView: View {
 	var body: some View {
 		// The rows are their own view: the follow moves the scroll position every frame, and only this wrapper sees it.
 		ScrollView {
-			TranscriptRows(store: store, ledger: ledger, animated: settled, target: target, showsPages: showsPages) { id in
+			TranscriptRows(store: store, ledger: ledger, animated: settled, target: target, showsPages: showsPages, wantsEarlier: settled && nearTop && (!following || fits)) { id in
+				// Following, the transcript is short enough that its top shows at the bottom: it stays at the bottom.
+				guard !following else { return }
 				position.scrollTo(id: id, anchor: .top)
 			} reveal: { id in
 				// A search result: stop following the bottom and show the item, its top a little below the header.
@@ -75,6 +81,14 @@ struct TranscriptView: View {
 		.onScrollGeometryChange(for: Bool.self) { Self.isAtBottom($0) } action: { _, bottom in
 			atBottom = bottom
 		}
+		// Near the top, the rows add earlier ones: once the user has scrolled up, or while they all fit, since a short
+		// transcript is near its top while it follows the bottom.
+		.onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top < 400 } action: { _, near in
+			nearTop = near
+		}
+		.onScrollGeometryChange(for: Bool.self) { $0.contentSize.height <= $0.containerSize.height } action: { _, fit in
+			fits = fit
+		}
 		.onScrollGeometryChange(for: Geometry.self) { g in
 			Geometry(offset: g.contentOffset.y, bottom: max(0, g.contentSize.height - g.containerSize.height + g.contentInsets.bottom))
 		} action: { old, new in
@@ -98,7 +112,7 @@ struct TranscriptView: View {
 			store.revealing = nil
 			target = RevealTarget(entry: entry)
 		}
-		.onChange(of: store.state.hasSnapshot, initial: true) { _, has in
+		.onChange(of: store.hasSnapshot, initial: true) { _, has in
 			guard has, !settled else { return }
 			position.scrollTo(edge: .bottom)
 			// After this layout pass: the snapshot's rows are in place, and what follows animates.
@@ -180,6 +194,12 @@ struct TranscriptView: View {
 	}
 }
 
+private struct EarlierStep: Equatable {
+	let wanted: Bool
+	let start: Int
+	let oldest: EntryID?
+}
+
 /// A search result's entry to scroll to, new each time one is picked, so picking the same result again scrolls again.
 struct RevealTarget: Equatable {
 	let id = UUID()
@@ -189,8 +209,9 @@ struct RevealTarget: Equatable {
 /// The transcript's rows, animated as they arrive once `animated`. They're in a plain stack, laid out exactly: a lazy
 /// stack estimates the height of rows it hasn't laid out and corrects it as they come and go, which made the content
 /// jump by thousands of points while an answer streamed over a long history. To keep a plain stack cheap, it holds a
-/// window: from `window` rows before the end when the transcript opened, plus every row after. "Show earlier" at the top
-/// adds `window` older rows at a time, keeping the row that was first where it was.
+/// window: from `window` rows before the end when the transcript opened, plus every row after. Opening lays out every
+/// row in it, so it's small; scrolling to its top adds `page` older rows at a time, keeping the row that was first where
+/// it was.
 private struct TranscriptRows: View, Equatable {
 	let store: ConversationStore
 	let ledger: RevealLedger
@@ -198,21 +219,25 @@ private struct TranscriptRows: View, Equatable {
 	/// A search result's entry to show.
 	let target: RevealTarget?
 	let showsPages: Bool
+	/// The reader is near the top: earlier rows are added, a page at a time, then fetched from the host, until they
+	/// aren't near it any more or there are none.
+	let wantsEarlier: Bool
 	/// Scrolls so row `id` is at the top, after earlier rows are added above it.
 	let keepAtTop: (String) -> Void
 	/// Scrolls to a search result's row and stops following.
 	let reveal: (String) -> Void
-	/// How many times "show earlier" was used.
+	/// How many pages of earlier rows were added.
 	@State private var pages = 0
 	/// The row a search result named, lit for a moment once shown.
 	@State private var lit: String?
 
-	private static let window = 60
+	private static let window = 20
+	private static let page = 30
 
 	/// The follow moves the scroll position every frame, which rebuilds the view holding this one; comparing the data
 	/// (not the closure) keeps that from rebuilding every row.
 	nonisolated static func == (a: Self, b: Self) -> Bool {
-		a.store === b.store && a.ledger === b.ledger && a.animated == b.animated && a.target == b.target && a.showsPages == b.showsPages
+		a.store === b.store && a.ledger === b.ledger && a.animated == b.animated && a.target == b.target && a.showsPages == b.showsPages && a.wantsEarlier == b.wantsEarlier
 	}
 
 	var body: some View {
@@ -221,12 +246,11 @@ private struct TranscriptRows: View, Equatable {
 		let start = startIndex(rows)
 		VStack(spacing: 0) {
 			if start > 0 {
+				// Scrolling near the top adds these on its own (`wantsEarlier`); the button is for when it doesn't.
 				Button {
-					let first = rows[start].id
-					pages += 1
-					keepAtTop(first)
+					addPage(rows, start: start)
 				} label: {
-					Text("[show \(min(start, Self.window)) earlier]")
+					Text("[show \(min(start, Self.page)) earlier]")
 						.font(Typography.uiSmall)
 						.foregroundStyle(Palette.ink3)
 						.frame(maxWidth: .infinity)
@@ -253,6 +277,22 @@ private struct TranscriptRows: View, Equatable {
 			guard let target else { return }
 			showEntry(target.entry, in: rows)
 		}
+		// Named by what a step changes, so each page added or fetched asks again while the reader is still near the top.
+		.task(id: EarlierStep(wanted: wantsEarlier, start: start, oldest: store.state.items.first?.id)) {
+			guard wantsEarlier else { return }
+			if start > 0 {
+				addPage(rows, start: start)
+			} else if store.state.hasEarlier {
+				await store.loadEarlier()
+			}
+		}
+	}
+
+	/// Adds a page of earlier rows above, keeping the row that was first where it was.
+	private func addPage(_ rows: [TranscriptRow], start: Int) {
+		let first = rows[start].id
+		pages += 1
+		keepAtTop(first)
 	}
 
 	/// Shows a search result's entry: widens the window until its row is in it, scrolls there and lights it briefly.
@@ -260,7 +300,7 @@ private struct TranscriptRows: View, Equatable {
 		guard store.state.hasSnapshot else { return }
 		guard let id = TranscriptLayout.rowID(for: entry, in: rows, state: store.state), let index = rows.firstIndex(where: { $0.id == id }) else { return }
 		let start = startIndex(rows)
-		if index < start { pages += Int((Double(start - index) / Double(Self.window)).rounded(.up)) }
+		if index < start { pages += Int((Double(start - index) / Double(Self.page)).rounded(.up)) }
 		Task { @MainActor in
 			// The rows above it are laid out over a few passes, each moving it; scrolling again after each lands on it.
 			for wait in [60, 180, 400] {
@@ -274,7 +314,7 @@ private struct TranscriptRows: View, Equatable {
 	}
 
 	/// The first row shown: `window` rows before the end when the transcript opened (or a fresh snapshot replaced its
-	/// rows), less a window for each "show earlier".
+	/// rows), less `page` rows for each page added.
 	private func startIndex(_ rows: [TranscriptRow]) -> Int {
 		guard store.state.hasSnapshot, !rows.isEmpty else { return 0 }
 		let anchor: Int
@@ -284,7 +324,7 @@ private struct TranscriptRows: View, Equatable {
 			anchor = max(0, rows.count - Self.window)
 			ledger.recentStart = rows[anchor].id
 		}
-		return max(0, anchor - pages * Self.window)
+		return max(0, anchor - pages * Self.page)
 	}
 
 	/// Rows already there when the snapshot first arrives show in full; the ledger reveals only what comes after.
@@ -322,7 +362,7 @@ struct TranscriptRowView: View, Equatable {
 				Spacer()
 			}
 			.padding(.vertical, 10)
-			.task { await store.loadEarlier() }
+			// The transcript fetches them while the reader is near the top (TranscriptRows.wantsEarlier).
 		case .user(let message, _, let at):
 			if let restore = message.restore { RestoreLine(restore: restore) }
 			InputRow(text: message.text, images: message.images, videos: message.videos, files: message.files, at: at)
@@ -410,7 +450,7 @@ private struct InputRow: View {
 					}
 				}
 				.sheet(item: $showingCheckpoint) { checkpoint in
-					CheckpointSheet(store: store, checkpoint: checkpoint, message: text.isEmpty ? "A message" : String(text.prefix(200)), busy: store.state.isBusy || !store.state.approvals.isEmpty)
+					CheckpointSheet(store: store, checkpoint: checkpoint, message: text.isEmpty ? "A message" : String(text.prefix(200)), busy: store.isBusy || !store.approvals.isEmpty)
 				}
 			Disclosure(open: pending?.failure != nil) {
 				if let pending, let failure = pending.failure {

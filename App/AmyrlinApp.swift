@@ -250,8 +250,8 @@ private struct StatusLine: View {
 				Text("  │  ").foregroundStyle(Palette.rule2)
 				SessionSettingsLine(store: store, host: selected.machine.store)
 				Spacer(minLength: 8)
-				if !store.state.inbox.isEmpty { segment("\(store.state.inbox.count) queued", trailing: true) }
-				if !store.state.approvals.isEmpty {
+				if !store.inbox.isEmpty { segment("\(store.inbox.count) queued", trailing: true) }
+				if !store.approvals.isEmpty {
 					Text("needs you").foregroundStyle(Palette.wait).padding(.trailing, 14)
 				}
 				RunClock(turns: store.turns)
@@ -333,7 +333,7 @@ private struct SessionSettingsLine: View {
 	let host: HostStore
 
 	var body: some View {
-		let settings = store.state.settings
+		let settings = store.settings
 		let thinking = settings?.stored.thinkingLevel ?? settings?.effective.thinkingLevel
 		let context = ComposerView.contextLine(store: store, host: host)
 		HStack(spacing: 0) {

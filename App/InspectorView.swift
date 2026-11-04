@@ -7,7 +7,7 @@ struct InspectorView: View {
 	let store: ConversationStore
 	let host: HostStore
 
-	private var settings: ConversationSettings? { store.state.settings }
+	private var settings: ConversationSettings? { store.settings }
 	private var models: [ModelInfo] { host.info?.models ?? [] }
 	private var currentModel: ModelRef? { settings?.stored.model ?? settings?.effective.model }
 	private var currentInfo: ModelInfo? { currentModel.flatMap { ref in models.first { $0.ref == ref } } }
@@ -48,7 +48,7 @@ struct InspectorView: View {
 						}
 					}
 					if let dir = settings?.effective.cwd ?? settings?.stored.cwd {
-						PanelSection(store.state.conversation?.project ?? "scratch", titleColor: store.state.conversation?.project.map { Palette.project($0, in: host.state.projectColors) } ?? Palette.ink3) {
+						PanelSection(store.conversation?.project ?? "scratch", titleColor: store.conversation?.project.map { Palette.project($0, in: host.state.projectColors) } ?? Palette.ink3) {
 							Text(ConversationView.shortPath(dir))
 								.font(Typography.uiSmall)
 								.foregroundStyle(Palette.ink2)
@@ -81,7 +81,7 @@ struct InspectorView: View {
 						}
 					}
 					PanelSection("Usage") {
-						let spend = store.state.spend
+						let spend = store.spend
 						Row("Tokens") { Value(spend.total.formatted()) }
 						Row("Output") { Value(spend.output.formatted()) }
 						Row("Cached") { Value(spend.cacheRead.formatted()) }
@@ -109,14 +109,7 @@ struct InspectorView: View {
 		.background(Palette.panel)
 	}
 
-	private var contextUsed: Int? {
-		for item in store.state.items.reversed() {
-			if case .assistant(let answer) = item.body, let spend = answer.spend, spend.input + spend.cacheRead + spend.cacheWrite > 0 {
-				return spend.input + spend.cacheRead + spend.cacheWrite
-			}
-		}
-		return nil
-	}
+	private var contextUsed: Int? { store.contextUsed }
 }
 
 /// The models a session's host offers, as menu items, under their providers when there's more than one; picking one
@@ -127,7 +120,7 @@ struct ModelChoices: View {
 
 	var body: some View {
 		let groups = ModelNaming.byProvider(host.info?.models ?? [])
-		let settings = store.state.settings
+		let settings = store.settings
 		let current = settings?.stored.model ?? settings?.effective.model
 		ForEach(groups, id: \.provider) { group in
 			if groups.count > 1 {
@@ -154,7 +147,7 @@ struct ThinkingChoices: View {
 	let host: HostStore
 
 	var body: some View {
-		let settings = store.state.settings
+		let settings = store.settings
 		let ref = settings?.stored.model ?? settings?.effective.model
 		let info = ref.flatMap { ref in host.info?.models.first { $0.ref == ref } }
 		ForEach(info?.thinkingLevels ?? ThinkingLevel.known, id: \.self) { level in

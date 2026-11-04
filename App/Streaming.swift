@@ -28,7 +28,9 @@ extension AnyTransition {
 /// clipped, as it fades. Two things make that work. The height is measured, because SwiftUI can't interpolate
 /// between a natural height and zero; it would snap the layout and only fade the drawing. And the change is made in
 /// its own animated transaction, so every row it moves (the rest of the round, the rows below) glides with it rather
-/// than jumping to where it ends up. Closed content is kept only while it animates away.
+/// than jumping to where it ends up. Closed content is kept only while it animates away. Once open and still, the
+/// frame lets go of the measured height: the measure comes a layout pass late, so content growing while open (a
+/// running call's output, streaming thinking) was clipped for a frame and then jumped.
 struct Disclosure<Content: View>: View {
 	let open: Bool
 	@ViewBuilder let content: Content
@@ -36,12 +38,17 @@ struct Disclosure<Content: View>: View {
 	/// Whether the frame takes the content's height or none; follows `open` once the content is measured.
 	@State private var shown: Bool
 	@State private var height: CGFloat?
+	/// Open and not animating: the content takes its own height.
+	@State private var natural: Bool
+	/// Counts changes, so a late step of an earlier one doesn't act.
+	@State private var change = 0
 
 	init(open: Bool, @ViewBuilder content: () -> Content) {
 		self.open = open
 		self.content = content()
 		_mounted = State(initialValue: open)
 		_shown = State(initialValue: open)
+		_natural = State(initialValue: open)
 	}
 
 	var body: some View {
@@ -53,21 +60,37 @@ struct Disclosure<Content: View>: View {
 		.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measured in
 			height = measured
 			// Opening content that wasn't there before: now that it's measured, it can grow from nothing.
-			if open, !shown, measured > 0 { withAnimation(.row) { shown = true } }
+			if open, !shown, measured > 0 { grow() }
 		}
-		.frame(height: shown ? height : 0, alignment: .top)
+		.frame(height: natural ? nil : shown ? height : 0, alignment: .top)
 		.clipped()
 		.opacity(shown ? 1 : 0)
 		.onChange(of: open) { _, now in
+			change += 1
+			let this = change
 			if now {
-				if mounted, (height ?? 0) > 0 { withAnimation(.row) { shown = true } } else { mounted = true }
+				if mounted, (height ?? 0) > 0 { grow() } else { mounted = true }
 			} else {
-				withAnimation(.row) { shown = false }
-				Task {
+				// Back to the measured height without animating, then from it to nothing: a frame can't animate from
+				// no height at all.
+				natural = false
+				Task { @MainActor in
+					guard change == this else { return }
+					withAnimation(.row) { shown = false }
 					try? await Task.sleep(for: .seconds(0.4))
-					if !open { mounted = false }
+					if change == this { mounted = false }
 				}
 			}
+		}
+	}
+
+	/// Opens to the measured height, then lets go of it once the animation is over.
+	private func grow() {
+		let this = change
+		withAnimation(.row) { shown = true }
+		Task { @MainActor in
+			try? await Task.sleep(for: .seconds(0.32))
+			if change == this, shown { natural = true }
 		}
 	}
 }
@@ -137,8 +160,14 @@ final class RevealClock {
 struct TailFade: TextRenderer {
 	var span = 36.0
 	var floor = 0.12
+	/// Off, it draws the text as it is.
+	var on = true
 
 	func draw(layout: Text.Layout, in context: inout GraphicsContext) {
+		guard on else {
+			for line in layout { context.draw(line) }
+			return
+		}
 		var total = 0
 		for line in layout { for run in line { total += run.count } }
 		var index = 0
@@ -162,9 +191,10 @@ struct TailFade: TextRenderer {
 }
 
 extension Text {
-	/// `TailFade` while `on`, the plain text otherwise.
-	@ViewBuilder func tailFade(_ on: Bool) -> some View {
-		if on { textRenderer(TailFade()) } else { self }
+	/// `TailFade` while `on`, the plain text otherwise. The renderer stays either way: a branch here made the text a
+	/// different view when its reveal ended or the next block took over the tail, and SwiftUI replaced it, a blink.
+	func tailFade(_ on: Bool) -> some View {
+		textRenderer(TailFade(on: on))
 	}
 }
 
@@ -174,7 +204,8 @@ struct Shimmer: ViewModifier {
 	var highlight: Color = Palette.ink
 
 	func body(content: Content) -> some View {
-		TimelineView(.animation) { context in
+		// 30 frames a second: a slow light needs no more, and each frame redraws the text.
+		TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
 			let period = 1.8
 			let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
 			let centre = -0.4 + phase * 1.8

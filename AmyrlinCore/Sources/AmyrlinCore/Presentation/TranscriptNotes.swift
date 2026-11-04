@@ -14,7 +14,8 @@ public struct TranscriptRestore: Sendable, Hashable {
 
 	/// The restore a text block's note names and the text without the note, or nil when it has none.
 	static func take(_ text: String) -> (restore: TranscriptRestore, rest: String)? {
-		guard let match = text.firstMatch(of: note), let checkpoint = Int(match.output.1) else { return nil }
+		// The regex is slow and the transcript reads every message on each update; most have no note.
+		guard text.hasNote("<restored"), let match = text.firstMatch(of: note), let checkpoint = Int(match.output.1) else { return nil }
 		return (TranscriptRestore(checkpoint: checkpoint), text.replacing(note, with: ""))
 	}
 }
@@ -44,6 +45,7 @@ public struct TranscriptFile: Sendable, Hashable {
 
 	/// The files a text block's notes stand for and the text without them, or nil when it has none.
 	static func take(_ text: String) -> (files: [TranscriptFile], rest: String)? {
+		guard text.hasNote("<file") else { return nil }
 		let notes = text.matches(of: note)
 		guard !notes.isEmpty else { return nil }
 		let files = notes.map { file(from: String($0.output.1)) }
@@ -116,6 +118,31 @@ public struct UserMessage: Sendable, Hashable {
 
 	/// Text without the host's notes, such as a queued message's.
 	public static func withoutNotes(_ text: String) -> String {
-		TranscriptVideo.withoutNotes((TranscriptRestore.take(text)?.rest ?? text).replacing(TranscriptFile.note, with: ""))
+		let rest = TranscriptRestore.take(text)?.rest ?? text
+		return TranscriptVideo.withoutNotes(rest.hasNote("<file") ? rest.replacing(TranscriptFile.note, with: "") : rest)
+	}
+}
+
+extension String {
+	/// Whether `tag` appears, compared byte by byte: much faster than `contains`, which compares Characters. The
+	/// transcript checks every message for the host's notes on each update, and most have none.
+	func hasNote(_ tag: StaticString) -> Bool {
+		let needle = UnsafeBufferPointer(start: tag.utf8Start, count: tag.utf8CodeUnitCount)
+		guard let first = needle.first else { return true }
+		var copy = self
+		return copy.withUTF8 { bytes in
+			guard bytes.count >= needle.count else { return false }
+			var i = 0
+			let last = bytes.count - needle.count
+			while i <= last {
+				if bytes[i] == first {
+					var j = 1
+					while j < needle.count, bytes[i + j] == needle[j] { j += 1 }
+					if j == needle.count { return true }
+				}
+				i += 1
+			}
+			return false
+		}
 	}
 }

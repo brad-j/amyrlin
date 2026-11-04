@@ -10,7 +10,7 @@ struct MarkdownView: View {
 	var revealing = false
 
 	var body: some View {
-		let blocks = Markdown.blocks(revealing ? Markdown.settled(source) : source)
+		let blocks = revealing ? Markdown.blocks(Markdown.settled(source)) : MarkdownCache.blocks(source)
 		VStack(alignment: .leading, spacing: 10) {
 			ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
 				// Equatable, so finished blocks above the one being written aren't laid out again each frame.
@@ -31,7 +31,7 @@ private struct BlockView: View, Equatable {
 		case .paragraph(let text):
 			Inline(text, tail: tail)
 		case .heading(let level, let text):
-			Text(Inline.attributed(text, strong: Typography.heading(level)))
+			Text(tail ? Inline.parse(text, strong: Typography.heading(level)) : Inline.attributed(text, strong: Typography.heading(level)))
 				.font(Typography.heading(level))
 				.foregroundStyle(Palette.ink)
 				.tailFade(tail)
@@ -89,7 +89,8 @@ private struct Inline: View {
 	}
 
 	var body: some View {
-		Text(Self.attributed(text))
+		// Text still being revealed changes every frame; keeping each version would only fill the cache.
+		Text(tail ? Self.parse(text, strong: Typography.readingStrong) : Self.attributed(text))
 			.font(Typography.reading)
 			.foregroundStyle(color)
 			.tailFade(tail)
@@ -99,8 +100,13 @@ private struct Inline: View {
 			.tint(Palette.accent)
 	}
 
-	/// `strong` is the font for **bold**; left to SwiftUI it would be Plex Bold, three steps above light text.
+	/// `strong` is the font for **bold**; left to SwiftUI it would be Plex Bold, three steps above light text. Cached:
+	/// Foundation's parser takes most of a millisecond a paragraph, and opening a session lays out every row again.
 	static func attributed(_ text: String, strong: Font = Typography.readingStrong) -> AttributedString {
+		MarkdownCache.attributed(text, strong: strong) { parse(text, strong: strong) }
+	}
+
+	static func parse(_ text: String, strong: Font) -> AttributedString {
 		let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
 		var attributed = (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
 		for run in attributed.runs where run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true {
@@ -185,5 +191,38 @@ private struct TableBlock: View {
 		.padding(12)
 		.background(Palette.paper2, in: RoundedRectangle(cornerRadius: Metrics.radius))
 		.overlay(RoundedRectangle(cornerRadius: Metrics.radius).stroke(Palette.rule))
+	}
+}
+
+/// Parsed Markdown kept across redraws and sessions. Finished text never changes, so its blocks and inline runs are
+/// parsed once; switching back to a session finds them here. Text still streaming isn't kept. Cleared when it grows
+/// past `limit`, and the fonts it holds are keyed by the text size, so a new size parses again.
+@MainActor
+enum MarkdownCache {
+	private static var blocks: [String: [MarkdownBlock]] = [:]
+	private static var inline: [InlineKey: AttributedString] = [:]
+	private static let limit = 4000
+
+	private struct InlineKey: Hashable {
+		let text: String
+		let strong: Font
+		let scale: CGFloat
+	}
+
+	static func blocks(_ source: String) -> [MarkdownBlock] {
+		if let cached = blocks[source] { return cached }
+		let parsed = Markdown.blocks(source)
+		if blocks.count >= limit { blocks.removeAll(keepingCapacity: true) }
+		blocks[source] = parsed
+		return parsed
+	}
+
+	static func attributed(_ text: String, strong: Font, parse: () -> AttributedString) -> AttributedString {
+		let key = InlineKey(text: text, strong: strong, scale: Typography.textScale)
+		if let cached = inline[key] { return cached }
+		let parsed = parse()
+		if inline.count >= limit { inline.removeAll(keepingCapacity: true) }
+		inline[key] = parsed
+		return parsed
 	}
 }

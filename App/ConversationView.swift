@@ -15,7 +15,7 @@ struct ConversationView: View {
 
 	var body: some View {
 		VStack(spacing: 0) {
-			ConversationHeader(title: summary?.title ?? store.state.conversation?.title ?? "Conversation", project: summary?.project, dir: summary?.dir, colors: host.state.projectColors, busy: store.state.isBusy, rename: rename)
+			ConversationHeader(title: summary?.title ?? store.conversation?.title ?? "Conversation", project: summary?.project, dir: summary?.dir, colors: host.state.projectColors, busy: store.isBusy, rename: rename)
 			// Under the header, so the header stays in line with the side columns' bands.
 			if let problem = store.problem {
 				Banner(text: "Stopped watching: \(problem)", color: Palette.bad)
@@ -25,7 +25,7 @@ struct ConversationView: View {
 			FillSpace { TranscriptView(store: store, showsPages: host.info?.pages == true) }
 			VStack(spacing: 8) {
 				// An approval rises in above the composer and drops away once answered, instead of popping.
-				ForEach(store.state.approvals) { approval in
+				ForEach(store.approvals) { approval in
 					ApprovalCard(approval: approval, store: store)
 						.frame(maxWidth: Metrics.measure + 48)
 						.padding(.horizontal, 40)
@@ -41,7 +41,7 @@ struct ConversationView: View {
 			.padding(.top, 18)
 			.padding(.bottom, 12)
 			.frame(maxWidth: .infinity)
-			.animation(.row, value: store.state.approvals.map(\.approvalId))
+			.animation(.row, value: store.approvals.map(\.approvalId))
 		}
 		.background(Palette.paper)
 		.alert("Command failed", isPresented: Binding(get: { store.lastError != nil }, set: { if !$0 { store.lastError = nil } })) {
@@ -223,7 +223,7 @@ struct ComposerView: View {
 	private var attachments: Attachments { composition.attachments }
 	private var pasted: PastedText { composition.pasted }
 
-	private var busy: Bool { store.state.isBusy }
+	private var busy: Bool { store.isBusy }
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 8) {
@@ -285,7 +285,7 @@ struct ComposerView: View {
 	/// The session's model as the status line names it, lowercased: `opus 5.5`, or `opus 5.5 via claude code` when the
 	/// host offers models from more than one provider.
 	@MainActor static func modelName(store: ConversationStore, host: HostStore) -> String? {
-		let settings = store.state.settings
+		let settings = store.settings
 		guard let ref = settings?.stored.model ?? settings?.effective.model else { return nil }
 		let models = host.info?.models ?? []
 		let name = ModelNaming.name(ref, in: models).lowercased()
@@ -294,22 +294,12 @@ struct ComposerView: View {
 
 	/// How full the context is, as the status line says it: `ctx 24k/1M`.
 	@MainActor static func contextLine(store: ConversationStore, host: HostStore) -> String? {
-		guard let used = contextUsed(store) else { return nil }
-		let settings = store.state.settings
+		guard let used = store.contextUsed else { return nil }
+		let settings = store.settings
 		let ref = settings?.stored.model ?? settings?.effective.model
 		let info = ref.flatMap { ref in host.info?.models.first { $0.ref == ref } }
 		let window = info?.contextWindow.map { "/\(tokens($0))" } ?? ""
 		return "ctx \(tokens(used))\(window)"
-	}
-
-	/// Tokens the newest answer's request sent: what the context holds now.
-	@MainActor static func contextUsed(_ store: ConversationStore) -> Int? {
-		for item in store.state.items.reversed() {
-			if case .assistant(let answer) = item.body, let spend = answer.spend, spend.input + spend.cacheRead + spend.cacheWrite > 0 {
-				return spend.input + spend.cacheRead + spend.cacheWrite
-			}
-		}
-		return nil
 	}
 
 	static func tokens(_ n: Int) -> String {

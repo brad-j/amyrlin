@@ -22,7 +22,8 @@ public struct TranscriptVideo: Sendable, Hashable {
 		for (index, block) in content.enumerated() {
 			switch block {
 			case .text(let text):
-				let notes = text.matches(of: note)
+				// The regex is slow and the transcript reads every message on each update; most have no note.
+				let notes = text.hasNote("<video") ? text.matches(of: note) : []
 				guard !notes.isEmpty else {
 					taking = nil
 					texts.append(text)
@@ -61,7 +62,7 @@ public struct TranscriptVideo: Sendable, Hashable {
 extension TranscriptVideo {
 	/// Text without the videos' notes, such as a queued message's.
 	public static func withoutNotes(_ text: String) -> String {
-		text.replacing(note, with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+		(text.hasNote("<video") ? text.replacing(note, with: "") : text).trimmingCharacters(in: .whitespacesAndNewlines)
 	}
 
 	/// What the transcript says of where the video is: `on the host until Nov 12`, or that it's gone, as of `now`.

@@ -34,6 +34,21 @@ public final class ConversationStore {
 	/// session outside git or one from before checkpoints; nil for a host without them, which answers `unknown_method`.
 	public private(set) var checkpoints: [Checkpoint]? = []
 
+	// MARK: The state's parts the chrome shows
+
+	// Copies of parts of `state`, set only when they change. `state` changes with every streamed delta, and a view that
+	// reads any of it redraws each time; the header, composer, status line and inspector read these instead, so they
+	// redraw only when what they show changes. Only the transcript reads `state`.
+	public private(set) var hasSnapshot = false
+	public private(set) var isBusy = false
+	public private(set) var conversation: ConversationRef?
+	public private(set) var approvals: [Approval] = []
+	public private(set) var inbox: [InboxItem] = []
+	public private(set) var settings: ConversationSettings?
+	public private(set) var spend: Spend = .zero
+	/// Tokens the newest answer's request sent: what the context holds now.
+	public private(set) var contextUsed: Int?
+
 	@ObservationIgnored private let connection: HostConnection
 	@ObservationIgnored private var task: Task<Void, Never>?
 	@ObservationIgnored private var subscription: Subscription<ConversationEvent>?
@@ -97,6 +112,7 @@ public final class ConversationStore {
 		await run { connection in
 			let result = try await connection.send(Commands.Configure(conversationId: self.id, changes: change))
 			self.state.settings = result.settings
+			self.publish()
 		}
 	}
 
@@ -120,6 +136,7 @@ public final class ConversationStore {
 		await run { connection in
 			let page = try await connection.send(Commands.History(conversationId: self.id, before: oldest, limit: limit))
 			self.state.prepend(history: page.items, hasEarlier: page.hasEarlier)
+			self.publish()
 		}
 	}
 
@@ -259,16 +276,40 @@ public final class ConversationStore {
 
 	/// Drops pending sends the state now shows, in the transcript or the inbox.
 	private func settleOutbox(afterSnapshot: Bool) {
-		outbox.removeAll { pending in
-			guard pending.failure == nil else { return false }
-			if state.submission(requestId: pending.id) != nil { return true }
-			if state.inbox.contains(where: { $0.requestId == pending.id || $0.submissionId == pending.submissionId }) { return true }
+		// Assigned only when one goes: `removeAll` notifies the transcript even when it removes nothing.
+		let kept = outbox.filter { pending in
+			guard pending.failure == nil else { return true }
+			if state.submission(requestId: pending.id) != nil { return false }
+			if state.inbox.contains(where: { $0.requestId == pending.id || $0.submissionId == pending.submissionId }) { return false }
 			// A snapshot after the response holds the input, in the transcript or the inbox.
-			return afterSnapshot && pending.submissionId != nil
+			return !(afterSnapshot && pending.submissionId != nil)
 		}
+		if kept.count != outbox.count { outbox = kept }
 	}
 
 	// MARK: Watching
+
+	/// Copies the chrome's parts of `state` that changed.
+	private func publish() {
+		if hasSnapshot != state.hasSnapshot { hasSnapshot = state.hasSnapshot }
+		if isBusy != state.isBusy { isBusy = state.isBusy }
+		if conversation != state.conversation { conversation = state.conversation }
+		if approvals != state.approvals { approvals = state.approvals }
+		if inbox != state.inbox { inbox = state.inbox }
+		if settings != state.settings { settings = state.settings }
+		if spend != state.spend { spend = state.spend }
+		let used = Self.contextUsed(state)
+		if contextUsed != used { contextUsed = used }
+	}
+
+	static func contextUsed(_ state: ConversationState) -> Int? {
+		for item in state.items.reversed() {
+			if case .assistant(let answer) = item.body, let spend = answer.spend, spend.input + spend.cacheRead + spend.cacheWrite > 0 {
+				return spend.input + spend.cacheRead + spend.cacheWrite
+			}
+		}
+		return nil
+	}
 
 	private func watch() async {
 		let subscription = await connection.watchConversation(id)
@@ -276,13 +317,18 @@ public final class ConversationStore {
 		for await update in subscription.updates {
 			switch update {
 			case .events(let events):
-				isResyncing = false
+				if isResyncing { isResyncing = false }
 				let wasBusy = state.isBusy
-				if case .needsResync(let reason) = state.apply(events) {
+				let outcome = state.apply(events)
+				publish()
+				if case .needsResync(let reason) = outcome {
 					isResyncing = true
 					await subscription.resync(reason: reason)
 				}
-				turns.observe(state, snapshot: events.first?.isSnapshot == true)
+				// Assigned only when it changes: assigning, even the same value, redraws whatever reads it.
+				var clock = turns
+				clock.observe(state, snapshot: events.first?.isSnapshot == true)
+				if clock != turns { turns = clock }
 				settleOutbox(afterSnapshot: events.first?.isSnapshot == true)
 				// A turn's checkpoint is taken as it starts, and its changes are final once it ends. The host takes it just
 				// before the turn's first request, which can be after run.started, so it's read again once the newest
