@@ -238,6 +238,10 @@ public enum HostEvent: Decodable, Sendable, Hashable {
 	case spend(Spend)
 	/// The picked project colours changed (aludra).
 	case projectColors([String: Int])
+	/// Every project's entry, sent whole when any checkout changes (aludra).
+	case projects([ProjectInfo])
+	/// A ship ended (aludra).
+	case shipped(ShipEvent)
 	case unknown(type: String)
 
 	public init(from decoder: any Decoder) throws {
@@ -249,11 +253,13 @@ public enum HostEvent: Decodable, Sendable, Hashable {
 		case "conversation.updated": self = .conversationUpdated(try c.decode(ConversationSummary.self, forKey: .conversation))
 		case "conversation.removed": self = .conversationRemoved(try c.decode(ConversationID.self, forKey: .conversationId))
 		case "host.spend": self = .spend(try c.decode(Spend.self, forKey: .spend))
+		case "host.projects": self = .projects(try c.decode([ProjectInfo].self, forKey: .projects))
+		case "sandbox.shipped": self = .shipped(try ShipEvent(from: decoder))
 		default: self = .unknown(type: type)
 		}
 	}
 
-	private enum CodingKeys: String, CodingKey { case type, conversation, conversationId, spend, projectColors }
+	private enum CodingKeys: String, CodingKey { case type, conversation, conversationId, spend, projectColors, projects }
 }
 
 /// An event that failed to decode, kept so the subscription can log it and resync.

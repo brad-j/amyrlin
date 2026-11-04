@@ -9,6 +9,10 @@ public struct HostState: Sendable, Hashable {
 	public var monthCost: Double?
 	/// Projects whose colour was picked on this host: name to `ProjectColor.hues` index.
 	public var projectColors: [String: Int] = [:]
+	/// Projects as `host.projects` last sent them, with their checkouts; nil until one comes, when `host.info`'s stand.
+	public var projects: [ProjectInfo]?
+	/// The latest ship's outcome per session, as `sandbox.shipped` reported it while watching.
+	public var ships: [ConversationID: ShipOutcome] = [:]
 	public private(set) var conversations: [ConversationID: ConversationSummary] = [:]
 	public private(set) var hasSnapshot = false
 
@@ -67,6 +71,10 @@ public struct HostState: Sendable, Hashable {
 			self.spend = spend
 		case .projectColors(let colors):
 			projectColors = colors
+		case .projects(let list):
+			projects = list
+		case .shipped(let event):
+			ships[event.conversationId] = event.outcome
 		case .unknown(let type):
 			return .needsResync(reason: "unknown event type \(type)")
 		}

@@ -496,8 +496,10 @@ public struct Limits: Decodable, Sendable, Hashable {
 }
 
 public struct StuckInfo: Decodable, Sendable, Hashable {
+	/// A blocked durable task's reason, or `sandbox_failed` (aludra), whose text is the summary's `sandbox.reason`.
 	public var reason: String
 	public var taskKind: String?
+	public var detail: String?
 }
 
 /// One row of the sidebar (protocol section 4.10).
@@ -519,6 +521,12 @@ public struct ConversationSummary: Decodable, Sendable, Hashable, Identifiable {
 	public var workspace: String?
 	public var project: String?
 	public var dir: String?
+	/// Set when its tools run in a sandbox (aludra, protocol section 10 item 19); `dir` is then in the sandbox.
+	public var sandbox: SandboxInfo?
+	/// The project's directory on the host, for a sandbox session.
+	public var source: String?
+	/// One short sentence of where it stands, set by the host (aludra).
+	public var line: String?
 
 	/// Whether anything was said in it yet: a session's `updatedAt` is its newest item's time, or `createdAt` with none.
 	public var hasMessages: Bool { updatedAt != createdAt }
@@ -540,10 +548,13 @@ public struct ConversationSummary: Decodable, Sendable, Hashable, Identifiable {
 		workspace = try c.decodeIfPresent(String.self, forKey: .workspace)
 		project = try c.decodeIfPresent(String.self, forKey: .project)
 		dir = try c.decodeIfPresent(String.self, forKey: .dir)
+		sandbox = try c.decodeIfPresent(SandboxInfo.self, forKey: .sandbox)
+		source = try c.decodeIfPresent(String.self, forKey: .source)
+		line = try c.decodeIfPresent(String.self, forKey: .line)
 	}
 
 	private enum CodingKeys: String, CodingKey {
-		case id, title, status, archived, parent, model, createdAt, updatedAt, pendingApprovals, spend, cost, stuck, workspace, project, dir
+		case id, title, status, archived, parent, model, createdAt, updatedAt, pendingApprovals, spend, cost, stuck, workspace, project, dir, sandbox, source, line
 	}
 }
 
@@ -569,6 +580,8 @@ public struct ProjectInfo: Decodable, Sendable, Hashable, Identifiable {
 	/// Relative to the workspace root, such as `Software/aludra`.
 	public var path: String
 	public var dir: String
+	/// Its checkout on the host (aludra, protocol section 10 item 19).
+	public var checkout: Checkout?
 
 	public var id: String { dir }
 }

@@ -76,8 +76,8 @@ public final class HostStore {
 	}
 
 	/// A new conversation, in `project` when the server has projects, starting with `text` when given.
-	public func createConversation(title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = []) async throws -> ConversationSummary {
-		let result = try await connection.send(Commands.CreateConversation(title: title, settings: settings, project: project, text: text, images: images, videos: videos, files: files))
+	public func createConversation(title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = [], sandbox: Bool = false, approvals: Approvals? = nil, group: String? = nil) async throws -> ConversationSummary {
+		let result = try await connection.send(Commands.CreateConversation(title: title, settings: settings, project: project, text: text, images: images, videos: videos, files: files, sandbox: sandbox, approvals: approvals, group: group))
 		state.upsert(result.conversation)
 		return result.conversation
 	}
@@ -124,6 +124,56 @@ public final class HostStore {
 	public func searchMessages(_ query: String, limit: Int = 30) async throws -> [SearchResult] {
 		guard has(Commands.SearchMessages.method) else { return [] }
 		return try await sendExtension(Commands.SearchMessages(query: query, limit: limit)).results
+	}
+
+	// MARK: Sandbox tasks (protocol section 10 item 19)
+
+	/// The host's sandbox defaults; nil on a host without a sandbox host, which then offers none of it.
+	public var sandboxes: SandboxDefaults? { info?.sandboxes }
+
+	/// Projects with their checkouts as last read: `host.projects` once one came, `host.info`'s before.
+	public var projects: [ProjectInfo] { state.projects ?? info?.projects ?? [] }
+
+	/// The latest turn's result, or the plan while a run goes on; nil before any answer.
+	public func taskResult(_ id: ConversationID) async throws -> TaskResult? {
+		try await sendExtension(Commands.GetTaskResult(conversationId: id)).result
+	}
+
+	/// A result's screenshot as PNG bytes.
+	public func taskShot(_ id: ConversationID, shot: String) async throws -> Data {
+		let image = try await sendExtension(Commands.GetTaskShot(conversationId: id, shot: shot))
+		guard let data = Data(base64Encoded: image.data) else { throw ProtocolError(code: "internal", message: "The screenshot came back unreadable") }
+		return data
+	}
+
+	public func taskCode(_ id: ConversationID) async throws -> Changes {
+		try await sendExtension(Commands.TaskCode(conversationId: id)).changes
+	}
+
+	public func taskCodeDiff(_ id: ConversationID, path: String) async throws -> String {
+		try await sendExtension(Commands.TaskCodeDiff(conversationId: id, path: path)).patch
+	}
+
+	@discardableResult
+	public func syncSandbox(_ id: ConversationID, merge: Bool = false) async throws -> SyncResult {
+		try await sendExtension(Commands.SyncSandbox(conversationId: id, merge: merge))
+	}
+
+	/// Starts a ship. Sending it approves the push; how it ends comes as `sandbox.shipped`, in `state.ships`.
+	public func ship(_ id: ConversationID, to: ShipTo? = nil, note: String? = nil) async throws {
+		state.ships[id] = nil
+		_ = try await sendExtension(Commands.ShipSandbox(conversationId: id, to: to, note: note))
+	}
+
+	@discardableResult
+	public func discardSandbox(_ id: ConversationID) async throws -> Commands.DiscardSandbox.Result {
+		try await sendExtension(Commands.DiscardSandbox(conversationId: id))
+	}
+
+	/// Keeps one attempt of a group; the others are archived, their sandboxes and branches gone.
+	public func keep(_ id: ConversationID, of group: String) async throws {
+		let archived = try await sendExtension(Commands.KeepInGroup(group: group, conversationId: id)).archived
+		for other in archived { if var summary = state.conversations[other] { summary.archived = true; state.upsert(summary) } }
 	}
 
 	/// Picks `project`'s colour on this host, or with nil gives it back its name's.

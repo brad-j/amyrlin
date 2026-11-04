@@ -37,6 +37,8 @@ public enum Commands {
 			/// True when the agent can publish pages (`publish_page`) and `conversation.page` serves them (aludra, protocol
 			/// section 10); a client shows them inline only then.
 			public var pages: Bool?
+			/// Set on a host with a sandbox host (aludra, protocol section 10 item 19).
+			public var sandboxes: SandboxDefaults?
 		}
 		/// What a message's files may be, and the text length past which the host saves a message to a file.
 		public struct FileLimits: Decodable, Sendable, Hashable {
@@ -134,11 +136,17 @@ public enum Commands {
 			public var videos: [VideoUpload]?
 			/// The first message's files (aludra).
 			public var files: [FileUpload]?
+			/// Runs its tools in a sandbox of its own (aludra); answers at once, the sandbox made after.
+			public var sandbox: Bool?
+			/// With `sandbox`, overrides the host's `sandboxes.approvals`.
+			public var approvals: Approvals?
+			/// With `sandbox`, attempts at one ask (×3).
+			public var group: String?
 		}
 		public typealias Result = CreatedResult
 		public let params: Params
-		public init(requestId: String = UUID().uuidString, title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = []) {
-			params = Params(requestId: requestId, title: title, settings: settings, project: project, text: text, images: images.isEmpty ? nil : images, videos: videos.isEmpty ? nil : videos, files: files.isEmpty ? nil : files)
+		public init(requestId: String = UUID().uuidString, title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = [], sandbox: Bool = false, approvals: Approvals? = nil, group: String? = nil) {
+			params = Params(requestId: requestId, title: title, settings: settings, project: project, text: text, images: images.isEmpty ? nil : images, videos: videos.isEmpty ? nil : videos, files: files.isEmpty ? nil : files, sandbox: sandbox ? true : nil, approvals: sandbox ? approvals : nil, group: sandbox ? group : nil)
 		}
 	}
 
@@ -219,8 +227,24 @@ public enum Commands {
 			public var files: [FileUpload]?
 		}
 		public struct Result: Decodable, Sendable, Hashable {
-			public var submission: Submission
+			public var submission: Accepted
 			public var duplicate: Bool
+
+			public init(from decoder: any Decoder) throws {
+				let c = try decoder.container(keyedBy: CodingKeys.self)
+				submission = try c.decode(Accepted.self, forKey: .submission)
+				duplicate = try c.decodeIfPresent(Bool.self, forKey: .duplicate) ?? false
+			}
+
+			private enum CodingKeys: String, CodingKey { case submission, duplicate }
+		}
+		/// The submission as accepted. A message held for a sandbox that's still being made has no `id` until it's sent
+		/// (aludra); it's matched by `requestId` meanwhile.
+		public struct Accepted: Decodable, Sendable, Hashable {
+			public var id: SubmissionID?
+			public var requestId: String?
+			public var status: SubmissionStatus
+			public var entryId: EntryID?
 		}
 		public let params: Params
 		public init(conversationId: ConversationID, requestId: String, text: String, whenBusy: WhenBusy = .followUp, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = []) {

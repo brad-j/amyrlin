@@ -12,6 +12,8 @@ public struct PendingSend: Identifiable, Sendable, Hashable {
 	public var videos: [VideoUpload] = []
 	public var files: [FileUpload] = []
 	public var submissionId: SubmissionID?
+	/// The host is holding it until the session's sandbox is ready (aludra); it has no submission ID until then.
+	public var held = false
 	/// Set when the server refused it or its outcome is unknown; the user can retry.
 	public var failure: String?
 }
@@ -264,6 +266,7 @@ public final class ConversationStore {
 				let result = try await connection.send(command)
 				guard let index = outbox.firstIndex(where: { $0.id == pending.id }) else { return }
 				outbox[index].submissionId = result.submission.id
+				outbox[index].held = result.submission.id == nil
 				let entryShown = result.submission.entryId.map { entry in state.items.contains { $0.id == entry } } ?? false
 				if entryShown { outbox.remove(at: index) }
 				settleOutbox(afterSnapshot: false)
