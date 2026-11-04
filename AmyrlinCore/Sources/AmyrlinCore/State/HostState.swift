@@ -12,7 +12,12 @@ public struct HostState: Sendable, Hashable {
 	/// Projects as `host.projects` last sent them, with their checkouts; nil until one comes, when `host.info`'s stand.
 	public var projects: [ProjectInfo]?
 	/// The latest ship's outcome per session, as `sandbox.shipped` reported it while watching.
-	public var ships: [ConversationID: ShipOutcome] = [:]
+	public var shipEvents: [ConversationID: ShipOutcome] = [:]
+
+	/// A session's latest ship: the summary's when the host keeps it there, else the event's while watching.
+	public func ship(_ id: ConversationID) -> ShipOutcome? {
+		conversations[id]?.sandbox?.lastShip ?? shipEvents[id]
+	}
 	public private(set) var conversations: [ConversationID: ConversationSummary] = [:]
 	public private(set) var hasSnapshot = false
 
@@ -74,7 +79,7 @@ public struct HostState: Sendable, Hashable {
 		case .projects(let list):
 			projects = list
 		case .shipped(let event):
-			ships[event.conversationId] = event.outcome
+			shipEvents[event.conversationId] = event.outcome
 		case .unknown(let type):
 			return .needsResync(reason: "unknown event type \(type)")
 		}

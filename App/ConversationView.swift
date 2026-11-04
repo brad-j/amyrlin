@@ -486,12 +486,12 @@ struct TaskHeader: View {
 	private var canShip: Bool {
 		guard let sandbox = summary.sandbox, host.isConnected, summary.status != .busy, summary.hasMessages else { return false }
 		guard sandbox.state == .ready || sandbox.state == .paused else { return false }
-		if case .shipped = host.state.ships[summary.id] { return false }
+		if case .shipped = host.state.ship(summary.id) { return false }
 		return true
 	}
 
 	private var state: (text: String, color: Color) {
-		let ship = host.state.ships[summary.id]
+		let ship = host.state.ship(summary.id)
 		if let need = TaskGroups.need(summary, ship: ship) {
 			return switch need {
 			case .approval, .question: ("needs you", Palette.wait)

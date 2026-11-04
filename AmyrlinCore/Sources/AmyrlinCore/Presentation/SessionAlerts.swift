@@ -8,6 +8,8 @@ public struct SessionAlert: Sendable, Hashable {
 		/// A run ended and it's idle again.
 		case done
 		case stuck
+		/// A ship landed or stopped (sandbox tasks).
+		case shipped(ShipOutcome)
 	}
 
 	public let kind: Kind
@@ -20,6 +22,10 @@ public struct SessionAlert: Sendable, Hashable {
 public enum SessionAlerts {
 	public static func between(_ old: [ConversationID: ConversationSummary], _ new: [ConversationID: ConversationSummary]) -> [SessionAlert] {
 		new.values.sorted { $0.id < $1.id }.compactMap { summary in
+			// A ship's end, as the summary keeps it, says so in place of the run's end that comes with it.
+			if let before = old[summary.id], let ship = summary.sandbox?.lastShip, before.sandbox?.lastShip != ship, !summary.archived {
+				return SessionAlert(kind: .shipped(ship), summary: summary)
+			}
 			guard let before = old[summary.id], before.status != summary.status else { return nil }
 			switch (before.status, summary.status) {
 			case (_, .needsApproval):

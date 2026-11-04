@@ -107,7 +107,7 @@ struct SandboxDecodingTests {
 		state.apply(try decode(HostEvent.self, #"{"type":"host.projects","projects":[{"workspace":"w","name":"lan","path":"lan","dir":"/w/lan","checkout":{"branch":"main","dirty":0,"ahead":0,"behind":0,"sandboxes":true}}]}"#))
 		#expect(state.projects?.first?.checkout?.branch == "main")
 		state.apply(try decode(HostEvent.self, #"{"type":"sandbox.shipped","conversationId":5,"shipped":false,"kind":"check_failed","reason":"nothing to ship"}"#))
-		#expect(state.ships[5] == .stopped(kind: .checkFailed, reason: "nothing to ship"))
+		#expect(state.ship(5) == .stopped(kind: .checkFailed, reason: "nothing to ship"))
 	}
 
 	@Test func syncSaysWhetherItMerged() throws {
@@ -125,5 +125,16 @@ struct SandboxDecodingTests {
 		#expect(!local.contains("sandbox") && !local.contains("approvals"))
 		let boxed = String(decoding: try encoder.encode(Commands.CreateConversation(requestId: "r", project: "/w/lan", text: "hi", sandbox: true, approvals: .ask).params), as: UTF8.self)
 		#expect(boxed.contains(#""sandbox":true"#) && boxed.contains(#""approvals":"ask""#))
+	}
+}
+
+struct ShipOnSummaryTests {
+	@Test func theSummaryKeepsTheLatestShipAndWinsOverTheEvent() throws {
+		var state = HostState()
+		state.apply(try JSONDecoder().decode(HostEvent.self, from: Data(#"{"type":"host.snapshot","host":{"hostId":"h","name":"egwene"},"spend":{},"conversations":[{"id":5,"sandbox":{"number":5,"shipped":{"at":1,"to":"main","pushed":"origin/main","head":"abc1234","commits":2}}}]}"#.utf8)))
+		#expect(state.ship(5) == .shipped(to: .main, pushed: "origin/main", head: "abc1234", commits: 2, pr: nil))
+		state.apply(try JSONDecoder().decode(HostEvent.self, from: Data(#"{"type":"conversation.updated","conversation":{"id":5,"sandbox":{"number":5,"shipped":{"at":1,"to":"main","pushed":"origin/main","head":"abc1234","commits":2},"shipStopped":{"at":2,"kind":"upstream_moved","reason":"rejected"}}}}"#.utf8)))
+		#expect(state.ship(5) == .stopped(kind: .upstreamMoved, reason: "rejected"))
+		#expect(state.ship(6) == nil)
 	}
 }

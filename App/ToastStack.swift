@@ -77,6 +77,8 @@ private struct ToastView: View {
 		case .needsYou: .waiting
 		case .done: .done
 		case .stuck: .failed
+		case .shipped(.shipped): .done
+		case .shipped(.stopped): .failed
 		}
 	}
 
@@ -85,6 +87,18 @@ private struct ToastView: View {
 		case .needsYou: Palette.wait
 		case .done: Palette.add
 		case .stuck: Palette.bad
+		case .shipped(.shipped): Palette.add
+		case .shipped(.stopped): Palette.bad
+		}
+	}
+
+	/// A finished run in a few words: what it asks, whether checks fail, or done; a sandbox task says so.
+	static func done(_ summary: ConversationSummary?) -> String {
+		guard let summary else { return "done" }
+		switch TaskGroups.need(summary) {
+		case .question: return "asks you something"
+		case .checksFail: return "done · checks fail"
+		default: return summary.sandbox == nil ? "done" : "ready · \(summary.sandbox!.branch)"
 		}
 	}
 
@@ -92,8 +106,11 @@ private struct ToastView: View {
 	private var detail: String {
 		let what = switch toast.kind {
 		case .needsYou: "needs you to allow a tool call"
-		case .done: "done"
-		case .stuck: summary?.stuck.map { "stuck: \($0.reason)" } ?? "stuck"
+		case .done: Self.done(summary)
+		case .stuck: summary?.sandbox?.state == .failed ? "its sandbox failed" : summary?.stuck.map { "stuck: \($0.reason)" } ?? "stuck"
+		case .shipped(.shipped(let to, let pushed, _, let commits, let pr)):
+			pr != nil ? "PR open" : to == .main ? "shipped to \(pushed.replacingOccurrences(of: "origin/", with: "")) · \(commits == 1 ? "1 commit" : "\(commits) commits")" : "pushed to \(pushed)"
+		case .shipped(.stopped(_, let reason)): "ship stopped: \(reason)"
 		}
 		var place = [summary?.project ?? "scratch"]
 		if model.machines.count > 1, let machine { place.append(model.name(of: machine)) }

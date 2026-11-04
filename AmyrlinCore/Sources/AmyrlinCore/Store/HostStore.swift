@@ -161,9 +161,9 @@ public final class HostStore {
 		try await sendExtension(Commands.SyncSandbox(conversationId: id, merge: merge))
 	}
 
-	/// Starts a ship. Sending it approves the push; how it ends comes as `sandbox.shipped`, in `state.ships`.
+	/// Starts a ship. Sending it approves the push; how it ends comes as `sandbox.shipped`, in `state.ship(_:)`.
 	public func ship(_ id: ConversationID, to: ShipTo? = nil, note: String? = nil) async throws {
-		state.ships[id] = nil
+		state.shipEvents[id] = nil
 		_ = try await sendExtension(Commands.ShipSandbox(conversationId: id, to: to, note: note))
 	}
 
@@ -238,6 +238,10 @@ public final class HostStore {
 						break
 					}
 					alerts += SessionAlerts.between(before, state.conversations)
+					// A host that keeps ships on the summary says so above; one without has only the event.
+					if case .shipped(let ship) = event, let summary = state.conversations[ship.conversationId], summary.sandbox?.lastShip == nil, !summary.archived {
+						alerts.append(SessionAlert(kind: .shipped(ship.outcome), summary: summary))
+					}
 				}
 				if !alerts.isEmpty { onAlerts?(alerts) }
 				// A snapshot brings its own monthCost; a session charged since needs host.info's.

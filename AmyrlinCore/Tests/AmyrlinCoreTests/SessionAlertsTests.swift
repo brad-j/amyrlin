@@ -44,3 +44,16 @@ import Testing
 		#expect(alerts.map(\.kind) == [.needsYou, .done])
 	}
 }
+
+struct ShipAlertTests {
+	private func summary(_ json: String) throws -> ConversationSummary {
+		try JSONDecoder().decode(ConversationSummary.self, from: Data(json.utf8))
+	}
+
+	@Test func aShipKeptOnTheSummarySaysSoInPlaceOfDone() throws {
+		let before = try summary(#"{"id":3,"status":"busy","sandbox":{"number":3}}"#)
+		let after = try summary(#"{"id":3,"status":"idle","sandbox":{"number":3,"shipped":{"at":1,"to":"main","pushed":"origin/main","head":"a","commits":1}}}"#)
+		let alerts = SessionAlerts.between([3: before], [3: after])
+		#expect(alerts.map(\.kind) == [.shipped(.shipped(to: .main, pushed: "origin/main", head: "a", commits: 1, pr: nil))])
+	}
+}

@@ -206,7 +206,7 @@ final class AppModel {
 	func tasks(on machine: Machine, matching words: [String] = []) -> [TaskEntry] {
 		machine.store.state.active
 			.filter { inScope($0, on: machine.id) && SessionSearch.matches($0, words: words) }
-			.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ships[$0.id]) }
+			.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ship($0.id)) }
 	}
 
 	/// Machines whose section in the task list is folded to its header, kept across launches.
@@ -223,7 +223,7 @@ final class AppModel {
 		let all = machines.flatMap { machine in
 			machine.store.state.archived
 				.filter { inScope($0, on: machine.id) && SessionSearch.matches($0, words: words) }
-				.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ships[$0.id]) }
+				.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ship($0.id)) }
 		}
 		.sorted { $0.summary.updatedAt > $1.summary.updatedAt }
 		return words.isEmpty ? Array(all.prefix(10)) : all

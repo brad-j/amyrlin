@@ -173,6 +173,9 @@ public struct SandboxInfo: Decodable, Sendable, Hashable {
 	public var group: String?
 	/// Why it failed.
 	public var reason: String?
+	/// How its ships went, kept on the summary (requested of aludra; nil on a host without it): the latest that landed,
+	/// or the latest that stopped since.
+	public var lastShip: ShipOutcome?
 
 	public init(from decoder: any Decoder) throws {
 		let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -184,9 +187,27 @@ public struct SandboxInfo: Decodable, Sendable, Hashable {
 		step = try c.decodeIfPresent(String.self, forKey: .step)
 		group = try c.decodeIfPresent(String.self, forKey: .group)
 		reason = try c.decodeIfPresent(String.self, forKey: .reason)
+		if let stopped = try c.decodeIfPresent(StoppedShip.self, forKey: .shipStopped) {
+			lastShip = .stopped(kind: stopped.kind, reason: stopped.reason ?? "")
+		} else if let shipped = try c.decodeIfPresent(LandedShip.self, forKey: .shipped) {
+			lastShip = .shipped(to: shipped.to ?? .main, pushed: shipped.pushed ?? "", head: shipped.head ?? "", commits: shipped.commits ?? 0, pr: shipped.pr)
+		}
 	}
 
-	private enum CodingKeys: String, CodingKey { case number, branch, state, approvals, base, step, group, reason }
+	private struct LandedShip: Decodable {
+		var to: ShipTo?
+		var pushed: String?
+		var head: String?
+		var commits: Int?
+		var pr: String?
+	}
+
+	private struct StoppedShip: Decodable {
+		var kind: ShipOutcome.FailureKind
+		var reason: String?
+	}
+
+	private enum CodingKeys: String, CodingKey { case number, branch, state, approvals, base, step, group, reason, shipped, shipStopped }
 }
 
 // MARK: - Results

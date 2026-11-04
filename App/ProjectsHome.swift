@@ -12,7 +12,7 @@ struct ProjectsHome: View {
 	var body: some View {
 		let table = ProjectTable.rows(
 			connected.map { ProjectSpotlight.Source(machine: $0.id, projects: $0.store.projects, sessions: Array($0.store.state.conversations.values)) },
-			ships: { machine, id in model.machine(machine)?.store.state.ships[id] },
+			ships: { machine, id in model.machine(machine)?.store.state.ship(id) },
 			all: model.showAllProjects
 		)
 		ScrollView {

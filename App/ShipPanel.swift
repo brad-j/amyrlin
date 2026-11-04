@@ -17,7 +17,7 @@ struct ShipPanel: View {
 	@State private var sending = false
 	@State private var failure: String?
 
-	private var outcome: ShipOutcome? { host.state.ships[summary.id] }
+	private var outcome: ShipOutcome? { host.state.ship(summary.id) }
 	private var project: ProjectInfo? { host.projects.first { $0.dir == summary.source } ?? host.projects.first { $0.name == summary.project } }
 	private var upstream: String { project?.checkout?.upstream?.replacingOccurrences(of: "origin/", with: "") ?? "main" }
 
