@@ -22,6 +22,8 @@ public final class HostStore {
 	@ObservationIgnored public let connection: HostConnection
 	@ObservationIgnored private var tasks: [Task<Void, Never>] = []
 	@ObservationIgnored private var stores: [ConversationID: ConversationStore] = [:]
+	/// Result pages' stores, by task (`task(_:)`).
+	@ObservationIgnored var taskStores: [ConversationID: TaskStore] = [:]
 	/// How long to gather cost changes before reading the month's total again.
 	@ObservationIgnored var monthCostDelay: Duration = .seconds(1)
 	@ObservationIgnored private var monthCostTask: Task<Void, Never>?

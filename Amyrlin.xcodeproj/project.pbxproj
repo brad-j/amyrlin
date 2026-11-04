@@ -22,6 +22,7 @@
 		56CE6422E3B3831193FF9A23 /* IBMPlexSans-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 13F17275495AE76F72E4E16A /* IBMPlexSans-Regular.ttf */; };
 		64AF8D8A16667DA8AC293491 /* AmyrlinCore in Frameworks */ = {isa = PBXBuildFile; productRef = D81DEB64327AF2DB380257AB /* AmyrlinCore */; };
 		69C6F996831A0BD3655E6F57 /* TextSize.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5E0486C01575E9101504707 /* TextSize.swift */; };
+		787591B9DC94FA1E2B8FECB7 /* ResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75583138A3641A0BB2C8FE1C /* ResultView.swift */; };
 		7A73813C52844C39E18EAFB6 /* IBMPlexMono-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = DFF2CAC8723A9AFF68FD4BC3 /* IBMPlexMono-Italic.ttf */; };
 		7D6B5101A9362F6BB4C75AC0 /* HostSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32EB44117EDC90444E3960B1 /* HostSettingsSheet.swift */; };
 		85512BAEA1E94D90F28128D2 /* IBMPlexSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3E255489E001362E5060D2BF /* IBMPlexSans-SemiBold.ttf */; };
@@ -62,6 +63,7 @@
 		5A72F07E532A9DF9A920B891 /* NewTaskView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewTaskView.swift; sourceTree = "<group>"; };
 		683EB059DBE7F4081E821D7B /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
 		74CFC7E014E5733957E6AE35 /* IBMPlexSans-Light.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexSans-Light.ttf"; sourceTree = "<group>"; };
+		75583138A3641A0BB2C8FE1C /* ResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultView.swift; sourceTree = "<group>"; };
 		76BF3D6C015E28B6A54E13C2 /* ToastStack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastStack.swift; sourceTree = "<group>"; };
 		7D357F171DCC5EF0B185509D /* Amyrlin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Amyrlin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		87DFD5E4007D9043C9B1A36A /* SpotlightSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotlightSheet.swift; sourceTree = "<group>"; };
@@ -158,6 +160,7 @@
 				5A72F07E532A9DF9A920B891 /* NewTaskView.swift */,
 				2702908FD664FF4F6A043665 /* PageView.swift */,
 				B458FB5947E5C2962775ACC6 /* ProjectsHome.swift */,
+				75583138A3641A0BB2C8FE1C /* ResultView.swift */,
 				13540D33A9E587C2354E258B /* Shortcuts.swift */,
 				C93A86000CFBD344D169CBB4 /* SidebarView.swift */,
 				87DFD5E4007D9043C9B1A36A /* SpotlightSheet.swift */,
@@ -281,6 +284,7 @@
 				1248FDA282F6D0E7D85F834A /* NewTaskView.swift in Sources */,
 				0BD88D68EC8E7BC4DB9157C5 /* PageView.swift in Sources */,
 				89B56ACEC25856EB13894199 /* ProjectsHome.swift in Sources */,
+				787591B9DC94FA1E2B8FECB7 /* ResultView.swift in Sources */,
 				4052569961C01BB910F9A139 /* Shortcuts.swift in Sources */,
 				2C96991DCF40CF1BD5BD099E /* SidebarView.swift in Sources */,
 				3E32CDB71CF450963CCECDB4 /* SpotlightSheet.swift in Sources */,

@@ -200,8 +200,8 @@ public enum TranscriptLayout {
 				for (index, block) in assistant.content.enumerated() {
 					let id = blockID(after: previous, index)
 					switch block {
-					case .text(let text) where !text.isEmpty:
-						rows.append(TranscriptRow(id: id, kind: .text(text, streaming: false), inContext: inContext))
+					case .text(let text) where !ResultBlocks.hidden(text).isEmpty:
+						rows.append(TranscriptRow(id: id, kind: .text(ResultBlocks.hidden(text), streaming: false), inContext: inContext))
 					case .thinking(let text, let redacted) where !text.isEmpty || redacted:
 						rows.append(TranscriptRow(id: id, kind: .thinking(text, redacted: redacted, streaming: false), inContext: inContext))
 					case .toolCall(let call):
@@ -256,7 +256,7 @@ public enum TranscriptLayout {
 				let growing = index == streaming.content.count - 1
 				switch block {
 				case .text(let text):
-					rows.append(TranscriptRow(id: id, kind: .text(text, streaming: growing), inContext: true))
+					rows.append(TranscriptRow(id: id, kind: .text(ResultBlocks.hidden(text), streaming: growing), inContext: true))
 				case .thinking(let text, let redacted):
 					rows.append(TranscriptRow(id: id, kind: .thinking(text, redacted: redacted, streaming: growing), inContext: true))
 				case .toolCall(let call):

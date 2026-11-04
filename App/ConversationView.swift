@@ -11,18 +11,35 @@ struct ConversationView: View {
 	/// Opens the rename sheet for this conversation.
 	var rename: () -> Void = {}
 
+	/// The task's result page, or the conversation. A sandbox task opens on its result; a local one has only the
+	/// conversation.
+	@State private var tab: TaskTab = .result
+
 	private var summary: ConversationSummary? { host.state.conversations[store.id] }
+	private var hasResult: Bool { summary?.sandbox != nil }
 
 	var body: some View {
+		let task = host.task(store.id)
 		VStack(spacing: 0) {
 			ConversationHeader(title: summary?.title ?? store.conversation?.title ?? "Conversation", project: summary?.project, dir: summary?.dir, colors: host.state.projectColors, busy: store.isBusy, rename: rename)
+			if let summary, hasResult {
+				TaskHeader(summary: summary, host: host, tab: $tab)
+			}
 			// Under the header, so the header stays in line with the side columns' bands.
 			if let problem = store.problem {
 				Banner(text: "Stopped watching: \(problem)", color: Palette.bad)
 			} else if store.isResyncing || !host.isConnected {
 				Banner(text: host.isConnected ? "Catching up" : "Reconnecting to \(host.url.host() ?? "the host")", color: Palette.wait)
 			}
-			FillSpace { TranscriptView(store: store, showsPages: host.info?.pages == true) }
+			if hasResult && tab == .result {
+				FillSpace {
+					ResultView(task: task, summary: summary) { option in
+						store.send(option)
+					}
+				}
+			} else {
+				FillSpace { TranscriptView(store: store, showsPages: host.info?.pages == true) }
+			}
 			VStack(spacing: 8) {
 				// An approval rises in above the composer and drops away once answered, instead of popping.
 				ForEach(store.approvals) { approval in
@@ -50,6 +67,18 @@ struct ConversationView: View {
 			Text(store.lastError ?? "")
 		}
 		.task { store.start() }
+		.onChange(of: TaskStore.key(summary), initial: true) { _, _ in
+			if hasResult { task.refresh(summary) }
+			#if DEBUG
+			// `--args -previewResult name.json` shows the result in the app's temporary directory, for checking the page.
+			let arguments = ProcessInfo.processInfo.arguments
+			if !task.isPreview, let flag = arguments.firstIndex(of: "-previewResult"), flag + 1 < arguments.count,
+				let data = try? Data(contentsOf: FileManager.default.temporaryDirectory.appending(path: arguments[flag + 1]))
+			{
+				task.preview(try? JSONDecoder().decode(Commands.GetTaskResult.Result.self, from: data).result)
+			}
+			#endif
+		}
 	}
 
 	/// `~/westwood/Projects/Software/aludra` for `/home/brad/westwood/...`.
@@ -380,5 +409,65 @@ struct SendButton: View {
 		}
 		.buttonStyle(.plain)
 		.disabled(!enabled)
+	}
+}
+
+enum TaskTab: Hashable { case result, conversation }
+
+/// A sandbox task's second header row: its state in words, where it runs and what it started from, and the tabs.
+struct TaskHeader: View {
+	let summary: ConversationSummary
+	let host: HostStore
+	@Binding var tab: TaskTab
+
+	var body: some View {
+		HStack(alignment: .firstTextBaseline, spacing: 14) {
+			ForEach([(TaskTab.result, "result"), (.conversation, "conversation")], id: \.0) { item in
+				Button { tab = item.0 } label: {
+					Text(item.1)
+						.foregroundStyle(tab == item.0 ? Palette.ink : Palette.ink3)
+						.padding(.vertical, 6)
+						.overlay(alignment: .bottom) {
+							Rectangle().fill(tab == item.0 ? Palette.accent : .clear).frame(height: 2)
+						}
+						.contentShape(Rectangle())
+				}
+				.buttonStyle(.plain)
+			}
+			Spacer(minLength: 12)
+			Text(state.text).foregroundStyle(state.color)
+			Text(place).foregroundStyle(Palette.ink3).lineLimit(1).truncationMode(.middle)
+		}
+		.font(Typography.ui)
+		.padding(.horizontal, 16)
+		.overlay(alignment: .bottom) { Rectangle().fill(Palette.rule).frame(height: 1) }
+	}
+
+	private var state: (text: String, color: Color) {
+		let ship = host.state.ships[summary.id]
+		if let need = TaskGroups.need(summary, ship: ship) {
+			return switch need {
+			case .approval, .question: ("needs you", Palette.wait)
+			case .stuck: ("stuck", Palette.bad)
+			case .shipStopped: ("ship stopped", Palette.bad)
+			case .checksFail: ("checks fail", Palette.bad)
+			}
+		}
+		if case .shipped(let to, let pushed, _, _, let pr) = ship {
+			return (pr != nil ? "PR open" : to == .main ? "live on \(pushed.replacingOccurrences(of: "origin/", with: ""))" : "pushed", Palette.ink3)
+		}
+		switch TaskGroups.group(summary, ship: ship) {
+		case .running: return (summary.sandbox?.state == .preparing ? "preparing" : "working", Palette.accent)
+		case .ready: return ("ready", Palette.add)
+		default: return (summary.sandbox?.state == .removed ? "sandbox removed" : "done", Palette.ink3)
+		}
+	}
+
+	/// `sandbox/4 · from 2834a4b · 20m ago`.
+	private var place: String {
+		guard let sandbox = summary.sandbox else { return "here" }
+		let started = Date(timeIntervalSince1970: TimeInterval(summary.createdAt) / 1000).shortAge
+		return [sandbox.branch, sandbox.base.map { "from \($0.prefix(7))" }, started == "now" ? "started now" : "started \(started) ago"]
+			.compactMap(\.self).joined(separator: " · ")
 	}
 }
