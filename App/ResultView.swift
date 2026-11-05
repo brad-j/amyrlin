@@ -11,6 +11,9 @@ struct ResultView: View {
 	let summary: ConversationSummary?
 	/// Sends a reply, as the composer would: a question's option.
 	let reply: (String) -> Void
+	/// Pages the latest turn published (`publish_page`), shown under what it did: the conversation tab is a click away,
+	/// and a page is often the answer itself.
+	var pages: [TranscriptPage] = []
 
 	var body: some View {
 		ScrollView {
@@ -33,7 +36,7 @@ struct ResultView: View {
 		} else if let result = task.result, result.isRunning || summary?.status == .busy {
 			Running(plan: result.plan ?? [], line: summary?.line)
 		} else if let result = task.result {
-			Finished(task: task, result: result, summary: summary, reply: reply)
+			Finished(task: task, result: result, summary: summary, reply: reply, pages: pages)
 		} else if summary?.status == .busy {
 			Running(plan: [], line: summary?.line)
 		} else if task.hasRead {
@@ -165,6 +168,7 @@ private struct Finished: View {
 	let result: TaskResult
 	let summary: ConversationSummary?
 	let reply: (String) -> Void
+	let pages: [TranscriptPage]
 	@State private var codeOpen = false
 
 	var body: some View {
@@ -174,6 +178,9 @@ private struct Finished: View {
 					.padding(.bottom, 18)
 			}
 			Said(text: result.summary ?? "")
+			ForEach(pages, id: \.callId) { page in
+				PageView(page: page).padding(.top, 16)
+			}
 			if !result.checks.isEmpty {
 				SectionLabel(title: "checks")
 				ChecksRow(checks: result.checks, running: summary?.line?.hasSuffix("· running checks") == true)
@@ -216,7 +223,8 @@ private struct Finished: View {
 				.padding(.leading, 12)
 				.overlay(alignment: .leading) { Rectangle().fill(Palette.wait).frame(width: 2) }
 			}
-			if summary?.sandbox != nil {
+			// Only once there's code to show: a turn that changed nothing (a page, an answer) has no code line.
+			if summary?.sandbox != nil, result.code.files > 0 || result.code.commits > 0 {
 				CodeLine(task: task, code: result.code, open: $codeOpen)
 			}
 		}

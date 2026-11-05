@@ -76,3 +76,31 @@ public enum TaskGroups {
 		}
 	}
 }
+
+/// The list's two kinds (Brad's option B, 2026-11-04). Sandbox work is a task: it has states and ends in Ship, so it
+/// keeps TaskGroups' groups. A session that runs on its machine is a chat: a conversation you come back to, never
+/// "done", listed newest first in one line each; one that needs you comes first, and those quiet for a day fold away.
+public enum TaskList {
+	/// Chats quiet longer than this fold into "older".
+	public static let recentWindow: TimeInterval = 86_400
+
+	public static func isTask(_ summary: ConversationSummary) -> Bool {
+		summary.sandbox != nil
+	}
+
+	/// Chats in the list's order, and how many of them are older than the window: needing you first (newest first),
+	/// then running and the rest, newest first, so a chat never jumps because it started running.
+	public static func chats<Item>(
+		_ items: [Item],
+		summary: (Item) -> ConversationSummary,
+		now: Date = .now
+	) -> (recent: [Item], older: [Item]) {
+		let cutoff = Int64((now.timeIntervalSince1970 - recentWindow) * 1000)
+		let needing = items.filter { TaskGroups.need(summary($0)) != nil }.sorted { summary($0).updatedAt > summary($1).updatedAt }
+		let rest = items.filter { TaskGroups.need(summary($0)) == nil }.sorted { summary($0).updatedAt > summary($1).updatedAt }
+		// A running chat and one needing you are never folded, however long they've gone.
+		let recent = needing + rest.filter { summary($0).updatedAt >= cutoff || summary($0).status == .busy }
+		let older = rest.filter { summary($0).updatedAt < cutoff && summary($0).status != .busy }
+		return (recent, older)
+	}
+}

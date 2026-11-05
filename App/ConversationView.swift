@@ -47,9 +47,9 @@ struct ConversationView: View {
 						if let summary {
 							ShipPanel(summary: summary, host: host, task: task, confirming: $confirmingShip) { store.send($0) }
 						}
-						ResultView(task: task, summary: summary) { option in
-							store.send(option)
-						}
+						ResultView(task: task, summary: summary, reply: { store.send($0) }, pages: host.info?.pages == true ? TranscriptPage.latestTurn(store.state.items) : [])
+							// PageView fetches through the conversation's store, as in the transcript.
+							.environment(store)
 					}
 				}
 			} else {

@@ -85,3 +85,27 @@ struct ProjectTableTests {
 		#expect(all.rows[2].counts.isEmpty)
 	}
 }
+
+struct TaskListTests {
+	private func summary(_ id: Int, status: String = "idle", updated: Int64, sandbox: Bool = false) throws -> ConversationSummary {
+		let box = sandbox ? #","sandbox":{"number":1,"state":"ready"}"# : ""
+		return try JSONDecoder().decode(ConversationSummary.self, from: Data(#"{"id":\#(id),"status":"\#(status)","createdAt":1,"updatedAt":\#(updated)\#(box)}"#.utf8))
+	}
+
+	@Test func chatsPutNeedsYouFirstAndFoldTheQuiet() throws {
+		let now = Date(timeIntervalSince1970: 10 * 86_400)
+		let day: Int64 = 86_400_000
+		let items = [
+			try summary(1, updated: 9 * day + 5),
+			try summary(2, status: "needsApproval", updated: 2 * day),
+			try summary(3, updated: 9 * day + 9),
+			try summary(4, updated: 3 * day),
+			try summary(5, status: "busy", updated: 1 * day),
+		]
+		let chats = TaskList.chats(items, summary: { $0 }, now: now)
+		#expect(chats.recent.map(\.id) == [2, 3, 1, 5])
+		#expect(chats.older.map(\.id) == [4])
+		#expect(TaskList.isTask(try summary(6, updated: 1, sandbox: true)))
+		#expect(!TaskList.isTask(items[0]))
+	}
+}

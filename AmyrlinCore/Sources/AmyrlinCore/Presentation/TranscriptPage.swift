@@ -50,3 +50,14 @@ public struct PublishedPage: Decodable, Sendable, Hashable {
 		return meta + html
 	}
 }
+
+extension TranscriptPage {
+	/// The pages the latest turn published, oldest first: those after the newest user message. A sandbox task's result
+	/// page shows them, since it opens on the result rather than the conversation.
+	public static func latestTurn(_ items: [Item]) -> [TranscriptPage] {
+		let start = items.lastIndex { if case .user = $0.body { true } else { false } }.map { $0 + 1 } ?? 0
+		return items[start...].compactMap { item in
+			if case .toolResult(let result) = item.body { from(result) } else { nil }
+		}
+	}
+}

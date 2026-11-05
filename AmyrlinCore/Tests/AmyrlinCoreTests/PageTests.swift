@@ -161,3 +161,17 @@ struct PageTests {
 		#expect(bare.enforcedHTML == "<p>x</p>")
 	}
 }
+
+struct LatestTurnPageTests {
+	@Test func onlyTheLatestTurnsPagesCount() throws {
+		let items = try JSONDecoder().decode([Item].self, from: Data(#"""
+		[{"id":1,"type":"user","content":[{"type":"text","text":"first"}]},
+		 {"id":2,"type":"toolResult","callId":"a","toolName":"publish_page","content":[],"details":{"page":"p1","title":"Old"}},
+		 {"id":3,"type":"user","content":[{"type":"text","text":"second"}]},
+		 {"id":4,"type":"toolResult","callId":"b","toolName":"bash","content":[]},
+		 {"id":5,"type":"toolResult","callId":"c","toolName":"publish_page","content":[],"details":{"page":"p2","title":"New"}}]
+		"""#.utf8))
+		#expect(TranscriptPage.latestTurn(items).map(\.title) == ["New"])
+		#expect(TranscriptPage.latestTurn([]).isEmpty)
+	}
+}

@@ -211,14 +211,9 @@ final class AppModel {
 			.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ship($0.id)) }
 	}
 
-	/// Machines whose section in the task list is folded to its header, kept across launches.
-	var foldedMachines: Set<UUID> = Set((UserDefaults.standard.stringArray(forKey: "foldedMachines") ?? []).compactMap(UUID.init(uuidString:))) {
-		didSet { if !ephemeral { UserDefaults.standard.set(foldedMachines.map(\.uuidString).sorted(), forKey: "foldedMachines") } }
-	}
-
-	/// Machines whose done group shows every task rather than the newest `doneLimit`.
-	var expandedDone: Set<UUID> = []
-	static let doneLimit = 8
+	/// The done tasks show every one rather than the newest `doneLimit`.
+	var showAllDone = false
+	static let doneLimit = 5
 
 	/// The ten most recently active archived tasks in scope, or with words every match.
 	func archivedTasks(matching words: [String] = []) -> [TaskEntry] {
@@ -382,7 +377,7 @@ final class AppModel {
 		}
 		// The host archives quiet sessions itself now (aludra 3568dcf); the list the app kept of sessions not to archive
 		// is the host's to keep. Pins and folds went with the project tree.
-		for key in ["keptSessions", "pinnedSessions", "collapsedProjects", "collapsedMachines", "openArchives"] {
+		for key in ["keptSessions", "pinnedSessions", "collapsedProjects", "collapsedMachines", "openArchives", "foldedMachines"] {
 			UserDefaults.standard.removeObject(forKey: key)
 		}
 		if let saved = UserDefaults.standard.dictionary(forKey: Self.scopeKey) as? [String: String],
