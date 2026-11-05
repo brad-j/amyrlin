@@ -9,6 +9,17 @@ struct AmyrlinApp: App {
 
 	init() {
 		CopyOnSelect.start()
+		#if DEBUG
+		// A launch for a snapshot that comes up without its window (saved state from a killed run) opens one.
+		if ProcessInfo.processInfo.arguments.contains("-snapshot") {
+			Task { @MainActor in
+				try? await Task.sleep(for: .seconds(1.5))
+				if !NSApp.windows.contains(where: { $0.isVisible && $0.frame.width > 400 }) {
+					NSApp.sendAction(Selector(("newWindowForTab:")), to: nil, from: nil)
+				}
+			}
+		}
+		#endif
 	}
 
 	var body: some Scene {
@@ -117,6 +128,9 @@ struct MainView: View {
 		}
 		.sheet(item: Binding(get: { model.renaming.map(RenameRef.init) }, set: { model.renaming = $0?.conversation })) { ref in
 			RenameSheet(model: model, target: ref.conversation)
+		}
+		.sheet(item: Binding(get: { model.creatingProject }, set: { model.creatingProject = $0 })) { purpose in
+			ProjectSheet(model: model, purpose: purpose)
 		}
 		.sheet(item: Binding(get: { model.hostSettingsMachine.flatMap(model.machine).map(MachineRef.init) }, set: { model.hostSettingsMachine = $0?.id })) { ref in
 			HostSettingsSheet(model: model, machine: ref.machine)
@@ -227,7 +241,7 @@ private struct StatusLine: View {
 				let store = selected.conversation
 				let summary = selected.machine.store.state.conversations[store.id]
 				host(selected.machine.store)
-				place(project: summary?.project, dir: summary?.dir, colors: selected.machine.store.state.projectColors)
+				place(project: summary?.project, dir: summary?.sandbox != nil ? summary?.source : summary?.dir, colors: selected.machine.store.state.projectColors)
 				Text("  │  ").foregroundStyle(Palette.rule2)
 				SessionSettingsLine(store: store, host: selected.machine.store)
 				Spacer(minLength: 8)

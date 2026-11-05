@@ -39,6 +39,8 @@ public enum Commands {
 			public var pages: Bool?
 			/// Set on a host with a sandbox host (aludra, protocol section 10 item 19).
 			public var sandboxes: SandboxDefaults?
+			/// Set when the host can make projects now: settings name them and gh is signed in (item 20).
+			public var newProjects: NewProjects?
 		}
 		/// What a message's files may be, and the text length past which the host saves a message to a file.
 		public struct FileLimits: Decodable, Sendable, Hashable {
@@ -142,11 +144,13 @@ public enum Commands {
 			public var approvals: Approvals?
 			/// With `sandbox`, attempts at one ask (×3).
 			public var group: String?
+			/// With `sandbox`, its size; without it the project's `.agents/project.json` decides, else small.
+			public var size: SandboxSize?
 		}
 		public typealias Result = CreatedResult
 		public let params: Params
-		public init(requestId: String = UUID().uuidString, title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = [], sandbox: Bool = false, approvals: Approvals? = nil, group: String? = nil) {
-			params = Params(requestId: requestId, title: title, settings: settings, project: project, text: text, images: images.isEmpty ? nil : images, videos: videos.isEmpty ? nil : videos, files: files.isEmpty ? nil : files, sandbox: sandbox ? true : nil, approvals: sandbox ? approvals : nil, group: sandbox ? group : nil)
+		public init(requestId: String = UUID().uuidString, title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = [], sandbox: Bool = false, approvals: Approvals? = nil, group: String? = nil, size: SandboxSize? = nil) {
+			params = Params(requestId: requestId, title: title, settings: settings, project: project, text: text, images: images.isEmpty ? nil : images, videos: videos.isEmpty ? nil : videos, files: files.isEmpty ? nil : files, sandbox: sandbox ? true : nil, approvals: sandbox ? approvals : nil, group: sandbox ? group : nil, size: sandbox ? size : nil)
 		}
 	}
 

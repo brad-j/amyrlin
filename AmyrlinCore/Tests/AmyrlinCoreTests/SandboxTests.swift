@@ -138,3 +138,35 @@ struct ShipOnSummaryTests {
 		#expect(state.ship(6) == nil)
 	}
 }
+
+struct NewProjectTests {
+	@Test func namesFollowTheHostsRule() {
+		#expect(ProjectNames.problem("") == nil)
+		#expect(ProjectNames.problem("packing-list") == nil)
+		#expect(ProjectNames.problem("2fa") == nil)
+		#expect(ProjectNames.problem("Packing") == "lowercase only")
+		#expect(ProjectNames.problem("packing list") == "no spaces; use -")
+		#expect(ProjectNames.problem("-packing") == "starts with a letter or digit")
+		#expect(ProjectNames.problem("packing-") == "can't end with -")
+		#expect(ProjectNames.problem("pack_ing") != nil)
+		#expect(ProjectNames.problem(String(repeating: "a", count: 101)) == "at most 100 characters")
+		#expect(ProjectNames.suggest("Packing List!") == "packing-list")
+		#expect(ProjectNames.suggest("  --Trip  Map-- ") == "trip-map")
+	}
+
+	@Test func newProjectsSizeAndPromoteDecode() throws {
+		let info = try JSONDecoder().decode(Commands.HostInfo.Result.self, from: Data(#"{"host":{"hostId":"h","name":"egwene"},"models":[],"tools":[],"newProjects":{"root":"/home/brad/westwood/Projects/Software","owner":"brad-j"}}"#.utf8))
+		#expect(info.newProjects?.owner == "brad-j")
+		let summary = try JSONDecoder().decode(ConversationSummary.self, from: Data(#"{"id":1,"dir":"/home/user/work/scratch","sandbox":{"number":9,"state":"preparing"}}"#.utf8))
+		#expect(summary.sandbox?.size == nil)
+		#expect(summary.project == nil)
+		let sized = try JSONDecoder().decode(SandboxInfo.self, from: Data(#"{"number":9,"size":"large"}"#.utf8))
+		#expect(sized.size == .large)
+		let encoder = JSONEncoder()
+		encoder.outputFormatting = .sortedKeys
+		let local = String(decoding: try encoder.encode(Commands.CreateConversation(requestId: "r", text: "x", size: .large).params), as: UTF8.self)
+		#expect(!local.contains("size"))
+		let boxed = String(decoding: try encoder.encode(Commands.CreateConversation(requestId: "r", text: "x", sandbox: true, size: .medium).params), as: UTF8.self)
+		#expect(boxed.contains(#""sandbox":true"#) && boxed.contains(#""size":"medium""#) && !boxed.contains("project"))
+	}
+}

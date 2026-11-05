@@ -157,6 +157,69 @@ public enum SandboxState: OpenEnum {
 	}
 }
 
+/// How big a sandbox is: small 2 CPUs and 4 GB, medium 4 and 8, large 8 and 16.
+public enum SandboxSize: OpenEnum {
+	case small, medium, large
+	case unknown(String)
+
+	public static let known: [SandboxSize] = [.small, .medium, .large]
+
+	public init(rawValue: String) {
+		self = Self.known.first { $0.rawValue == rawValue } ?? .unknown(rawValue)
+	}
+
+	public var rawValue: String {
+		switch self {
+		case .small: "small"
+		case .medium: "medium"
+		case .large: "large"
+		case .unknown(let value): value
+		}
+	}
+
+	/// "4 CPUs · 8 GB".
+	public var resources: String? {
+		switch self {
+		case .small: "2 CPUs · 4 GB"
+		case .medium: "4 CPUs · 8 GB"
+		case .large: "8 CPUs · 16 GB"
+		case .unknown: nil
+		}
+	}
+}
+
+/// `host.info.newProjects`: where new projects go and on whose GitHub (item 20).
+public struct NewProjects: Decodable, Sendable, Hashable {
+	public var root: String
+	public var owner: String
+}
+
+/// New project names, as aludra takes them: lowercase letters, digits and `-`, starting with a letter or digit, not
+/// ending with `-`, at most 100 characters.
+public enum ProjectNames {
+	public static let maxLength = 100
+
+	/// Why `name` won't do, or nil when it will. Empty says nothing, since nothing's been typed.
+	public static func problem(_ name: String) -> String? {
+		if name.isEmpty { return nil }
+		if name.count > maxLength { return "at most \(maxLength) characters" }
+		if name.contains(where: { $0.isUppercase }) { return "lowercase only" }
+		let allowed = Set("abcdefghijklmnopqrstuvwxyz0123456789-")
+		if let bad = name.first(where: { !allowed.contains($0) }) { return bad == " " ? "no spaces; use -" : "letters, digits and - only, not \u{201C}\(bad)\u{201D}" }
+		if name.hasPrefix("-") { return "starts with a letter or digit" }
+		if name.hasSuffix("-") { return "can't end with -" }
+		return nil
+	}
+
+	/// A name from free text, for a suggestion: "Packing List" → "packing-list".
+	public static func suggest(_ text: String) -> String {
+		let lowered = text.lowercased().map { $0.isLetter || $0.isNumber ? String($0) : "-" }.joined()
+		let collapsed = lowered.replacingOccurrences(of: #"-+"#, with: "-", options: .regularExpression)
+		let ascii = collapsed.filter { "abcdefghijklmnopqrstuvwxyz0123456789-".contains($0) }
+		return String(ascii.trimmingCharacters(in: CharacterSet(charactersIn: "-")).prefix(maxLength)).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+	}
+}
+
 /// A sandbox session's sandbox, on its summary.
 public struct SandboxInfo: Decodable, Sendable, Hashable {
 	/// The host's own count, one across projects, never reused.
@@ -173,6 +236,8 @@ public struct SandboxInfo: Decodable, Sendable, Hashable {
 	public var group: String?
 	/// Why it failed.
 	public var reason: String?
+	/// Nil until the sandbox starts being made: not known yet, not small.
+	public var size: SandboxSize?
 	/// How its ships went, kept on the summary (requested of aludra; nil on a host without it): the latest that landed,
 	/// or the latest that stopped since.
 	public var lastShip: ShipOutcome?
@@ -187,6 +252,7 @@ public struct SandboxInfo: Decodable, Sendable, Hashable {
 		step = try c.decodeIfPresent(String.self, forKey: .step)
 		group = try c.decodeIfPresent(String.self, forKey: .group)
 		reason = try c.decodeIfPresent(String.self, forKey: .reason)
+		size = try c.decodeIfPresent(SandboxSize.self, forKey: .size)
 		if let stopped = try c.decodeIfPresent(StoppedShip.self, forKey: .shipStopped) {
 			lastShip = .stopped(kind: stopped.kind, reason: stopped.reason ?? "")
 		} else if let shipped = try c.decodeIfPresent(LandedShip.self, forKey: .shipped) {
@@ -207,7 +273,7 @@ public struct SandboxInfo: Decodable, Sendable, Hashable {
 		var reason: String?
 	}
 
-	private enum CodingKeys: String, CodingKey { case number, branch, state, approvals, base, step, group, reason, shipped, shipStopped }
+	private enum CodingKeys: String, CodingKey { case number, branch, state, approvals, base, step, group, reason, shipped, shipStopped, size }
 }
 
 // MARK: - Results
@@ -514,6 +580,37 @@ extension Commands {
 		}
 		public let params: Params
 		public init(conversationId: ConversationID) { params = Params(conversationId: conversationId) }
+	}
+
+	/// Makes a project on the host: a folder under `newProjects.root`, a first commit, a private GitHub repository as its
+	/// upstream (item 20).
+	public struct CreateProject: Command {
+		public static let method = "projects.create"
+		/// It makes a repository on GitHub; a lost answer may have made one.
+		public static let retriesOnReconnect = false
+		public struct Params: Encodable, Sendable {
+			public var name: String
+			public var description: String?
+		}
+		public struct Result: Decodable, Sendable, Hashable { public var project: ProjectInfo }
+		public let params: Params
+		public init(name: String, description: String? = nil) { params = Params(name: name, description: description) }
+	}
+
+	/// Makes a scratch sandbox's work a new project, its commits as main; the session then belongs to it (item 20).
+	public struct PromoteSandbox: Command {
+		public static let method = "sandbox.promote"
+		public static let retriesOnReconnect = false
+		public struct Params: Encodable, Sendable {
+			public var conversationId: ConversationID
+			public var name: String
+			public var description: String?
+		}
+		public typealias Result = CreateProject.Result
+		public let params: Params
+		public init(conversationId: ConversationID, name: String, description: String? = nil) {
+			params = Params(conversationId: conversationId, name: name, description: description)
+		}
 	}
 
 	/// Archives a group's other attempts, which removes their sandboxes and branches.

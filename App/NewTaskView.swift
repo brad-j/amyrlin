@@ -131,7 +131,22 @@ struct NewTaskView: View {
 			} note: {
 				Text(runsNote).foregroundStyle(refusal != nil && task.sandbox ? Palette.wait : Palette.ink3)
 			}
-			if inSandbox, let defaults = machine?.store.sandboxes {
+			if inSandbox {
+				option("size") {
+					Segmented(choices: ["auto", "small", "medium", "large"], selected: task.size.flatMap { SandboxSize.known.firstIndex(of: $0).map { $0 + 1 } } ?? 0) { index in
+						task.size = index == 0 ? nil : SandboxSize.known[index - 1]
+					}
+				} note: {
+					Text(task.size?.resources ?? "the project's size, else 2 CPUs · 4 GB").foregroundStyle(Palette.ink3)
+				}
+			}
+			if inSandbox, project == nil {
+				option("lands") {
+					Text("nowhere yet").foregroundStyle(Palette.ink2)
+				} note: {
+					Text("scratch can't ship; make it a project from its result").foregroundStyle(Palette.ink3)
+				}
+			} else if inSandbox, let defaults = machine?.store.sandboxes {
 				option("lands") {
 					Text(defaults.shipTo == .branch ? "as a PR" : "on \(project?.checkout?.upstream?.replacingOccurrences(of: "origin/", with: "") ?? "main")")
 						.foregroundStyle(Palette.ink2)
@@ -167,12 +182,15 @@ struct NewTaskView: View {
 			].compactMap(\.self)
 			Text(parts.joined(separator: " · ")).foregroundStyle(checkout.dirty > 0 && inSandbox || checkout.behind > 0 ? Palette.wait : Palette.ink3)
 		} else if project == nil {
-			Text("a directory of its own on \(machine.map(model.name(of:)) ?? "the machine")").foregroundStyle(Palette.ink3)
+			Text(inSandbox ? "an empty repository of its own" : "a directory of its own on \(machine.map(model.name(of:)) ?? "the machine")").foregroundStyle(Palette.ink3)
 		}
 	}
 
 	private var runsNote: String {
 		if let refusal { return "here only: \(refusal)" }
+		if inSandbox, project == nil {
+			return "its own machine, with an empty repository it can commit to"
+		}
 		if inSandbox {
 			return "its own machine from the last commit\(project?.checkout?.branch.map { " on \($0)" } ?? ""); nothing here is touched"
 		}
@@ -306,6 +324,15 @@ struct ProjectPicker: View {
 			HStack(spacing: 8) {
 				Text("↑↓ move · ↵ pick").font(Typography.label).foregroundStyle(Palette.ink3)
 				Spacer()
+				// The first machine that can make projects; usually egwene.
+				if let maker = connected.first(where: { $0.store.newProjects != nil }) {
+					Button("+ New project") {
+						dismiss()
+						model.creatingProject = .create(machine: maker.id)
+					}
+					.buttonStyle(QuietButton())
+					.help("Make a project on \(model.name(of: maker)), with a private GitHub repository")
+				}
 				Button("esc cancel") { dismiss() }
 					.buttonStyle(QuietButton())
 					.keyboardShortcut(.cancelAction)

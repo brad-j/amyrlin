@@ -168,16 +168,32 @@ struct SandboxMenu: View {
 	let summary: ConversationSummary
 	@State private var confirmDiscard = false
 
+	private var key: ConversationKey? {
+		model.machines.first { $0.store === host }.map { ConversationKey(machine: $0.id, conversation: summary.id) }
+	}
+
 	var body: some View {
 		let ready = summary.sandbox.map { $0.state == .ready || $0.state == .paused } ?? false
 		let idle = summary.status != .busy && host.isConnected
 		Button("Fetch Its Commits Now") { sync(merge: false) }.disabled(!ready || !idle)
-		Button("Merge into the Checkout Here") { sync(merge: true) }
-			.disabled(!ready || !idle)
-			.help("Fast-forward the checked-out branch on \(host.state.host?.name ?? "the machine") to this work, when that's safe")
+		// A scratch sandbox has no checkout to merge into until it's a project.
+		if summary.project != nil {
+			Button("Merge into the Checkout Here") { sync(merge: true) }
+				.disabled(!ready || !idle)
+				.help("Fast-forward the checked-out branch on \(host.state.host?.name ?? "the machine") to this work, when that's safe")
+		}
 		Divider()
 		Button("Discard \(summary.sandbox?.branch ?? "the Branch")…", role: .destructive) { discard() }
 			.disabled(!idle)
+		Divider()
+		// Archiving removes the sandbox once its commits are home; for a task you won't ship.
+		if let key {
+			if summary.archived {
+				Button("Bring Back from the Archive") { model.setArchived(key, false) }.disabled(!host.isConnected)
+			} else {
+				Button("Archive") { model.setArchived(key, true) }.disabled(!host.isConnected)
+			}
+		}
 	}
 
 	private func sync(merge: Bool) {
@@ -209,7 +225,7 @@ struct SandboxMenu: View {
 		Task {
 			do {
 				let result = try await host.discardSandbox(summary.id)
-				model.note(result.deleted ? "Discarded \(result.branch)" : "\(result.branch) wasn't there")
+				model.note(result.deleted ? "Discarded \(result.branch)" : "Already discarded")
 			} catch {
 				model.note("Couldn't discard: \((error as? ProtocolError)?.message ?? String(describing: error))")
 			}

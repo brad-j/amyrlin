@@ -28,7 +28,7 @@ struct ConversationView: View {
 	var body: some View {
 		let task = host.task(store.id)
 		VStack(spacing: 0) {
-			ConversationHeader(title: summary?.title ?? store.conversation?.title ?? "Conversation", project: summary?.project, dir: summary?.dir, colors: host.state.projectColors, busy: store.isBusy, rename: rename)
+			ConversationHeader(title: summary?.title ?? store.conversation?.title ?? "Conversation", project: summary?.project, dir: summary?.sandbox != nil ? summary?.source : summary?.dir, colors: host.state.projectColors, busy: store.isBusy, rename: rename)
 			if let summary, hasResult {
 				TaskHeader(summary: summary, host: host, tab: $tab) {
 					tab = .result
@@ -454,7 +454,14 @@ struct TaskHeader: View {
 			Spacer(minLength: 12)
 			Text(state.text).foregroundStyle(state.color)
 			Text(place).foregroundStyle(Palette.ink3).lineLimit(1).truncationMode(.middle)
-			if canShip {
+			if canShip, isScratch {
+				Button("Make it a project") {
+					model?.creatingProject = .promote(ConversationKey(machine: machineID ?? UUID(), conversation: summary.id), title: summary.title)
+				}
+				.buttonStyle(QuietButton(fill: canPromote ? Palette.accent : nil, ink: canPromote ? Palette.accentInk : Palette.ink3))
+				.disabled(!canPromote)
+				.help(canPromote ? "Make a project of this work, with a private GitHub repository; then it can ship" : "\(host.state.host?.name ?? "This machine") can't make projects now")
+			} else if canShip {
 				Button("Ship", action: ship)
 					.buttonStyle(QuietButton(fill: Palette.accent, ink: Palette.accentInk))
 					.help("Land this work upstream; you confirm where first")
@@ -477,10 +484,16 @@ struct TaskHeader: View {
 			}
 		}
 		.padding(.vertical, canShip ? 4 : 0)
+		.help(summary.sandbox?.size.flatMap { size in size.resources.map { "A \(size.rawValue) sandbox: \($0)" } } ?? "")
 		.font(Typography.ui)
 		.padding(.horizontal, 16)
 		.overlay(alignment: .bottom) { Rectangle().fill(Palette.rule).frame(height: 1) }
 	}
+
+	/// A sandbox with no project: it starts from an empty repository and can't ship until it's made one.
+	private var isScratch: Bool { summary.sandbox != nil && summary.project == nil }
+	private var canPromote: Bool { host.newProjects != nil && host.isConnected }
+	private var machineID: UUID? { model?.machines.first { $0.store === host }?.id }
 
 	/// Work that came home and hasn't landed, with the sandbox still there, the host connected and nothing running.
 	private var canShip: Bool {
@@ -514,7 +527,9 @@ struct TaskHeader: View {
 	private var place: String {
 		guard let sandbox = summary.sandbox else { return "here" }
 		let started = Date(timeIntervalSince1970: TimeInterval(summary.createdAt) / 1000).shortAge
-		return [sandbox.branch, sandbox.base.map { "from \($0.prefix(7))" }, started == "now" ? "started now" : "started \(started) ago"]
+		// A scratch sandbox's base is the empty commit every scratch repository shares, which says nothing.
+		let base = summary.project == nil ? "scratch" : sandbox.base.map { "from \($0.prefix(7))" }
+		return [summary.project == nil ? nil : sandbox.branch, base, sandbox.size?.rawValue, started == "now" ? "started now" : "started \(started) ago"]
 			.compactMap(\.self).joined(separator: " · ")
 	}
 }

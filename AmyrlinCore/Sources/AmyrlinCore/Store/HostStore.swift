@@ -78,8 +78,8 @@ public final class HostStore {
 	}
 
 	/// A new conversation, in `project` when the server has projects, starting with `text` when given.
-	public func createConversation(title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = [], sandbox: Bool = false, approvals: Approvals? = nil, group: String? = nil) async throws -> ConversationSummary {
-		let result = try await connection.send(Commands.CreateConversation(title: title, settings: settings, project: project, text: text, images: images, videos: videos, files: files, sandbox: sandbox, approvals: approvals, group: group))
+	public func createConversation(title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = [], sandbox: Bool = false, approvals: Approvals? = nil, group: String? = nil, size: SandboxSize? = nil) async throws -> ConversationSummary {
+		let result = try await connection.send(Commands.CreateConversation(title: title, settings: settings, project: project, text: text, images: images, videos: videos, files: files, sandbox: sandbox, approvals: approvals, group: group, size: size))
 		state.upsert(result.conversation)
 		return result.conversation
 	}
@@ -176,6 +176,30 @@ public final class HostStore {
 	public func keep(_ id: ConversationID, of group: String) async throws {
 		let archived = try await sendExtension(Commands.KeepInGroup(group: group, conversationId: id)).archived
 		for other in archived { if var summary = state.conversations[other] { summary.archived = true; state.upsert(summary) } }
+	}
+
+	/// Where new projects go, when this host can make them now; nil hides New project.
+	public var newProjects: NewProjects? { info?.newProjects }
+
+	/// Makes a project; `host.projects` follows, but the new one is listed at once so a picker can open it.
+	public func createProject(name: String, description: String?) async throws -> ProjectInfo {
+		let project = try await sendExtension(Commands.CreateProject(name: name, description: description)).project
+		addProject(project)
+		return project
+	}
+
+	/// Makes a scratch sandbox's work project `name`.
+	public func promote(_ id: ConversationID, name: String, description: String?) async throws -> ProjectInfo {
+		let project = try await sendExtension(Commands.PromoteSandbox(conversationId: id, name: name, description: description)).project
+		addProject(project)
+		return project
+	}
+
+	private func addProject(_ project: ProjectInfo) {
+		var list = projects
+		guard !list.contains(where: { $0.dir == project.dir }) else { return }
+		list.append(project)
+		state.projects = list
 	}
 
 	/// Picks `project`'s colour on this host, or with nil gives it back its name's.

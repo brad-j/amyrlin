@@ -25,6 +25,13 @@ import AppKit
 		guard let rep = view.bitmapImageRepForCachingDisplay(in: bounds) else { return }
 		view.cacheDisplay(in: bounds, to: rep)
 		try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+		// An open sheet is a window of its own; draw it beside the main one.
+		if let sheet = window.attachedSheet, let sheetView = sheet.contentView?.superview ?? sheet.contentView,
+			let sheetRep = sheetView.bitmapImageRepForCachingDisplay(in: sheetView.bounds)
+		{
+			sheetView.cacheDisplay(in: sheetView.bounds, to: sheetRep)
+			try? sheetRep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path.replacingOccurrences(of: ".png", with: "-sheet.png")))
+		}
 		FileHandle.standardError.write(Data("snapshot written: \(path)\n".utf8))
 	}
 }

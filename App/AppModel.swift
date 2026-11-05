@@ -50,6 +50,8 @@ final class NewTask {
 	var project: ProjectInfo?
 	/// Runs its tools in a sandbox, when the project can take one.
 	var sandbox = true
+	/// The sandbox's size; nil leaves it to the project's `.agents/project.json`, else small.
+	var size: SandboxSize?
 	/// Set once a project is picked by hand, or the default could be worked out; until then the box looks again as
 	/// machines load their projects.
 	var settled = false
@@ -318,6 +320,8 @@ final class AppModel {
 	let newTask = NewTask()
 	/// Picking the new task's project, from every machine.
 	var pickingProject = false
+	/// The New project sheet, for a machine, or to make a scratch sandbox's work a project.
+	var creatingProject: ProjectSheet.Purpose?
 	/// The machine whose aludra settings are open.
 	var hostSettingsMachine: UUID?
 	/// A failed app-level action, shown once in the window.
@@ -407,6 +411,25 @@ final class AppModel {
 		}
 		// `--args -openNewTask` opens the new-task box, for screenshots.
 		if ProcessInfo.processInfo.arguments.contains("-openNewTask") { newTask() }
+		// `--args -openNewProject` shows the New project sheet for the first machine that can make projects, for screenshots;
+		// nothing is made until its button is pressed.
+		if ProcessInfo.processInfo.arguments.contains("-openNewProject") {
+			Task {
+				try? await Task.sleep(for: .seconds(3))
+				if let maker = machines.first(where: { $0.store.newProjects != nil }) { creatingProject = .create(machine: maker.id) }
+			}
+		}
+		// `--args -openPromote 12` shows Make it a project for scratch task 12 on the first machine, for checking it.
+		if let flag = ProcessInfo.processInfo.arguments.firstIndex(of: "-openPromote"), flag + 1 < ProcessInfo.processInfo.arguments.count,
+			let conversation = ConversationID(ProcessInfo.processInfo.arguments[flag + 1]), let first = machines.first
+		{
+			let key = ConversationKey(machine: first.id, conversation: conversation)
+			selection = key
+			Task {
+				try? await Task.sleep(for: .seconds(3))
+				creatingProject = .promote(key, title: first.store.state.conversations[conversation]?.title ?? "")
+			}
+		}
 		// `--args -openAddMachine` shows the Add Machine sheet at launch, for screenshots.
 		if ProcessInfo.processInfo.arguments.contains("-openAddMachine") {
 			Task {
@@ -527,6 +550,7 @@ final class AppModel {
 		newTask.machine = machineID
 		newTask.project = project
 		newTask.sandbox = sandboxRefusal(for: project, on: machineID) == nil
+		newTask.size = nil
 		newTask.settled = true
 	}
 
@@ -544,7 +568,8 @@ final class AppModel {
 	func sandboxRefusal(for project: ProjectInfo?, on machineID: UUID) -> String? {
 		guard let machine = machine(machineID) else { return "the machine isn't in the app" }
 		guard machine.store.sandboxes != nil else { return "\(name(of: machine)) has no sandbox host" }
-		guard let project else { return "a scratch task has no project to copy" }
+		// Scratch in a sandbox starts from an empty repository (item 20); it can't ship until it's made a project.
+		guard let project else { return nil }
 		let current = machine.store.projects.first { $0.dir == project.dir } ?? project
 		return current.checkout?.sandboxRefusal
 	}
@@ -554,7 +579,7 @@ final class AppModel {
 		guard let machineID = newTask.machine, let machine = machine(machineID) else { return false }
 		let sandbox = newTask.sandbox && sandboxRefusal(for: newTask.project, on: machineID) == nil
 		do {
-			let summary = try await machine.store.createConversation(project: newTask.project?.dir, text: text, images: images, videos: videos, files: files, sandbox: sandbox)
+			let summary = try await machine.store.createConversation(project: newTask.project?.dir, text: text, images: images, videos: videos, files: files, sandbox: sandbox, size: sandbox ? newTask.size : nil)
 			let key = ConversationKey(machine: machine.id, conversation: summary.id)
 			// A crossfade: the new conversation is blank for a moment while its first snapshot comes, which cut in as a flash.
 			withAnimation(.row) {

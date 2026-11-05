@@ -22,6 +22,10 @@ struct ProjectsHome: View {
 					Text(model.showAllProjects ? "all" : "active in the last \(ProjectTable.recentDays) days")
 						.font(Typography.uiSmall).foregroundStyle(Palette.ink3)
 					Spacer()
+					if let maker = connected.first(where: { $0.store.newProjects != nil }) {
+						BracketButton("+ new project", color: Palette.ink2) { model.creatingProject = .create(machine: maker.id) }
+							.help("Make a project on \(model.name(of: maker)), with a private GitHub repository")
+					}
 					if table.hidden > 0 || model.showAllProjects {
 						BracketButton(model.showAllProjects ? "recent only" : "show all \(table.rows.count + table.hidden)") {
 							model.showAllProjects.toggle()
