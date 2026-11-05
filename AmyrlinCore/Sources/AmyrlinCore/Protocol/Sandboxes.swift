@@ -97,16 +97,30 @@ public struct Checkout: Decodable, Sendable, Hashable {
 	public var upstream: String?
 	/// Nil when a sandbox can start from it, or why it can't ("it isn't in git").
 	public var sandboxRefusal: String?
+	/// How many checks the last commit's `.agents/project.json` declares; nil from a host that doesn't say.
+	public var checks: Int?
+	/// Whether the last commit has something to check (a package manifest, Makefile or the like); nil from a host
+	/// that doesn't say.
+	public var code: Bool?
 
 	public var takesSandboxes: Bool { sandboxRefusal == nil }
 
-	public init(branch: String? = nil, dirty: Int = 0, ahead: Int = 0, behind: Int = 0, upstream: String? = nil, sandboxRefusal: String? = nil) {
+	/// The project has code to check and declares no checks yet, so setting them up would add something. Nil when the
+	/// host doesn't say.
+	public var wantsChecks: Bool? {
+		guard let checks, let code else { return nil }
+		return code && checks == 0
+	}
+
+	public init(branch: String? = nil, dirty: Int = 0, ahead: Int = 0, behind: Int = 0, upstream: String? = nil, sandboxRefusal: String? = nil, checks: Int? = nil, code: Bool? = nil) {
 		self.branch = branch
 		self.dirty = dirty
 		self.ahead = ahead
 		self.behind = behind
 		self.upstream = upstream
 		self.sandboxRefusal = sandboxRefusal
+		self.checks = checks
+		self.code = code
 	}
 
 	public init(from decoder: any Decoder) throws {
@@ -116,6 +130,8 @@ public struct Checkout: Decodable, Sendable, Hashable {
 		ahead = try c.decodeIfPresent(Int.self, forKey: .ahead) ?? 0
 		behind = try c.decodeIfPresent(Int.self, forKey: .behind) ?? 0
 		upstream = try c.decodeIfPresent(String.self, forKey: .upstream)
+		checks = try c.decodeIfPresent(Int.self, forKey: .checks)
+		code = try c.decodeIfPresent(Bool.self, forKey: .code)
 		// `true`, or `{reason}`; anything else reads as a refusal without a reason.
 		if (try? c.decode(Bool.self, forKey: .sandboxes)) == true {
 			sandboxRefusal = nil
@@ -126,7 +142,7 @@ public struct Checkout: Decodable, Sendable, Hashable {
 		}
 	}
 
-	private enum CodingKeys: String, CodingKey { case branch, dirty, ahead, behind, upstream, sandboxes }
+	private enum CodingKeys: String, CodingKey { case branch, dirty, ahead, behind, upstream, sandboxes, checks, code }
 }
 
 /// Where a sandbox is in its life. `paused` is informational: any tool call wakes it, so treat it as `ready`.
@@ -420,9 +436,19 @@ public enum ShipOutcome: Sendable, Hashable {
 		}
 	}
 
-	/// `to` is the mode; `pushed` the remote branch (`origin/main`).
+	/// `to` is the mode; `pushed` the remote branch (`origin/main`). `commits` is 0 when the work was upstream already
+	/// and nothing was pushed (aludra from 2026-11-05).
 	case shipped(to: ShipTo, pushed: String, head: String, commits: Int, pr: String?)
 	case stopped(kind: FailureKind, reason: String)
+
+	/// A landed ship in a few words: `Live on main`, `Already on main`, `PR open · origin/sandbox-4-ab12cd3`,
+	/// `Pushed to origin/x`. Nil for a stopped one.
+	public var landedLine: String? {
+		guard case .shipped(let to, let pushed, _, let commits, let pr) = self else { return nil }
+		let branch = pushed.replacingOccurrences(of: "origin/", with: "")
+		if commits == 0 { return "Already on \(branch)" }
+		return pr != nil ? "PR open · \(pushed)" : to == .main ? "Live on \(branch)" : "Pushed to \(pushed)"
+	}
 }
 
 public struct ShipEvent: Sendable, Hashable {

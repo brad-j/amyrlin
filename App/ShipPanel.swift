@@ -102,9 +102,9 @@ struct ShipPanel: View {
 		HStack(alignment: .firstTextBaseline, spacing: 12) {
 			Text("✓").foregroundStyle(Palette.add)
 			VStack(alignment: .leading, spacing: 4) {
-				Text(pr != nil ? "The pull request is open." : to == .main ? "It's live on \(pushed.replacingOccurrences(of: "origin/", with: ""))." : "It's on \(pushed).")
+				Text(commits == 0 ? "Nothing to ship: it's all on \(pushed.replacingOccurrences(of: "origin/", with: "")) already." : pr != nil ? "The pull request is open." : to == .main ? "It's live on \(pushed.replacingOccurrences(of: "origin/", with: ""))." : "It's on \(pushed).")
 					.font(Typography.readingStrong).foregroundStyle(Palette.ink)
-				Text("\(commits == 1 ? "1 commit" : "\(commits) commits") · \(head.prefix(7))")
+				Text(commits == 0 ? "nothing pushed · \(head.prefix(7))" : "\(commits == 1 ? "1 commit" : "\(commits) commits") · \(head.prefix(7))")
 					.font(Typography.uiSmall).foregroundStyle(Palette.ink3).textSelection(.enabled)
 			}
 			Spacer()

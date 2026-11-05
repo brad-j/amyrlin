@@ -434,8 +434,8 @@ struct TaskLine: View {
 	/// The host's line, or failing one what the app knows: a stopped or landed ship, a failed or preparing sandbox.
 	static func line(_ summary: ConversationSummary, ship: ShipOutcome?) -> String? {
 		switch ship {
-		case .shipped(let to, let pushed, _, _, let pr) where summary.status != .busy:
-			return pr != nil ? "PR open · \(pushed)" : to == .main ? "Live on \(pushed.replacingOccurrences(of: "origin/", with: ""))" : "Pushed to \(pushed)"
+		case .shipped where summary.status != .busy:
+			return ship?.landedLine
 		case .stopped(_, let reason) where summary.status != .busy:
 			return "Ship stopped: \(reason)"
 		default: break

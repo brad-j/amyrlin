@@ -30,6 +30,7 @@ struct TaskGroupsTests {
 		#expect(TaskGroups.group(ready) == .ready)
 		#expect(TaskGroups.group(try summary(1, sandbox: "paused")) == .ready)
 		#expect(TaskGroups.group(ready, ship: .shipped(to: .main, pushed: "origin/main", head: "a", commits: 1, pr: nil)) == .done)
+		#expect(TaskGroups.group(ready, ship: .shipped(to: .main, pushed: "origin/main", head: "a", commits: 0, pr: nil)) == .done, "nothing to push is done")
 		#expect(TaskGroups.group(try summary(1, sandbox: "removed")) == .done)
 		#expect(TaskGroups.group(ready, empty: true) == .done)
 		// Nothing said yet: a sandbox made and waiting for its first message isn't ready work.

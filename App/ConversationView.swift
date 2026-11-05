@@ -611,8 +611,9 @@ struct TaskHeader: View {
 			case .checksFail: ("checks fail", Palette.wait)
 			}
 		}
-		if case .shipped(let to, let pushed, _, _, let pr) = ship {
-			return (pr != nil ? "PR open" : to == .main ? "live on \(pushed.replacingOccurrences(of: "origin/", with: ""))" : "pushed", Palette.ink3)
+		if case .shipped(let to, let pushed, _, let commits, let pr) = ship {
+			let branch = pushed.replacingOccurrences(of: "origin/", with: "")
+			return (commits == 0 ? "already on \(branch)" : pr != nil ? "PR open" : to == .main ? "live on \(branch)" : "pushed", Palette.ink3)
 		}
 		let empty = host.nothingToShip(summary.id)
 		if empty, summary.sandbox?.state == .ready || summary.sandbox?.state == .paused, summary.status != .busy, !TaskGroups.isShipping(summary) {

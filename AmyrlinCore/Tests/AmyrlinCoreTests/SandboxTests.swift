@@ -13,7 +13,7 @@ struct SandboxDecodingTests {
 		{"host":{"hostId":"h","name":"egwene"},"models":[],"tools":[],
 		 "sandboxes":{"shipTo":"main","afterRun":"fetch","approvals":"off"},
 		 "projects":[
-		  {"workspace":"w","name":"bdaytrip","path":"Software/bdaytrip","dir":"/w/bdaytrip","checkout":{"branch":"main","dirty":2,"ahead":0,"behind":1,"upstream":"origin/main","sandboxes":true}},
+		  {"workspace":"w","name":"bdaytrip","path":"Software/bdaytrip","dir":"/w/bdaytrip","checkout":{"branch":"main","dirty":2,"ahead":0,"behind":1,"upstream":"origin/main","sandboxes":true,"checks":0,"code":true}},
 		  {"workspace":"w","name":"keychain","path":"Prints/keychain","dir":"/w/keychain","checkout":{"dirty":0,"ahead":0,"behind":0,"sandboxes":{"reason":"it isn't in git"}}},
 		  {"workspace":"w","name":"old","path":"old","dir":"/w/old"}
 		 ]}
@@ -21,7 +21,11 @@ struct SandboxDecodingTests {
 		#expect(info.sandboxes?.shipTo == .main)
 		#expect(info.sandboxes?.approvals == .off)
 		let projects = try #require(info.projects)
-		#expect(projects[0].checkout == Checkout(branch: "main", dirty: 2, ahead: 0, behind: 1, upstream: "origin/main"))
+		#expect(projects[0].checkout == Checkout(branch: "main", dirty: 2, ahead: 0, behind: 1, upstream: "origin/main", checks: 0, code: true))
+		#expect(projects[0].checkout?.wantsChecks == true)
+		#expect(projects[1].checkout?.wantsChecks == nil, "a host that doesn't say")
+		#expect(Checkout(checks: 3, code: true).wantsChecks == false)
+		#expect(Checkout(checks: 0, code: false).wantsChecks == false)
 		#expect(projects[0].checkout?.takesSandboxes == true)
 		#expect(projects[1].checkout?.sandboxRefusal == "it isn't in git")
 		#expect(projects[2].checkout == nil)
@@ -99,6 +103,9 @@ struct SandboxDecodingTests {
 		#expect(shipped == .shipped(ShipEvent(conversationId: 3, outcome: .shipped(to: .branch, pushed: "origin/sandbox-4-ab12cd3", head: "ab12cd3", commits: 2, pr: "https://github.com/x/y/pull/9"))))
 		let stopped = try decode(HostEvent.self, #"{"type":"sandbox.shipped","conversationId":3,"shipped":false,"kind":"upstream_moved","reason":"rejected"}"#)
 		#expect(stopped == .shipped(ShipEvent(conversationId: 3, outcome: .stopped(kind: .upstreamMoved, reason: "rejected"))))
+		#expect(ShipOutcome.shipped(to: .main, pushed: "origin/main", head: "c5d1380", commits: 0, pr: nil).landedLine == "Already on main")
+		#expect(ShipOutcome.shipped(to: .main, pushed: "origin/main", head: "c5d1380", commits: 2, pr: nil).landedLine == "Live on main")
+		#expect(ShipOutcome.stopped(kind: .blocked, reason: "x").landedLine == nil)
 	}
 
 	@Test func hostStateKeepsProjectsAndShips() throws {

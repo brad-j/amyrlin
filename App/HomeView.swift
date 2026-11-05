@@ -341,8 +341,10 @@ private struct CheckoutStrip: View {
 }
 
 /// Offers a task that gives the project checks, a setup script and screenshots, so its tasks' results say whether
-/// they work. aludra doesn't yet say what a project declares, so it's offered until a task of this kind has run, and
-/// says it may already be set up.
+/// they work. It's offered only when the task would add something: the checkout's last commit has code to check
+/// (`checkout.code`) and declares no checks (`checkout.checks`), and no setup task is open, since one that hasn't
+/// shipped yet would add them. A host from before 2026-11-05 doesn't say, so then it's offered until a task of this kind
+/// has run.
 private struct SetUpChecks: View {
 	let model: AppModel
 	let machine: AppModel.Machine
@@ -363,19 +365,27 @@ private struct SetUpChecks: View {
 	Commit it with a short message. In your result, list each check and whether it passed now.
 	"""
 
-	/// A task with this title in the project already, so the offer goes quiet.
-	private var done: Bool {
-		// aludra titles a session from its first message, so this task is known by that message's first line.
-		tasks.contains { $0.summary.title == Self.title || $0.summary.title.hasPrefix("Set this project up so sandbox tasks") || $0.summary.title.localizedCaseInsensitiveContains("checks") && $0.summary.title.localizedCaseInsensitiveContains("set") }
+	/// Whether `summary` is a setup task. aludra titles a session from its first message, and a model may retitle it, so
+	/// it's known by its title or by that message's first line.
+	private static func isSetup(_ summary: ConversationSummary) -> Bool {
+		summary.title == title || summary.title.hasPrefix("Set this project up so sandbox tasks")
+			|| summary.title.localizedCaseInsensitiveContains("checks") && (summary.title.localizedCaseInsensitiveContains("set") || summary.title.localizedCaseInsensitiveContains("configure"))
+	}
+
+	private var offered: Bool {
+		let setups = tasks.filter { Self.isSetup($0.summary) }
+		guard let wants = project.checkout?.wantsChecks else { return setups.isEmpty }
+		// A setup task still open (running, ready to ship, needing you) holds the checks until it ships.
+		return wants && !setups.contains { $0.group != .done && !$0.summary.archived }
 	}
 
 	var body: some View {
-		if !done {
+		if offered {
 			HStack(spacing: 10) {
 				Image(systemName: "checklist").foregroundStyle(Palette.ink3)
 				VStack(alignment: .leading, spacing: 1) {
 					Text("Give \(project.name) checks").foregroundStyle(Palette.ink2)
-					Text("So results say whether tests and the build pass. Skip it if .agents/project.json already has them.")
+					Text(project.checkout?.wantsChecks == nil ? "So results say whether tests and the build pass. Skip it if .agents/project.json already has them." : "So results say whether tests and the build pass. It has code and no .agents/project.json checks yet.")
 						.foregroundStyle(Palette.ink3)
 						.fixedSize(horizontal: false, vertical: true)
 				}

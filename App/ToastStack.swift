@@ -108,6 +108,8 @@ private struct ToastView: View {
 		case .needsYou: "needs you to allow a tool call"
 		case .done: Self.done(summary)
 		case .stuck: summary?.sandbox?.state == .failed ? "its sandbox failed" : summary?.stuck.map { "stuck: \($0.reason)" } ?? "stuck"
+		case .shipped(.shipped(_, let pushed, _, 0, _)):
+			"already on \(pushed.replacingOccurrences(of: "origin/", with: "")), nothing pushed"
 		case .shipped(.shipped(let to, let pushed, _, let commits, let pr)):
 			pr != nil ? "PR open" : to == .main ? "shipped to \(pushed.replacingOccurrences(of: "origin/", with: "")) · \(commits == 1 ? "1 commit" : "\(commits) commits")" : "pushed to \(pushed)"
 		case .shipped(.stopped(_, let reason)): "ship stopped: \(reason)"
