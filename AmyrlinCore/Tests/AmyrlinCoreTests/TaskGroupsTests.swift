@@ -15,8 +15,10 @@ struct TaskGroupsTests {
 		#expect(TaskGroups.need(try summary(1, status: "stuck")) == .stuck)
 		#expect(TaskGroups.need(try summary(1, sandbox: "failed")) == .stuck)
 		#expect(TaskGroups.need(try summary(1, line: "Asks: drop the image plugin?")) == .question)
-		#expect(TaskGroups.need(try summary(1, line: "Added the page. · 2 checks fail")) == .checksFail)
-		#expect(TaskGroups.need(try summary(1, line: "Added the page. · 1 check fails")) == .checksFail)
+		#expect(TaskGroups.need(try summary(1, line: "Added the page. · 2 checks fail", sandbox: "ready")) == .checksFail)
+		#expect(TaskGroups.need(try summary(1, line: "Added the page. · 1 check fails", sandbox: "ready")) == .checksFail)
+		// A local session's checks are what its turn ran; failing ones don't make it need you.
+		#expect(TaskGroups.need(try summary(1, line: "Added the page. · 1 check fails")) == nil)
 		#expect(TaskGroups.need(try summary(1, line: "Added the page. · checks pass")) == nil)
 		#expect(TaskGroups.need(try summary(1, sandbox: "ready"), ship: .stopped(kind: .blocked, reason: "asks")) == .shipStopped)
 		// A run going on needs nothing yet, whatever its last line said.

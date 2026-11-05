@@ -510,7 +510,7 @@ struct TaskHeader: View {
 			case .approval, .question: ("needs you", Palette.wait)
 			case .stuck: ("stuck", Palette.bad)
 			case .shipStopped: ("ship stopped", Palette.bad)
-			case .checksFail: ("checks fail", Palette.bad)
+			case .checksFail: ("checks fail", Palette.wait)
 			}
 		}
 		if case .shipped(let to, let pushed, _, _, let pr) = ship {

@@ -599,8 +599,8 @@ private struct TaskRow: View {
 
 	private var lineColor: Color {
 		switch need {
-		case .approval, .question: Palette.wait
-		case .stuck, .shipStopped, .checksFail: Palette.bad
+		case .approval, .question, .checksFail: Palette.wait
+		case .stuck, .shipStopped: Palette.bad
 		case nil: group == .ready ? Palette.add : Palette.ink3
 		}
 	}
@@ -656,6 +656,9 @@ private struct TaskMark: View {
 			switch (need, group) {
 			case (.approval?, _), (.question?, _):
 				StateMark(.waiting, size: 10)
+			case (.checksFail?, _):
+				// Amber, not red: the work is there and its checks want a look; nothing broke.
+				Image(systemName: "exclamationmark.triangle").resizable().scaledToFit().foregroundStyle(Palette.wait).frame(width: 10, height: 10)
 			case (.some, _):
 				StateMark(.failed, size: 10)
 			case (nil, .running):

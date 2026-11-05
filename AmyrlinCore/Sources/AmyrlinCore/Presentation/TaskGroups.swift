@@ -2,8 +2,9 @@ import Foundation
 
 /// The task list's groups: what each session needs from you (protocol section 10 item 19).
 ///
-/// - needs you: asking to allow a call, asking a question, stuck (a failed sandbox too), a stopped ship, or failing
-///   checks.
+/// - needs you: asking to allow a call, asking a question, stuck (a failed sandbox too), a stopped ship, or a sandbox
+///   task's failing checks. A local session's checks are only the commands its turn happened to run, so they don't
+///   make it need you.
 /// - running: a run going on, or a sandbox being made.
 /// - ready: sandbox work that came back and hasn't shipped.
 /// - done: everything else that isn't archived: finished local sessions, shipped work and removed sandboxes.
@@ -42,7 +43,7 @@ public enum TaskGroups {
 		if case .stopped = ship { return .shipStopped }
 		guard let line = summary.line else { return nil }
 		if line.hasPrefix("Asks:") { return .question }
-		if line.range(of: #"· \d+ checks? fails?$"#, options: .regularExpression) != nil { return .checksFail }
+		if summary.sandbox != nil, line.range(of: #"· \d+ checks? fails?$"#, options: .regularExpression) != nil { return .checksFail }
 		return nil
 	}
 
