@@ -95,7 +95,14 @@ struct MainView: View {
 					.frame(maxWidth: .infinity, maxHeight: .infinity)
 					.overlay(alignment: .topTrailing) { ToastStack(model: model) }
 				if model.showInspector, let selected = model.selected {
-					InspectorView(store: selected.conversation, host: selected.machine.store)
+					// A sandbox task's column is its work; anything else keeps the session's settings.
+					Group {
+						if selected.machine.store.state.conversations[selected.conversation.id]?.sandbox != nil {
+							WorkPanel(store: selected.conversation, host: selected.machine.store, task: selected.machine.store.task(selected.conversation.id))
+						} else {
+							InspectorView(store: selected.conversation, host: selected.machine.store)
+						}
+					}
 						.id(model.selection)
 						.frame(width: model.inspectorWidth)
 						.overlay(alignment: .leading) { ColumnEdge(width: $model.inspectorWidth, range: 240...380, side: .leading).ignoresSafeArea(.container, edges: .top) }
