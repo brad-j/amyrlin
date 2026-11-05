@@ -7,62 +7,70 @@ struct MachineRef: Identifiable {
 	var id: UUID { machine.id }
 }
 
-/// The new-task box: one big box for the ask, and under it the project, where it runs and how it lands. Sandbox is
-/// the default where the project can take one; "here" works in the project's checkout on its machine. Sending the
-/// first message creates the task and shows it where the box was.
+/// The ⌘N pane: the ask box on its own, with room to write.
 struct NewTaskView: View {
 	let model: AppModel
-	/// The message being written, kept while other tasks are shown.
 	@Bindable var composition: Composition
-	@State private var sending = false
-	@FocusState private var focused: Bool
-
-	private var task: NewTask { model.newTask }
-	private var machine: AppModel.Machine? { task.machine.flatMap(model.machine) }
-	private var attachments: Attachments { composition.attachments }
-	private var pasted: PastedText { composition.pasted }
-	/// The chosen project as the host last read it, with its checkout now.
-	private var project: ProjectInfo? {
-		guard let chosen = task.project, let machine else { return nil }
-		return machine.store.projects.first { $0.dir == chosen.dir } ?? chosen
-	}
-	private var refusal: String? { task.machine.flatMap { model.sandboxRefusal(for: task.project, on: $0) } }
-	private var inSandbox: Bool { task.sandbox && refusal == nil }
-
-	private var canSend: Bool {
-		(!composition.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
-			&& !attachments.isPreparing && !sending && machine?.store.isConnected == true
-	}
 
 	var body: some View {
 		VStack(spacing: 0) {
 			HeaderBar {
 				Text("New task").foregroundStyle(Palette.ink2)
-				if let machine {
-					Text(" in ").foregroundStyle(Palette.ink3)
-					ProjectName(name: project?.name, colors: machine.store.state.projectColors)
-					if let tag = model.machineTag(machine.id) { Text(" · \(tag)").foregroundStyle(Palette.ink3) }
-				}
 				Spacer(minLength: 8)
 				PaneCloseButton()
 			}
 			ScrollView {
-				VStack(alignment: .leading, spacing: 14) {
-					box
-					options
-				}
-				.frame(maxWidth: Metrics.measure + 48)
-				.padding(.horizontal, 40)
-				.padding(.top, 28)
-				.frame(maxWidth: .infinity)
+				AskBox(model: model, composition: composition, lines: 6...20, takesFocus: true)
+					.frame(maxWidth: Metrics.measure + 48)
+					.padding(.horizontal, 40)
+					.padding(.top, 28)
+					.frame(maxWidth: .infinity)
 			}
 		}
 		.background(Palette.paper)
 		.overlay(alignment: .bottomLeading) { SidebarToggle().padding(10) }
+	}
+}
+
+/// Asks a sandbox for something: the box, then under it the project (with what its checkout leaves behind), the
+/// sandbox's size, and where the work lands. Every task runs in a sandbox. Starting it opens the task where the box was.
+/// `fixedProject` pins the box to one project (a project's page), hiding the project choice.
+struct AskBox: View {
+	let model: AppModel
+	@Bindable var composition: Composition
+	var fixedProject: (machine: UUID, project: ProjectInfo)? = nil
+	var lines: ClosedRange<Int> = 2...12
+	var takesFocus = false
+	@State private var sending = false
+	@FocusState private var focused: Bool
+
+	private var task: NewTask { model.newTask }
+	private var machineID: UUID? { fixedProject?.machine ?? task.machine }
+	private var machine: AppModel.Machine? { machineID.flatMap(model.machine) }
+	private var attachments: Attachments { composition.attachments }
+	private var pasted: PastedText { composition.pasted }
+	/// The chosen project as the host last read it, with its checkout now.
+	private var project: ProjectInfo? {
+		guard let chosen = fixedProject?.project ?? task.project, let machine else { return nil }
+		return machine.store.projects.first { $0.dir == chosen.dir } ?? chosen
+	}
+	private var refusal: String? { machineID.flatMap { model.sandboxRefusal(for: project, on: $0) } }
+
+	private var canSend: Bool {
+		(!composition.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
+			&& !attachments.isPreparing && !sending && machine?.store.isConnected == true && refusal == nil
+	}
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 8) {
+			box
+			options
+		}
 		.followsPaneFocus($focused)
+		.onAppear { if takesFocus { focused = true } }
 		// Opened before the machines listed their projects: pick the default once they have.
 		.onChange(of: model.machines.map(\.store.projects.count), initial: true) { _, _ in
-			if !task.settled { model.chooseDefaultProject() }
+			if fixedProject == nil, !task.settled { model.chooseDefaultProject() }
 		}
 		.sheet(isPresented: Binding(get: { model.pickingProject }, set: { model.pickingProject = $0 })) {
 			ProjectPicker(model: model)
@@ -70,136 +78,104 @@ struct NewTaskView: View {
 	}
 
 	private var box: some View {
-		VStack(alignment: .leading, spacing: 10) {
+		VStack(alignment: .leading, spacing: 8) {
 			AttachmentStrip(attachments: attachments)
-			TextField("", text: $composition.text, prompt: Text("What should it do?").foregroundStyle(Palette.ink3), axis: .vertical)
-				.textFieldStyle(.plain)
-				.font(Typography.reading)
-				.foregroundStyle(Palette.ink)
-				.lineLimit(6...20)
-				.focused($focused)
-				.wrapsAtItsWidth(focused: focused)
-				.disabled(sending)
-				.onKeyPress(.return, phases: .down) { press in
-					if press.modifiers.contains(.option) || press.modifiers.contains(.shift) {
-						insertLineBreak()
+			HStack(alignment: .firstTextBaseline, spacing: 10) {
+				TextField("", text: $composition.text, prompt: Text(prompt).foregroundStyle(Palette.ink3), axis: .vertical)
+					.textFieldStyle(.plain)
+					.font(Typography.reading)
+					.foregroundStyle(Palette.ink)
+					.lineLimit(lines)
+					.focused($focused)
+					.wrapsAtItsWidth(focused: focused)
+					.disabled(sending)
+					.onKeyPress(.return, phases: .down) { press in
+						if press.modifiers.contains(.option) || press.modifiers.contains(.shift) {
+							insertLineBreak()
+							return .handled
+						}
+						send()
 						return .handled
 					}
-					send()
-					return .handled
-				}
-			HStack(spacing: 10) {
 				IconButton(machine?.store.info?.files == nil ? "photo.badge.plus" : "paperclip", color: attachments.isFull ? Palette.ink3 : Palette.ink2) { attachments.pick() }
 					.disabled(attachments.isFull || sending)
 					.help("Attach images, videos or files; you can also drop them here or paste them (⌘V)")
-				Spacer()
-				Text(sending ? "starting…" : "↵ start · ⇧↵ new line")
-					.font(Typography.uiSmall)
-					.foregroundStyle(Palette.ink3)
 				Button(sending ? "starting…" : "Start ↵", action: send)
 					.buttonStyle(QuietButton(fill: canSend ? Palette.accent : nil, ink: canSend ? Palette.accentInk : Palette.ink3))
 					.disabled(!canSend)
 			}
 		}
-		.padding(14)
+		.padding(12)
 		.background(Palette.paper2)
 		.overlay(Rectangle().stroke(focused ? Palette.rule2 : Palette.rule))
 		.acceptsPastes(attachments, text: pasted, focused: focused)
 	}
 
-	/// The project, where it runs and how it lands, each a line: a label, its control, and a plain sentence.
+	private var prompt: String {
+		if let name = fixedProject?.project.name { return "What should a sandbox do in \(name)?" }
+		return "What should a sandbox do?"
+	}
+
+	/// One quiet line under the box: the project (a menu, unless the box is a project's), the size, where it lands,
+	/// and what the checkout leaves behind or why it can't take a sandbox.
 	private var options: some View {
-		VStack(alignment: .leading, spacing: 10) {
-			option("project") {
+		HStack(spacing: 14) {
+			if fixedProject == nil {
 				Button { model.pickingProject = true } label: {
-					HStack(spacing: 6) {
+					HStack(spacing: 5) {
 						ProjectName(name: project?.name, colors: machine?.store.state.projectColors ?? [:])
-						if let machine { Text(model.machineTag(machine.id) ?? model.name(of: machine)).foregroundStyle(Palette.ink3) }
+						if let machine, let tag = model.machineTag(machine.id) { Text(tag).foregroundStyle(Palette.ink3) }
 						Text("▾").foregroundStyle(Palette.ink3)
 					}
 					.contentShape(Rectangle())
 				}
 				.buttonStyle(.plain)
 				.help("Pick the project (⌘/ also finds one)")
-			} note: {
-				checkoutNote
 			}
-			option("runs") {
-				Segmented(choices: ["here", "sandbox"], selected: inSandbox ? 1 : 0, disabled: refusal == nil ? [] : [1]) { index in
-					task.sandbox = index == 1
+			Menu {
+				Button(task.size == nil ? "✓ Auto" : "Auto") { task.size = nil }
+				ForEach(SandboxSize.known, id: \.self) { size in
+					Button("\(task.size == size ? "✓ " : "")\(size.rawValue.capitalized) · \(size.resources ?? "")") { task.size = size }
 				}
-			} note: {
-				Text(runsNote).foregroundStyle(refusal != nil && task.sandbox ? Palette.wait : Palette.ink3)
+			} label: {
+				Text("size \(task.size?.rawValue ?? "auto") ▾").foregroundStyle(Palette.ink3)
 			}
-			if inSandbox {
-				option("size") {
-					Segmented(choices: ["auto", "small", "medium", "large"], selected: task.size.flatMap { SandboxSize.known.firstIndex(of: $0).map { $0 + 1 } } ?? 0) { index in
-						task.size = index == 0 ? nil : SandboxSize.known[index - 1]
-					}
-				} note: {
-					Text(task.size?.resources ?? "the project's size, else 2 CPUs · 4 GB").foregroundStyle(Palette.ink3)
-				}
-			}
-			if inSandbox, project == nil {
-				option("lands") {
-					Text("nowhere yet").foregroundStyle(Palette.ink2)
-				} note: {
-					Text("scratch can't ship; make it a project from its result").foregroundStyle(Palette.ink3)
-				}
-			} else if inSandbox, let defaults = machine?.store.sandboxes {
-				option("lands") {
-					Text(defaults.shipTo == .branch ? "as a PR" : "on \(project?.checkout?.upstream?.replacingOccurrences(of: "origin/", with: "") ?? "main")")
-						.foregroundStyle(Palette.ink2)
-				} note: {
-					Text("only when you press Ship · approvals \(defaults.approvals == .off ? "off: it holds no keys" : "on")")
-						.foregroundStyle(Palette.ink3)
-				}
-			}
-		}
-		.font(Typography.ui)
-	}
-
-	private func option<Control: View, Note: View>(_ label: String, @ViewBuilder control: () -> Control, @ViewBuilder note: () -> Note) -> some View {
-		HStack(alignment: .firstTextBaseline, spacing: 12) {
-			Text(label)
-				.font(Typography.label)
-				.textCase(.uppercase)
-				.foregroundStyle(Palette.ink3)
-				.frame(width: 64 * Typography.scale, alignment: .leading)
-			control()
-			note().font(Typography.uiSansSmall).lineLimit(2)
+			.menuStyle(.button)
+			.buttonStyle(.plain)
+			.menuIndicator(.hidden)
+			.fixedSize()
+			.help(task.size?.resources ?? "The project's size from .agents/project.json, else small (2 CPUs · 4 GB)")
+			Text(lands).foregroundStyle(Palette.ink3)
+			note
 			Spacer(minLength: 0)
 		}
+		.font(Typography.uiSmall)
+		.lineLimit(1)
 	}
 
-	/// The checkout's state where it bears on the task: what stays behind, and whether it's behind its upstream.
-	@ViewBuilder private var checkoutNote: some View {
-		if let checkout = project?.checkout {
-			let parts = [
-				checkout.branch.map { "on \($0)" },
-				checkout.dirty > 0 && inSandbox ? "\(checkout.dirty) uncommitted \(checkout.dirty == 1 ? "change" : "changes") here won't be in it" : checkout.dirty > 0 ? "\(checkout.dirty) uncommitted" : nil,
-				checkout.behind > 0 ? "\(checkout.behind) behind \(checkout.upstream ?? "upstream") as last fetched" : nil,
-			].compactMap(\.self)
-			Text(parts.joined(separator: " · ")).foregroundStyle(checkout.dirty > 0 && inSandbox || checkout.behind > 0 ? Palette.wait : Palette.ink3)
-		} else if project == nil {
-			Text(inSandbox ? "an empty repository of its own" : "a directory of its own on \(machine.map(model.name(of:)) ?? "the machine")").foregroundStyle(Palette.ink3)
-		}
+	private var lands: String {
+		guard project != nil else { return "scratch: lands nowhere until it's a project" }
+		let upstream = project?.checkout?.upstream?.replacingOccurrences(of: "origin/", with: "") ?? "main"
+		return machine?.store.sandboxes?.shipTo == .branch ? "lands as a PR on Ship" : "lands on \(upstream) on Ship"
 	}
 
-	private var runsNote: String {
-		if let refusal { return "here only: \(refusal)" }
-		if inSandbox, project == nil {
-			return "its own machine, with an empty repository it can commit to"
+	/// What the checkout leaves behind, or why the project can't take a sandbox.
+	@ViewBuilder private var note: some View {
+		if let refusal {
+			Text("no sandbox: \(refusal)").foregroundStyle(Palette.wait)
+		} else if let checkout = project?.checkout, checkout.dirty > 0 || checkout.behind > 0 {
+			Text([
+				checkout.dirty > 0 ? "\(checkout.dirty) uncommitted here won't be in it" : nil,
+				checkout.behind > 0 ? "\(checkout.behind) behind \(checkout.upstream ?? "upstream")" : nil,
+			].compactMap(\.self).joined(separator: " · "))
+			.foregroundStyle(Palette.wait)
 		}
-		if inSandbox {
-			return "its own machine from the last commit\(project?.checkout?.branch.map { " on \($0)" } ?? ""); nothing here is touched"
-		}
-		return "in \(project.map { ConversationView.shortPath($0.dir) } ?? "a scratch directory") on \(machine.map(model.name(of:)) ?? "the machine"), with approvals"
 	}
 
 	private func send() {
 		let message = pasted.expand(composition.text).trimmingCharacters(in: .whitespacesAndNewlines)
 		guard canSend, !attachments.refused(by: machine?.store.info) else { return }
+		if let fixedProject { model.choose(fixedProject.project, on: fixedProject.machine) }
 		sending = true
 		let images = attachments.items.map(\.upload)
 		let videos = attachments.videos.map(\.upload)
@@ -261,7 +237,8 @@ struct ProjectPicker: View {
 	@State private var selected: String?
 	@FocusState private var searchFocused: Bool
 
-	private var connected: [AppModel.Machine] { model.machines.filter { $0.store.isConnected } }
+	/// Machines with sandboxes, connected: the only ones a task can go to.
+	private var connected: [AppModel.Machine] { model.sandboxMachines.filter { $0.store.isConnected } }
 
 	private var results: [ProjectSpotlight.Result<UUID>] {
 		ProjectSpotlight.search(query, in: connected.map { machine in
@@ -388,7 +365,7 @@ private struct PickerRow: View {
 			Spacer(minLength: 8)
 			Group {
 				if let tag = model.machineTag(machine) { Text(tag).foregroundStyle(Palette.ink2) }
-				Text(refusal == nil ? "sandbox" : "here only").foregroundStyle(refusal == nil ? Palette.ink3 : Palette.rule2)
+				if refusal != nil { Text("no sandbox").foregroundStyle(Palette.rule2) }
 			}
 			.font(Typography.label)
 		}
@@ -396,6 +373,6 @@ private struct PickerRow: View {
 		.padding(.vertical, 8)
 		.background(selected ? (project.map { Palette.projectWash($0.name, in: colors) } ?? Palette.paper3) : .clear)
 		.contentShape(Rectangle())
-		.help(refusal.map { "Here only: \($0)" } ?? "Can run in a sandbox")
+		.help(refusal.map { "Can't take a sandbox: \($0)" } ?? "Runs in a sandbox")
 	}
 }

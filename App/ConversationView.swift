@@ -11,6 +11,7 @@ struct ConversationView: View {
 	/// Opens the rename sheet for this conversation.
 	var rename: () -> Void = {}
 
+	@Environment(AppModel.self) private var appModel: AppModel?
 	/// The task's result page, or the conversation. A sandbox task opens on its result; a local one has only the
 	/// conversation.
 	@State private var tab: TaskTab = .result
@@ -82,6 +83,13 @@ struct ConversationView: View {
 			Text(store.lastError ?? "")
 		}
 		.task { store.start() }
+		.onAppear {
+			if let model = appModel, let key = model.shipOnOpen, key.conversation == store.id {
+				model.shipOnOpen = nil
+				tab = .result
+				confirmingShip = true
+			}
+		}
 		.onChange(of: TaskStore.key(summary), initial: true) { _, _ in
 			if hasResult { task.refresh(summary) }
 			#if DEBUG

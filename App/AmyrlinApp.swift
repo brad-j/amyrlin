@@ -217,15 +217,7 @@ struct MainView: View {
 			}
 			.overlay(alignment: .bottomLeading) { SidebarToggle().padding(10) }
 		} else {
-			VStack(spacing: 0) {
-				HeaderBar {
-					Spacer()
-					PaneCloseButton()
-				}
-				ProjectsHome(model: model)
-			}
-			.background(Palette.paper)
-			.overlay(alignment: .bottomLeading) { SidebarToggle().padding(10) }
+			HomeOrProject(model: model)
 		}
 	}
 }
@@ -256,7 +248,7 @@ private struct StatusLine: View {
 				segment("new task")
 				Spacer(minLength: 8)
 			} else {
-				ForEach(Array(model.machines.enumerated()), id: \.element.id) { index, machine in
+				ForEach(Array(model.sandboxMachines.enumerated()), id: \.element.id) { index, machine in
 					if index > 0 { Text("  │  ").foregroundStyle(Palette.rule2) }
 					host(machine.store)
 				}

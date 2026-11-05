@@ -199,32 +199,52 @@ final class AppModel {
 		if !unread.isDisjoint(with: open) { unread.subtract(open) }
 	}
 
-	/// Unarchived tasks in the list's scope on every machine, matching the search's `words`.
-	func tasks(matching words: [String] = []) -> [TaskEntry] {
-		machines.flatMap { tasks(on: $0, matching: words) }
+	/// The app is for sandbox work (2026-11-04): a machine counts once its host.info says it has a sandbox host. One
+	/// without stays in the machines menu, said to have none, and shows nothing.
+	var sandboxMachines: [Machine] {
+		machines.filter { $0.store.sandboxes != nil }
 	}
 
-	/// Unarchived tasks in scope on one machine.
+	/// Machines connected that have no sandbox host, for the machines menu to say so.
+	func lacksSandboxes(_ machine: Machine) -> Bool {
+		machine.store.info != nil && machine.store.sandboxes == nil
+	}
+
+	/// Unarchived sandbox tasks in the list's scope, matching the search's `words`.
+	func tasks(matching words: [String] = []) -> [TaskEntry] {
+		sandboxMachines.flatMap { tasks(on: $0, matching: words) }
+	}
+
+	/// Unarchived sandbox tasks in scope on one machine; sessions that run on the machine itself aren't shown.
 	func tasks(on machine: Machine, matching words: [String] = []) -> [TaskEntry] {
 		machine.store.state.active
-			.filter { inScope($0, on: machine.id) && SessionSearch.matches($0, words: words) }
+			.filter { $0.sandbox != nil && inScope($0, on: machine.id) && SessionSearch.matches($0, words: words) }
 			.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ship($0.id)) }
+	}
+
+	/// Every unarchived sandbox task on every machine, whatever the scope: the home's queue and the rail's counts.
+	func allTasks() -> [TaskEntry] {
+		sandboxMachines.flatMap { machine in
+			machine.store.state.active
+				.filter { $0.sandbox != nil }
+				.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ship($0.id)) }
+		}
+	}
+
+	/// Archived sandbox tasks, newest first; all of them, or those of one project.
+	func archivedTasks(in project: (machine: UUID, name: String)? = nil, matching words: [String] = []) -> [TaskEntry] {
+		sandboxMachines.flatMap { machine in
+			machine.store.state.archived
+				.filter { $0.sandbox != nil && SessionSearch.matches($0, words: words) }
+				.filter { project == nil || (machine.id == project!.machine && ($0.project ?? "") == project!.name) }
+				.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ship($0.id)) }
+		}
+		.sorted { $0.summary.updatedAt > $1.summary.updatedAt }
 	}
 
 	/// The done tasks show every one rather than the newest `doneLimit`.
 	var showAllDone = false
 	static let doneLimit = 5
-
-	/// The ten most recently active archived tasks in scope, or with words every match.
-	func archivedTasks(matching words: [String] = []) -> [TaskEntry] {
-		let all = machines.flatMap { machine in
-			machine.store.state.archived
-				.filter { inScope($0, on: machine.id) && SessionSearch.matches($0, words: words) }
-				.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ship($0.id)) }
-		}
-		.sorted { $0.summary.updatedAt > $1.summary.updatedAt }
-		return words.isEmpty ? Array(all.prefix(10)) : all
-	}
 
 	private func inScope(_ summary: ConversationSummary, on machine: UUID) -> Bool {
 		switch scope {
@@ -233,23 +253,33 @@ final class AppModel {
 		}
 	}
 
-	/// The machine the list doesn't name on its rows: the first with a sandbox host, else the first. Rows from any
-	/// other machine carry its name.
+	/// The home: the queue across every project, in the focused pane.
+	func goHome() {
+		scope = .all
+		panes[focus].content = .empty
+	}
+
+	/// A project's page, in the focused pane.
+	func openProject(machine: UUID, name: String) {
+		scope = .project(machine: machine, name: name)
+		panes[focus].content = .empty
+	}
+
+	/// The project the focused pane's page shows, as the host lists it; nil for the home, or scratch.
+	var scopedProject: (machine: Machine, project: ProjectInfo?, name: String)? {
+		guard case .project(let machineID, let name) = scope, let machine = machine(machineID) else { return nil }
+		return (machine, machine.store.projects.first { $0.name == name }, name)
+	}
+
+	/// The first machine with sandboxes: where a new task goes unless one is picked.
 	var homeMachine: UUID? {
-		(machines.first { $0.store.sandboxes != nil } ?? machines.first)?.id
+		sandboxMachines.first?.id
 	}
 
-	/// The tag a row from `machine` carries, or nil for the home machine (and when there's only one).
+	/// The machine's name on a row, only while more than one machine has sandboxes.
 	func machineTag(_ machineID: UUID) -> String? {
-		guard machines.count > 1, machineID != homeMachine, let machine = machine(machineID) else { return nil }
-		return isThisMac(machine) ? "Mac" : name(of: machine)
-	}
-
-	/// Whether `machine` is the Mac the app runs on, by its host name.
-	func isThisMac(_ machine: Machine) -> Bool {
-		let local = (Host.current().localizedName ?? ProcessInfo.processInfo.hostName).lowercased()
-		let name = name(of: machine).lowercased()
-		return !name.isEmpty && (local.hasPrefix(name) || ProcessInfo.processInfo.hostName.lowercased().hasPrefix(name))
+		guard sandboxMachines.count > 1, let machine = machine(machineID) else { return nil }
+		return name(of: machine)
 	}
 
 	/// The key `unread` stores a session by.
@@ -335,6 +365,16 @@ final class AppModel {
 	}
 	/// The home's project table lists every project, not only recent ones.
 	var showAllProjects = false
+	/// The table of every project and its checkout, from the home.
+	var showingProjectTable = false
+	/// A task opened from the home's Ship, whose result page opens the confirmation.
+	var shipOnOpen: ConversationKey?
+
+	/// Opens a task with its ship confirmation up.
+	func openToShip(_ key: ConversationKey) {
+		shipOnOpen = key
+		selection = key
+	}
 
 	private static let scopeKey = "taskScope"
 	private static let defaultsKey = "machines"
@@ -424,6 +464,10 @@ final class AppModel {
 				try? await Task.sleep(for: .seconds(3))
 				creatingProject = .promote(key, title: first.store.state.conversations[conversation]?.title ?? "")
 			}
+		}
+		// `--args -openProjectPage bdaytrip` opens that project's page on the first machine, for screenshots.
+		if let flag = ProcessInfo.processInfo.arguments.firstIndex(of: "-openProjectPage"), flag + 1 < ProcessInfo.processInfo.arguments.count, let first = machines.first {
+			scope = .project(machine: first.id, name: ProcessInfo.processInfo.arguments[flag + 1])
 		}
 		// `--args -openAddMachine` shows the Add Machine sheet at launch, for screenshots.
 		if ProcessInfo.processInfo.arguments.contains("-openAddMachine") {
@@ -524,6 +568,7 @@ final class AppModel {
 			isAddingMachine = true
 			return
 		}
+		// The box goes in the main column wherever it's asked for; the home and project pages have their own boxes.
 		if let machineID, let project {
 			choose(project, on: machineID)
 		} else if case .project(let machineID, let name) = scope, let machine = machine(machineID) {
@@ -552,7 +597,7 @@ final class AppModel {
 	/// The project of the newest task on the home machine (the one with sandboxes), or on the first connected one.
 	/// Not settled while that machine hasn't listed its projects, so the box tries again once it has.
 	func chooseDefaultProject() {
-		guard let machine = homeMachine.flatMap(machine) ?? machines.first(where: { $0.store.isConnected }) ?? machines.first else { return }
+		guard let machine = homeMachine.flatMap(machine) else { return }
 		let projects = machine.store.projects
 		let newest = machine.store.state.active.first { summary in projects.contains { $0.name == summary.project } }
 		choose(projects.first { $0.name == newest?.project } ?? projects.first, on: machine.id)
@@ -562,6 +607,7 @@ final class AppModel {
 	/// Why the new task can't run in a sandbox, or nil when it can.
 	func sandboxRefusal(for project: ProjectInfo?, on machineID: UUID) -> String? {
 		guard let machine = machine(machineID) else { return "the machine isn't in the app" }
+		// Every task runs in a sandbox now; a machine without a sandbox host takes none.
 		guard machine.store.sandboxes != nil else { return "\(name(of: machine)) has no sandbox host" }
 		// Scratch in a sandbox starts from an empty repository (item 20); it can't ship until it's made a project.
 		guard let project else { return nil }
@@ -572,9 +618,12 @@ final class AppModel {
 	/// Starts the new task with `text` as its first message, shows it where the box was, and clears the box.
 	func startTask(text: String, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = []) async -> Bool {
 		guard let machineID = newTask.machine, let machine = machine(machineID) else { return false }
-		let sandbox = newTask.sandbox && sandboxRefusal(for: newTask.project, on: machineID) == nil
+		if let refusal = sandboxRefusal(for: newTask.project, on: machineID) {
+			self.error = "This can't run in a sandbox: \(refusal)."
+			return false
+		}
 		do {
-			let summary = try await machine.store.createConversation(project: newTask.project?.dir, text: text, images: images, videos: videos, files: files, sandbox: sandbox, size: sandbox ? newTask.size : nil)
+			let summary = try await machine.store.createConversation(project: newTask.project?.dir, text: text, images: images, videos: videos, files: files, sandbox: true, size: newTask.size)
 			let key = ConversationKey(machine: machine.id, conversation: summary.id)
 			// A crossfade: the new conversation is blank for a moment while its first snapshot comes, which cut in as a flash.
 			withAnimation(.row) {

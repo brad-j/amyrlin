@@ -2,106 +2,68 @@ import AmyrlinCore
 import AppKit
 import SwiftUI
 
-/// The list (Brad's option B): tasks, then chats, across every machine. Sandbox work is a task, grouped by what it needs
-/// from you (TaskGroups: needs you, running, ready, done) in two-line rows. Sessions that run on their machine are chats,
-/// one line each, newest first, never "done": a spinner while running, a purple dot when a finished run is unread,
-/// amber when it needs you, which also puts it first; chats quiet for a day fold into "older". A machine that can't
-/// connect says why at the top, and rows from a machine other than the home one carry its tag. The scope switcher
-/// narrows the list to one project; All shows everything.
-/// ↑ and ↓ move between rows while the list or its search has focus.
+/// The rail (2026-11-04, sandbox-only): projects, not tasks. "Home" at the top is the queue across every project;
+/// under it, the projects with sandbox tasks or activity, each with small counts of what waits (amber needs you,
+/// violet running, green ready), most recently active first, then the rest folded. A click opens the project's page.
+/// Search finds tasks and messages and lists them under the projects. Only machines with a sandbox host count.
 struct SidebarView: View {
 	@Bindable var model: AppModel
-	@FocusState private var focused: Bool
 	@FocusState private var searchFocused: Bool
 	/// What the machines' messages.search found for the query, merged.
 	@State private var messages = MessageResults()
-	@State private var archiveOpen = false
-	@State private var olderOpen = false
+	@State private var restOpen = false
 
 	private var words: [String] { SessionSearch.words(model.sessionQuery) }
-
 	private var searching: Bool { !words.isEmpty }
 
-	private struct Lists {
-		var tasks: [(group: TaskGroups.Group, items: [TaskEntry])] = []
-		var hiddenDone = 0
-		var chats: [TaskEntry] = []
-		var older: [TaskEntry] = []
-	}
-
-	/// Everything the list shows, worked out once a draw: tasks by group (done cut to the newest few unless opened or
-	/// searching), chats newest first, and the older chats, shown only when opened or searching.
-	private var lists: Lists {
-		let all = model.tasks(matching: words)
-		var out = Lists()
-		out.tasks = TaskGroups.grouped(all.filter { TaskList.isTask($0.summary) }, summary: \.summary, ship: \.ship)
-		if !searching, !model.showAllDone, let index = out.tasks.firstIndex(where: { $0.group == .done }) {
-			out.hiddenDone = max(out.tasks[index].items.count - AppModel.doneLimit, 0)
-			out.tasks[index].items = Array(out.tasks[index].items.prefix(AppModel.doneLimit))
-		}
-		let chats = TaskList.chats(all.filter { !TaskList.isTask($0.summary) }, summary: \.summary)
-		out.chats = searching ? chats.recent + chats.older : chats.recent
-		out.older = searching ? [] : chats.older
-		return out
-	}
-
 	var body: some View {
-		let lists = lists
-		let archived = archiveOpen || searching ? model.archivedTasks(matching: words) : []
+		let rail = RailProjects.build(model)
 		VStack(spacing: 0) {
 			HeaderBar {
-				ScopeSwitcher(model: model)
+				Text("amyrlin").foregroundStyle(Palette.ink3)
 				Spacer(minLength: 8)
 				MachinesMenu(model: model)
 			}
 			if !model.machines.isEmpty {
-				NewTaskButton(model: model)
 				search
 			}
 			ScrollView {
 				LazyVStack(alignment: .leading, spacing: 0) {
 					MachineTrouble(model: model)
-					if !lists.tasks.isEmpty {
-						KindLabel(title: "tasks", note: "in sandboxes", rule: false)
-						ForEach(lists.tasks, id: \.group) { group in
-							GroupLabel(title: group.group.title, color: group.group == .needsYou ? Palette.wait : Palette.ink3, count: group.items.count + (group.group == .done ? lists.hiddenDone : 0))
-							ForEach(group.items) { item in row(item) }
-							if group.group == .done, lists.hiddenDone > 0 || model.showAllDone {
-								MoreLine(text: lists.hiddenDone > 0 ? "show \(lists.hiddenDone) more" : "show fewer") {
-									withAnimation(.easeInOut(duration: 0.15)) { model.showAllDone.toggle() }
+					if searching {
+						SearchResults(model: model, words: words, messages: messages)
+					} else {
+						RailRow(title: "Home", note: nil, color: Palette.ink, counts: rail.total, selected: model.scope == .all && model.selection == nil && !model.isWritingNewTask) {
+							model.goHome()
+						}
+						.padding(.bottom, 6)
+						Text("projects").font(Typography.label).textCase(.uppercase).foregroundStyle(Palette.ink3)
+							.padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 4)
+						ForEach(rail.active) { item in projectRow(item) }
+						if !rail.rest.isEmpty {
+							MoreLine(text: restOpen ? "hide the others" : "\(rail.rest.count) more") {
+								withAnimation(.easeInOut(duration: 0.15)) { restOpen.toggle() }
+							}
+							if restOpen { ForEach(rail.rest) { item in projectRow(item) } }
+						}
+						if let maker = model.sandboxMachines.first(where: { $0.store.newProjects != nil }) {
+							Button { model.creatingProject = .create(machine: maker.id) } label: {
+								HStack(spacing: 6) {
+									Text("+").foregroundStyle(Palette.accent)
+									Text("New project").foregroundStyle(Palette.ink2)
 								}
+								.font(Typography.ui)
+								.padding(.horizontal, 12)
+								.padding(.vertical, 8)
+								.contentShape(Rectangle())
 							}
+							.buttonStyle(.plain)
+							.help("Make a project on \(model.name(of: maker)), with a private GitHub repository")
 						}
 					}
-					if !lists.chats.isEmpty || !lists.older.isEmpty {
-						KindLabel(title: "chats", note: "here", rule: !lists.tasks.isEmpty)
-						ForEach(lists.chats) { item in chatRow(item) }
-						if !lists.older.isEmpty {
-							FoldLine(title: "older", count: lists.older.count, open: olderOpen) {
-								withAnimation(.easeInOut(duration: 0.15)) { olderOpen.toggle() }
-							}
-							if olderOpen {
-								ForEach(lists.older) { item in chatRow(item) }
-							}
-						}
-					}
-					if lists.tasks.isEmpty, lists.chats.isEmpty, lists.older.isEmpty, model.machines.contains(where: { $0.store.state.hasSnapshot }) {
-						Text(searching ? "Nothing matches" : model.scope == .all ? "Nothing yet. ⌘N starts a task." : "Nothing in this project yet")
-							.font(Typography.uiSmall)
-							.foregroundStyle(Palette.ink3)
-							.padding(.horizontal, 12)
-							.padding(.top, 12)
-					}
-					archive(archived)
-					if searching { MessagesSection(model: model, results: messages).padding(.horizontal, 12) }
 				}
 				.padding(.bottom, 12)
 			}
-			.focusable()
-			.focusEffectDisabled()
-			.focused($focused)
-			.onKeyPress(.downArrow) { move(1) }
-			.onKeyPress(.upArrow) { move(-1) }
 		}
 		.background(Palette.panel)
 		// Searches each machine's messages as the query settles; a new query cancels the last.
@@ -114,7 +76,7 @@ struct SidebarView: View {
 			messages.searching = true
 			try? await Task.sleep(for: .milliseconds(250))
 			guard !Task.isCancelled else { return }
-			let found = await MessageResults.search(query, on: model.machines.filter { $0.store.isConnected })
+			let found = await MessageResults.search(query, on: model.sandboxMachines.filter { $0.store.isConnected })
 			guard !Task.isCancelled else { return }
 			messages = found
 		}
@@ -125,92 +87,36 @@ struct SidebarView: View {
 		}
 	}
 
-	private func open(_ target: ConversationKey) {
-		// ⌘-click opens it in a pane of its own, beside the focused one.
-		if NSEvent.modifierFlags.contains(.command) {
-			withAnimation(.panel) { model.openInNewPane(target) }
-		} else {
-			model.selection = target
+	private func projectRow(_ item: RailProjects.Item) -> some View {
+		let colors = model.machine(item.machine)?.store.state.projectColors ?? [:]
+		let scope = TaskScope.project(machine: item.machine, name: item.name)
+		return RailRow(
+			title: item.name.isEmpty ? "scratch" : item.name,
+			note: model.machineTag(item.machine),
+			color: item.name.isEmpty ? Palette.ink2 : Palette.project(item.name, in: colors),
+			counts: item.counts,
+			dim: item.counts.isEmpty,
+			selected: model.scope == scope && model.selection == nil && !model.isWritingNewTask
+		) {
+			model.openProject(machine: item.machine, name: item.name)
 		}
 	}
 
-	private func chatRow(_ item: TaskEntry) -> some View {
-		let id = item.id
-		let machine = model.machine(id.machine)
-		return ChatRow(
-			entry: item,
-			selected: model.selection == id,
-			open: model.isOpen(id),
-			unread: model.isUnread(id),
-			showProject: model.scope == .all,
-			machineTag: model.machineTag(id.machine),
-			connected: machine?.store.isConnected ?? false,
-			colors: machine?.store.state.projectColors ?? [:]
-		) { open(id) }
-		.contextMenu { TaskMenu(model: model, entry: item) }
-	}
-
-	private func row(_ item: TaskEntry) -> some View {
-		let id = item.id
-		let machine = model.machine(id.machine)
-		return TaskRow(
-			entry: item,
-			selected: model.selection == id,
-			open: model.isOpen(id),
-			unread: model.isUnread(id),
-			showProject: model.scope == .all,
-			machineTag: model.machineTag(id.machine),
-			connected: machine?.store.isConnected ?? false,
-			colors: machine?.store.state.projectColors ?? [:]
-		) { open(id) }
-		.contextMenu { TaskMenu(model: model, entry: item) }
-	}
-
-	@ViewBuilder private func archive(_ archived: [TaskEntry]) -> some View {
-		if model.machines.contains(where: { !$0.store.state.archived.isEmpty }) {
-			Button {
-				withAnimation(.easeInOut(duration: 0.15)) { archiveOpen.toggle() }
-			} label: {
-				HStack(spacing: 6) {
-					Text(archiveOpen || !words.isEmpty ? "▾" : "▸")
-					Text("archived")
-					Spacer()
-				}
-				.font(Typography.label)
-				.textCase(.uppercase)
-				.foregroundStyle(Palette.ink3)
-				.padding(.horizontal, 12)
-				.padding(.top, 16)
-				.padding(.bottom, 4)
-				.contentShape(Rectangle())
-			}
-			.buttonStyle(.plain)
-			.help(archiveOpen ? "Hide the archive" : "Show the ten most recent archived tasks; a search looks through all of them")
-			ForEach(archived) { entry in row(entry) }
-		}
-	}
-
-	/// `/` and the query; ↩ opens the first match and esc clears the query, then leaves.
+	/// `/` and the query; esc clears the query, then leaves.
 	private var search: some View {
 		HStack(spacing: 8) {
-			Text("/").font(Typography.uiStrong).foregroundStyle(searchFocused || !words.isEmpty ? Palette.accent : Palette.ink3)
+			Text("/").font(Typography.uiStrong).foregroundStyle(searchFocused || searching ? Palette.accent : Palette.ink3)
 			TextField("", text: $model.sessionQuery, prompt: Text("search tasks").foregroundStyle(Palette.ink3))
 				.textFieldStyle(.plain)
 				.font(Typography.ui)
 				.foregroundStyle(Palette.ink)
 				.focused($searchFocused)
-				.onSubmit {
-					if let first = ordered.first { model.selection = first }
-				}
-				.onKeyPress(.downArrow) { move(1) }
-				.onKeyPress(.upArrow) { move(-1) }
 				.onKeyPress(.escape) {
 					if model.sessionQuery.isEmpty { searchFocused = false } else { model.sessionQuery = "" }
 					return .handled
 				}
 			if !model.sessionQuery.isEmpty {
-				IconButton("xmark") { model.sessionQuery = "" }
-					.help("Clear the search")
+				IconButton("xmark") { model.sessionQuery = "" }.help("Clear the search")
 			} else if let combo = Shortcuts.shared.combo(.searchSessions), !searchFocused {
 				Text(combo.display).font(Typography.uiSmall).foregroundStyle(Palette.ink3)
 			}
@@ -220,133 +126,143 @@ struct SidebarView: View {
 		.background(Palette.paper2)
 		.overlay(Rectangle().stroke(searchFocused ? Palette.rule2 : Palette.rule))
 		.padding(.horizontal, 12)
-		.padding(.bottom, 4)
-	}
-
-	/// Every row the list shows, in order.
-	private var ordered: [ConversationKey] {
-		let lists = lists
-		let archived = archiveOpen || searching ? model.archivedTasks(matching: words) : []
-		return lists.tasks.flatMap(\.items).map(\.id) + lists.chats.map(\.id) + (olderOpen ? lists.older.map(\.id) : []) + archived.map(\.id)
-	}
-
-	private func move(_ step: Int) -> KeyPress.Result {
-		let keys = ordered
-		guard !keys.isEmpty else { return .ignored }
-		let index = model.selection.flatMap { keys.firstIndex(of: $0) } ?? (step > 0 ? -1 : keys.count)
-		model.selection = keys[min(max(index + step, 0), keys.count - 1)]
-		return .handled
+		.padding(.top, 10)
+		.padding(.bottom, 8)
 	}
 }
 
-/// A group's label: small caps and how many it holds.
-private struct GroupLabel: View {
-	let title: String
-	let color: Color
-	let count: Int
+/// The rail's projects, from every machine with sandboxes: those with an unarchived sandbox task, or a task in the last
+/// two weeks, most recently active first; the rest by name. Each has its counts by group.
+@MainActor enum RailProjects {
+	struct Item: Identifiable {
+		let machine: UUID
+		let name: String
+		let counts: [TaskGroups.Group: Int]
+		let last: Int64
+		var id: String { "\(machine)/\(name)" }
+	}
 
-	var body: some View {
-		HStack(spacing: 6) {
-			Text(title).foregroundStyle(color)
-			Spacer(minLength: 6)
-			Text("\(count)").foregroundStyle(Palette.ink3).monospacedDigit()
+	static let recent: TimeInterval = 14 * 86_400
+
+	static func build(_ model: AppModel) -> (active: [Item], rest: [Item], total: [TaskGroups.Group: Int]) {
+		var items: [Item] = []
+		var total: [TaskGroups.Group: Int] = [:]
+		let cutoff = Int64((Date.now.timeIntervalSince1970 - recent) * 1000)
+		for machine in model.sandboxMachines {
+			let sandboxed = machine.store.state.conversations.values.filter { $0.sandbox != nil }
+			var byProject: [String: (counts: [TaskGroups.Group: Int], last: Int64)] = [:]
+			for summary in sandboxed {
+				let name = summary.project ?? ""
+				var entry = byProject[name] ?? ([:], 0)
+				entry.last = max(entry.last, summary.updatedAt)
+				if !summary.archived {
+					let group = TaskGroups.group(summary, ship: machine.store.state.ship(summary.id))
+					if group != .done {
+						entry.counts[group, default: 0] += 1
+						total[group, default: 0] += 1
+					}
+				}
+				byProject[name] = entry
+			}
+			// Every project on the machine that can take a sandbox, so a new one shows before its first task.
+			for project in machine.store.projects where project.checkout?.takesSandboxes ?? false {
+				if byProject[project.name] == nil { byProject[project.name] = ([:], 0) }
+			}
+			for (name, entry) in byProject {
+				items.append(Item(machine: machine.id, name: name, counts: entry.counts, last: entry.last))
+			}
 		}
-		.font(Typography.label)
-		.textCase(.uppercase)
-		.padding(.horizontal, 12)
-		.padding(.top, 14)
-		.padding(.bottom, 4)
+		let active = items.filter { !$0.counts.isEmpty || $0.last >= cutoff }.sorted { a, b in
+			a.last != b.last ? a.last > b.last : a.name < b.name
+		}
+		let rest = items.filter { $0.counts.isEmpty && $0.last < cutoff && !$0.name.isEmpty }.sorted { $0.name < $1.name }
+		return (active, rest, total)
 	}
 }
 
-/// `+ New task ⌘N`, under the header.
-private struct NewTaskButton: View {
-	let model: AppModel
+/// A rail row: the name in its colour, a quiet note (its machine, when there's more than one), and pips for what waits.
+private struct RailRow: View {
+	let title: String
+	let note: String?
+	let color: Color
+	let counts: [TaskGroups.Group: Int]
+	var dim = false
+	let selected: Bool
+	let action: () -> Void
 	@State private var hovering = false
 
 	var body: some View {
-		let on = model.isWritingNewTask
-		Button { model.newTask() } label: {
-			HStack(spacing: 8) {
-				Text("+").foregroundStyle(Palette.accent)
-				Text("New task").foregroundStyle(on || hovering ? Palette.ink : Palette.ink2)
-				Spacer()
-				if let combo = Shortcuts.shared.combo(.newSession) {
-					Text(combo.display).font(Typography.uiSmall).foregroundStyle(Palette.ink3)
+		Button(action: action) {
+			HStack(spacing: 6) {
+				Text(title).foregroundStyle(dim && !selected ? color.opacity(0.7) : color).lineLimit(1).truncationMode(.tail)
+				if let note { Text(note).foregroundStyle(Palette.ink3).lineLimit(1) }
+				Spacer(minLength: 6)
+				ForEach([TaskGroups.Group.needsYou, .running, .ready], id: \.self) { group in
+					if let count = counts[group], count > 0 { Pip(count: count, group: group) }
 				}
 			}
 			.font(Typography.ui)
-			.padding(.horizontal, 10)
-			.frame(minHeight: 28 * Typography.scale)
-			.background(on ? Palette.paper2 : .clear)
-			.overlay(Rectangle().stroke(on ? Palette.accent : Palette.rule2))
+			.padding(.horizontal, 12)
+			.padding(.vertical, 5)
+			.background(selected ? Palette.paper3 : hovering ? Palette.paper2 : .clear)
+			.overlay(alignment: .leading) { if selected { Rectangle().fill(color).frame(width: 2) } }
 			.contentShape(Rectangle())
 		}
 		.buttonStyle(.plain)
 		.onHover { hovering = $0 }
-		.padding(.horizontal, 12)
-		.padding(.top, 10)
-		.padding(.bottom, 8)
-		.help("Start a task")
 	}
 }
 
-/// The header's scope: `All projects ▾`, or the project in its colour with its machine when it isn't the home one. The
-/// menu lists the projects that have tasks, most recently active first, and All.
-private struct ScopeSwitcher: View {
-	let model: AppModel
-
-	private struct Choice: Hashable {
-		let machine: UUID
-		let name: String
-		let last: Int64
-	}
-
-	private var choices: [Choice] {
-		var latest: [Choice: Int64] = [:]
-		for machine in model.machines {
-			for summary in machine.store.state.active {
-				let choice = Choice(machine: machine.id, name: summary.project ?? "", last: 0)
-				latest[choice] = max(latest[choice] ?? 0, summary.updatedAt)
-			}
-		}
-		return latest.map { Choice(machine: $0.key.machine, name: $0.key.name, last: $0.value) }.sorted { $0.last > $1.last }
-	}
+/// A count in a small box, in the group's colour.
+struct Pip: View {
+	let count: Int
+	let group: TaskGroups.Group
 
 	var body: some View {
-		Menu {
-			Button(model.scope == .all ? "✓ All projects" : "All projects") { model.scope = .all }
-			Divider()
-			ForEach(choices, id: \.self) { choice in
-				let scope = TaskScope.project(machine: choice.machine, name: choice.name)
-				let label = (choice.name.isEmpty ? "scratch" : choice.name) + (model.machineTag(choice.machine).map { " · \($0)" } ?? "")
-				Button(model.scope == scope ? "✓ \(label)" : label) { model.scope = scope }
-			}
-		} label: {
-			HStack(spacing: 6) {
-				switch model.scope {
-				case .all:
-					Text("All projects").foregroundStyle(Palette.ink2)
-				case .project(let machineID, let name):
-					let colors = model.machine(machineID)?.store.state.projectColors ?? [:]
-					Text(name.isEmpty ? "scratch" : name).foregroundStyle(name.isEmpty ? Palette.ink2 : Palette.project(name, in: colors))
-					if let tag = model.machineTag(machineID) { Text(tag).foregroundStyle(Palette.ink3) }
-				}
-				Text("▾").foregroundStyle(Palette.ink3)
-			}
-			.font(Typography.ui)
+		Text("\(count)")
+			.font(Typography.label)
+			.monospacedDigit()
+			.foregroundStyle(color)
+			.padding(.horizontal, 4)
+			.overlay(Rectangle().stroke(color.opacity(0.7)))
+			.help("\(count) \(group.title)")
+	}
+
+	private var color: Color {
+		switch group {
+		case .needsYou: Palette.wait
+		case .running: Palette.accent
+		case .ready: Palette.add
+		case .done: Palette.ink3
 		}
-		.menuStyle(.button)
-		.buttonStyle(.plain)
-		.menuIndicator(.hidden)
-		.fixedSize()
-		.help("Show every project's tasks, or one project's")
+	}
+}
+
+/// What a search finds: tasks by title, project or folder in every project (archived ones too), then the messages
+/// holding the words.
+private struct SearchResults: View {
+	let model: AppModel
+	let words: [String]
+	let messages: MessageResults
+
+	var body: some View {
+		let found = (model.allTasks() + model.archivedTasks()).filter { SessionSearch.matches($0.summary, words: words) }
+			.sorted { $0.summary.updatedAt > $1.summary.updatedAt }
+		Text("tasks").font(Typography.label).textCase(.uppercase).foregroundStyle(Palette.ink3)
+			.padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 4)
+		if found.isEmpty {
+			Text("No task matches").font(Typography.uiSmall).foregroundStyle(Palette.ink3).padding(.horizontal, 12)
+		}
+		ForEach(found.prefix(30)) { item in
+			TaskLine(model: model, item: item, showProject: true)
+		}
+		MessagesSection(model: model, results: messages).padding(.horizontal, 12)
 	}
 }
 
 /// The machines, in a menu at the header's right: each with its connection, its settings and removal, and Add Machine.
 /// The dot is green while every machine is connected, amber or red otherwise.
-private struct MachinesMenu: View {
+struct MachinesMenu: View {
 	let model: AppModel
 
 	private var worst: Color {
@@ -409,86 +325,8 @@ private struct MachinesMenu: View {
 	}
 }
 
-/// A kind's label at the top of its part of the list: `TASKS in sandboxes`, `CHATS here`, a rule above the second.
-private struct KindLabel: View {
-	let title: String
-	let note: String
-	var rule = false
-
-	var body: some View {
-		HStack(spacing: 6) {
-			Text(title).font(Typography.label).textCase(.uppercase).foregroundStyle(Palette.ink)
-			Text(note).font(Typography.uiSmall).foregroundStyle(Palette.ink3)
-			Spacer()
-		}
-		.padding(.horizontal, 12)
-		.padding(.top, rule ? 14 : 12)
-		.padding(.bottom, 0)
-		.overlay(alignment: .top) {
-			if rule { Rectangle().fill(Palette.rule).frame(height: 1).padding(.top, 4) }
-		}
-	}
-}
-
-/// `▸ older 9`: a fold under the chats.
-private struct FoldLine: View {
-	let title: String
-	let count: Int
-	let open: Bool
-	let toggle: () -> Void
-	@State private var hovering = false
-
-	var body: some View {
-		Button(action: toggle) {
-			HStack(spacing: 6) {
-				Text(open ? "▾" : "▸")
-				Text(title)
-				Spacer()
-				Text("\(count)").monospacedDigit()
-			}
-			.font(Typography.uiSmall)
-			.foregroundStyle(hovering ? Palette.ink2 : Palette.ink3)
-			.padding(.horizontal, 12)
-			.padding(.vertical, 5)
-			.contentShape(Rectangle())
-		}
-		.buttonStyle(.plain)
-		.onHover { hovering = $0 }
-		.help(open ? "Hide chats quiet for more than a day" : "Show chats quiet for more than a day")
-	}
-}
-
-/// A machine that can't connect says why at the top of the list, since its rows are stale or missing.
-private struct MachineTrouble: View {
-	let model: AppModel
-
-	var body: some View {
-		ForEach(model.machines) { machine in
-			if let trouble = Self.trouble(machine.store.status) {
-				VStack(alignment: .leading, spacing: 2) {
-					Text("\(model.name(of: machine)) · \(MachinesMenu.status(machine.store.status))").foregroundStyle(Palette.wait)
-					Text(trouble).foregroundStyle(Palette.ink3).fixedSize(horizontal: false, vertical: true)
-				}
-				.font(Typography.uiSmall)
-				.textSelection(.enabled)
-				.padding(.horizontal, 12)
-				.padding(.top, 10)
-			}
-		}
-	}
-
-	/// Why a machine isn't connected, once a try has failed.
-	static func trouble(_ status: HostConnection.Status) -> String? {
-		switch status {
-		case .waiting(_, let error): error
-		case .failed(let reason): reason
-		default: nil
-		}
-	}
-}
-
-/// `show 11 more`, quiet, under a group.
-private struct MoreLine: View {
+/// `show 11 more`, quiet.
+struct MoreLine: View {
 	let text: String
 	let action: () -> Void
 	@State private var hovering = false
@@ -498,13 +336,144 @@ private struct MoreLine: View {
 			Text(text)
 				.font(Typography.uiSmall)
 				.foregroundStyle(hovering ? Palette.ink2 : Palette.ink3)
-				.padding(.leading, 30)
-				.padding(.vertical, 4)
+				.padding(.horizontal, 12)
+				.padding(.vertical, 5)
 				.frame(maxWidth: .infinity, alignment: .leading)
 				.contentShape(Rectangle())
 		}
 		.buttonStyle(.plain)
 		.onHover { hovering = $0 }
+	}
+}
+
+/// A machine that can't connect, or has no sandbox host, says so at the top of the rail.
+private struct MachineTrouble: View {
+	let model: AppModel
+
+	var body: some View {
+		ForEach(model.machines) { machine in
+			if let trouble = trouble(machine) {
+				VStack(alignment: .leading, spacing: 2) {
+					Text("\(model.name(of: machine)) · \(trouble.title)").foregroundStyle(Palette.wait)
+					Text(trouble.detail).foregroundStyle(Palette.ink3).fixedSize(horizontal: false, vertical: true)
+				}
+				.font(Typography.uiSmall)
+				.textSelection(.enabled)
+				.padding(.horizontal, 12)
+				.padding(.bottom, 8)
+			}
+		}
+	}
+
+	private func trouble(_ machine: AppModel.Machine) -> (title: String, detail: String)? {
+		if model.lacksSandboxes(machine) {
+			return ("no sandboxes", "This app runs work in sandboxes, and this machine's aludra has no sandbox host. Remove it from the machines menu.")
+		}
+		switch machine.store.status {
+		case .waiting(_, let error): return (MachinesMenu.status(machine.store.status), error)
+		case .failed(let reason): return (MachinesMenu.status(machine.store.status), reason)
+		default: return nil
+		}
+	}
+}
+
+/// A task in a list (the home's rail, a project's page, search): its mark, title, the host's line, and its age.
+/// A click opens it; ⌘-click opens it in a pane of its own.
+struct TaskLine: View {
+	let model: AppModel
+	let item: TaskEntry
+	var showProject = false
+	var compact = false
+	@State private var hovering = false
+
+	var body: some View {
+		let id = item.id
+		let summary = item.summary
+		let colors = model.machine(id.machine)?.store.state.projectColors ?? [:]
+		let selected = model.selection == id
+		Button {
+			if NSEvent.modifierFlags.contains(.command) {
+				withAnimation(.panel) { model.openInNewPane(id) }
+			} else {
+				model.selection = id
+			}
+		} label: {
+			HStack(alignment: .firstTextBaseline, spacing: 8) {
+				TaskMark(summary: summary, ship: item.ship, unread: model.isUnread(id)).frame(width: 10)
+				VStack(alignment: .leading, spacing: 1) {
+					Text(summary.title.isEmpty ? "New task" : summary.title)
+						.font(compact ? Typography.uiSansSmall : Typography.uiSans)
+						.foregroundStyle(summary.archived ? Palette.ink3 : Palette.ink)
+						.lineLimit(1)
+					if !compact, let line = TaskLine.line(summary, ship: item.ship) {
+						Text(line).font(Typography.uiSansSmall).foregroundStyle(Palette.ink3).lineLimit(1)
+					}
+				}
+				Spacer(minLength: 6)
+				if showProject {
+					Text(summary.project ?? "scratch")
+						.font(Typography.uiSmall)
+						.foregroundStyle(summary.project.map { Palette.project($0, in: colors) } ?? Palette.ink3)
+						.lineLimit(1)
+				}
+				Text(Date(timeIntervalSince1970: TimeInterval(summary.updatedAt) / 1000).shortAge)
+					.font(Typography.uiSmall)
+					.foregroundStyle(Palette.ink3)
+					.monospacedDigit()
+			}
+			.padding(.horizontal, 12)
+			.padding(.vertical, compact ? 3 : 5)
+			.background(selected ? Palette.paper3 : hovering ? Palette.paper2 : .clear)
+			.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.onHover { hovering = $0 }
+		.contextMenu { TaskMenu(model: model, entry: item) }
+	}
+
+	/// The host's line, or failing one what the app knows: a stopped or landed ship, a failed or preparing sandbox.
+	static func line(_ summary: ConversationSummary, ship: ShipOutcome?) -> String? {
+		switch ship {
+		case .shipped(let to, let pushed, _, _, let pr) where summary.status != .busy:
+			return pr != nil ? "PR open · \(pushed)" : to == .main ? "Live on \(pushed.replacingOccurrences(of: "origin/", with: ""))" : "Pushed to \(pushed)"
+		case .stopped(_, let reason) where summary.status != .busy:
+			return "Ship stopped: \(reason)"
+		default: break
+		}
+		if summary.sandbox?.state == .failed { return "Sandbox failed: \(summary.sandbox?.reason ?? "no reason given")" }
+		if summary.status == .needsApproval, summary.line == nil { return "Waiting for your approval" }
+		if summary.status == .stuck, summary.line == nil { return "Stuck: \(summary.stuck?.reason ?? "no reason given")" }
+		return summary.line
+	}
+}
+
+/// A task's mark: a spinner while it runs or its sandbox is made, an amber diamond when it asks, amber when checks fail,
+/// red when stuck or its ship stopped, a green dot when ready to ship, a purple dot for a run not yet read, and a
+/// quiet check once shipped or done.
+struct TaskMark: View {
+	let summary: ConversationSummary
+	let ship: ShipOutcome?
+	let unread: Bool
+
+	var body: some View {
+		let need = TaskGroups.need(summary, ship: ship)
+		Group {
+			switch (need, TaskGroups.group(summary, ship: ship)) {
+			case (.approval?, _), (.question?, _):
+				StateMark(.waiting, size: 10)
+			case (.checksFail?, _):
+				Image(systemName: "exclamationmark.triangle").resizable().scaledToFit().foregroundStyle(Palette.wait)
+			case (.some, _):
+				StateMark(.failed, size: 10)
+			case (nil, .running):
+				StateMark(.running, size: 10)
+			case (nil, .ready):
+				Circle().fill(unread ? Palette.accent : Palette.add).frame(width: 7, height: 7)
+			default:
+				if unread { Circle().fill(Palette.accent).frame(width: 7, height: 7) } else { StateMark(.done, size: 8) }
+			}
+		}
+		.frame(width: 10, height: 10)
 	}
 }
 
@@ -566,240 +535,6 @@ private struct ColourMenu: View {
 				}
 			}
 		}
-	}
-}
-
-/// A task: its mark, title and age, and under them its project (in All), its machine when it isn't the home one, and
-/// the host's line of where it stands. The focused pane's task has a wash and its project's colour at its edge; one
-/// open in another pane has a fainter edge.
-/// A chat: one line, a session that runs on its machine. Its mark says only what matters: a spinner while it runs,
-/// amber when it asks to allow a call or asks you something, red when stuck, a purple dot for a finished run not yet
-/// read, and nothing once read. Then the title, the project in All, the machine's tag, and the age. The host's line is
-/// in the help, so the row stays one line.
-private struct ChatRow: View {
-	let entry: TaskEntry
-	let selected: Bool
-	let open: Bool
-	let unread: Bool
-	let showProject: Bool
-	let machineTag: String?
-	let connected: Bool
-	let colors: [String: Int]
-	let select: () -> Void
-	@State private var hovering = false
-
-	private var summary: ConversationSummary { entry.summary }
-
-	var body: some View {
-		Button(action: select) {
-			HStack(spacing: 8) {
-				mark.frame(width: 10, height: 10)
-				Text(summary.title.isEmpty ? "New chat" : summary.title)
-					.font(Typography.uiSans)
-					.foregroundStyle(selected || unread || summary.status != .idle ? Palette.ink : Palette.ink2)
-					.lineLimit(1)
-					.truncationMode(.tail)
-				Spacer(minLength: 4)
-				// Where it is, quiet and short: the project in All (cut first), then the machine's tag, then the age.
-				HStack(spacing: 5) {
-					if showProject {
-						Text(summary.project ?? "scratch")
-							.foregroundStyle(summary.project.map { Palette.project($0, in: colors).opacity(0.8) } ?? Palette.ink3)
-							.lineLimit(1)
-							.truncationMode(.tail)
-							.frame(maxWidth: 52 * Typography.scale, alignment: .trailing)
-					}
-					if let machineTag {
-						Text(machineTag).foregroundStyle(Palette.ink3).fixedSize()
-					}
-					Text(Date(timeIntervalSince1970: TimeInterval(summary.updatedAt) / 1000).shortAge)
-						.foregroundStyle(Palette.ink3)
-						.monospacedDigit()
-						.fixedSize()
-				}
-				.font(Typography.uiSmall)
-				.fixedSize(horizontal: true, vertical: false)
-			}
-			.padding(.horizontal, 12)
-			.padding(.vertical, 4)
-			.opacity(connected ? 1 : 0.55)
-			.background(selected ? (summary.project.map { Palette.projectWash($0, in: colors) } ?? Palette.selection) : hovering ? Palette.paper2 : .clear)
-			.overlay(alignment: .leading) {
-				if selected || open {
-					Rectangle().fill(summary.project.map { Palette.project($0, in: colors) } ?? Palette.accent).frame(width: 2).opacity(selected ? 1 : 0.5)
-				}
-			}
-			.contentShape(Rectangle())
-		}
-		.buttonStyle(.plain)
-		.onHover { hovering = $0 }
-		.help([summary.title, summary.line, "\(summary.project ?? "scratch")\(machineTag.map { " on \($0)" } ?? "") · runs here", connected ? nil : "Its machine isn't connected"].compactMap(\.self).joined(separator: "\n"))
-	}
-
-	@ViewBuilder private var mark: some View {
-		switch TaskGroups.need(summary) {
-		case .approval?, .question?:
-			StateMark(.waiting, size: 10)
-		case .stuck?:
-			StateMark(.failed, size: 10)
-		default:
-			if summary.status == .busy {
-				StateMark(.running, size: 10)
-			} else if unread {
-				Circle().fill(Palette.accent).frame(width: 7, height: 7)
-			} else {
-				Color.clear
-			}
-		}
-	}
-}
-
-private struct TaskRow: View {
-	let entry: TaskEntry
-	let selected: Bool
-	let open: Bool
-	let unread: Bool
-	let showProject: Bool
-	let machineTag: String?
-	let connected: Bool
-	let colors: [String: Int]
-	let select: () -> Void
-	@State private var hovering = false
-
-	private var summary: ConversationSummary { entry.summary }
-	private var need: TaskGroups.Need? { TaskGroups.need(summary, ship: entry.ship) }
-	private var group: TaskGroups.Group { TaskGroups.group(summary, ship: entry.ship) }
-
-	var body: some View {
-		Button(action: select) {
-			VStack(alignment: .leading, spacing: 2) {
-				HStack(spacing: 8) {
-					TaskMark(summary: summary, need: need, group: group, unread: unread)
-					Text(summary.title.isEmpty ? "New task" : summary.title)
-						.font(Typography.uiSans)
-						.foregroundStyle(selected ? Palette.ink : Palette.ink2)
-						.lineLimit(1)
-						.truncationMode(.tail)
-					Spacer(minLength: 6)
-					Text(Date(timeIntervalSince1970: TimeInterval(summary.updatedAt) / 1000).shortAge)
-						.font(Typography.uiSmall)
-						.foregroundStyle(Palette.ink3)
-						.monospacedDigit()
-				}
-				HStack(spacing: 6) {
-					if showProject {
-						Text(summary.project ?? "scratch")
-							.foregroundStyle(summary.project.map { Palette.project($0, in: colors) } ?? Palette.ink3)
-							.layoutPriority(1)
-					}
-					if let machineTag {
-						Text(machineTag)
-							.foregroundStyle(Palette.ink2)
-							.padding(.horizontal, 4)
-							.overlay(Rectangle().stroke(Palette.rule2))
-							.layoutPriority(1)
-					}
-					if let line = Self.line(summary, ship: entry.ship) {
-						Text(line).foregroundStyle(lineColor).lineLimit(1).truncationMode(.tail)
-					}
-				}
-				.font(Typography.uiSansSmall)
-				.padding(.leading, 18)
-				.lineLimit(1)
-			}
-			.padding(.horizontal, 12)
-			.padding(.vertical, 6)
-			.opacity(connected ? 1 : 0.55)
-			.background(selected ? (summary.project.map { Palette.projectWash($0, in: colors) } ?? Palette.selection) : hovering ? Palette.paper2 : .clear)
-			.overlay(alignment: .leading) {
-				if selected || open {
-					Rectangle().fill(summary.project.map { Palette.project($0, in: colors) } ?? Palette.accent).frame(width: 2).opacity(selected ? 1 : 0.5)
-				}
-			}
-			.contentShape(Rectangle())
-		}
-		.buttonStyle(.plain)
-		.onHover { hovering = $0 }
-		.help(help)
-	}
-
-	private var lineColor: Color {
-		switch need {
-		case .approval, .question, .checksFail: Palette.wait
-		case .stuck, .shipStopped: Palette.bad
-		case nil: group == .ready ? Palette.add : Palette.ink3
-		}
-	}
-
-	/// The host's line, or failing one what the app knows: a stopped or landed ship, a failed or removed sandbox.
-	static func line(_ summary: ConversationSummary, ship: ShipOutcome?) -> String? {
-		switch ship {
-		case .shipped(let to, let pushed, _, _, let pr) where summary.status != .busy:
-			return pr != nil ? "PR open · \(pushed)" : to == .main ? "Live on \(pushed.replacingOccurrences(of: "origin/", with: ""))" : "Pushed to \(pushed)"
-		case .stopped(_, let reason) where summary.status != .busy:
-			return "Ship stopped: \(reason)"
-		default: break
-		}
-		if summary.sandbox?.state == .failed { return "Sandbox failed: \(summary.sandbox?.reason ?? "no reason given")" }
-		if summary.status == .needsApproval, summary.line == nil { return "Waiting for your approval" }
-		if summary.status == .stuck, summary.line == nil { return "Stuck: \(summary.stuck?.reason ?? "no reason given")" }
-		return summary.line
-	}
-
-	private var help: String {
-		var where_: String
-		if let sandbox = summary.sandbox {
-			where_ = "in a sandbox (\(sandbox.branch))"
-			if sandbox.state == .removed { where_ += ", removed" }
-		} else {
-			where_ = "here, in the project's checkout"
-		}
-		let machine = machineTag.map { " on \($0)" } ?? ""
-		let why: String? = switch need {
-		case .approval: "Asks to allow a tool call"
-		case .question: "Asks you something"
-		case .stuck: "Stuck"
-		case .shipStopped: "Its ship stopped; nothing was pushed"
-		case .checksFail: "Its checks fail"
-		case nil: unread ? "Finished a run you haven't read" : nil
-		}
-		return [summary.title, why, "\(summary.project ?? "scratch")\(machine) · runs \(where_)", connected ? nil : "Its machine isn't connected"]
-			.compactMap(\.self).joined(separator: "\n")
-	}
-}
-
-/// A task's mark: a spinner while it runs or its sandbox is made, an amber diamond when it asks, a red cross when it's
-/// stuck or failing, a green dot when it's ready to ship, a purple dot for a finished run not yet read, and a quiet
-/// check once done.
-private struct TaskMark: View {
-	let summary: ConversationSummary
-	let need: TaskGroups.Need?
-	let group: TaskGroups.Group
-	let unread: Bool
-
-	var body: some View {
-		Group {
-			switch (need, group) {
-			case (.approval?, _), (.question?, _):
-				StateMark(.waiting, size: 10)
-			case (.checksFail?, _):
-				// Amber, not red: the work is there and its checks want a look; nothing broke.
-				Image(systemName: "exclamationmark.triangle").resizable().scaledToFit().foregroundStyle(Palette.wait).frame(width: 10, height: 10)
-			case (.some, _):
-				StateMark(.failed, size: 10)
-			case (nil, .running):
-				StateMark(.running, size: 10)
-			case (nil, .ready):
-				Circle().fill(unread ? Palette.accent : Palette.add).frame(width: 8, height: 8)
-			default:
-				if unread {
-					Circle().fill(Palette.accent).frame(width: 8, height: 8)
-				} else {
-					StateMark(.done, size: 9)
-				}
-			}
-		}
-		.frame(width: 10, height: 10)
 	}
 }
 
