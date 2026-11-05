@@ -142,15 +142,13 @@ public enum Commands {
 			public var sandbox: Bool?
 			/// With `sandbox`, overrides the host's `sandboxes.approvals`.
 			public var approvals: Approvals?
-			/// With `sandbox`, attempts at one ask (×3).
-			public var group: String?
 			/// With `sandbox`, its size; without it the project's `.agents/project.json` decides, else small.
 			public var size: SandboxSize?
 		}
 		public typealias Result = CreatedResult
 		public let params: Params
-		public init(requestId: String = UUID().uuidString, title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = [], sandbox: Bool = false, approvals: Approvals? = nil, group: String? = nil, size: SandboxSize? = nil) {
-			params = Params(requestId: requestId, title: title, settings: settings, project: project, text: text, images: images.isEmpty ? nil : images, videos: videos.isEmpty ? nil : videos, files: files.isEmpty ? nil : files, sandbox: sandbox ? true : nil, approvals: sandbox ? approvals : nil, group: sandbox ? group : nil, size: sandbox ? size : nil)
+		public init(requestId: String = UUID().uuidString, title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = [], sandbox: Bool = false, approvals: Approvals? = nil, size: SandboxSize? = nil) {
+			params = Params(requestId: requestId, title: title, settings: settings, project: project, text: text, images: images.isEmpty ? nil : images, videos: videos.isEmpty ? nil : videos, files: files.isEmpty ? nil : files, sandbox: sandbox ? true : nil, approvals: sandbox ? approvals : nil, size: sandbox ? size : nil)
 		}
 	}
 

@@ -78,8 +78,8 @@ public final class HostStore {
 	}
 
 	/// A new conversation, in `project` when the server has projects, starting with `text` when given.
-	public func createConversation(title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = [], sandbox: Bool = false, approvals: Approvals? = nil, group: String? = nil, size: SandboxSize? = nil) async throws -> ConversationSummary {
-		let result = try await connection.send(Commands.CreateConversation(title: title, settings: settings, project: project, text: text, images: images, videos: videos, files: files, sandbox: sandbox, approvals: approvals, group: group, size: size))
+	public func createConversation(title: String? = nil, settings: SettingsChange? = nil, project: String? = nil, text: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = [], sandbox: Bool = false, approvals: Approvals? = nil, size: SandboxSize? = nil) async throws -> ConversationSummary {
+		let result = try await connection.send(Commands.CreateConversation(title: title, settings: settings, project: project, text: text, images: images, videos: videos, files: files, sandbox: sandbox, approvals: approvals, size: size))
 		state.upsert(result.conversation)
 		return result.conversation
 	}
@@ -170,12 +170,6 @@ public final class HostStore {
 	@discardableResult
 	public func discardSandbox(_ id: ConversationID) async throws -> Commands.DiscardSandbox.Result {
 		try await sendExtension(Commands.DiscardSandbox(conversationId: id))
-	}
-
-	/// Keeps one attempt of a group; the others are archived, their sandboxes and branches gone.
-	public func keep(_ id: ConversationID, of group: String) async throws {
-		let archived = try await sendExtension(Commands.KeepInGroup(group: group, conversationId: id)).archived
-		for other in archived { if var summary = state.conversations[other] { summary.archived = true; state.upsert(summary) } }
 	}
 
 	/// Where new projects go, when this host can make them now; nil hides New project.

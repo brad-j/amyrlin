@@ -232,8 +232,6 @@ public struct SandboxInfo: Decodable, Sendable, Hashable {
 	public var base: String?
 	/// While preparing: `waiting`, `cloning`, `installing`, `saving` or `starting`.
 	public var step: String?
-	/// Attempts at one ask share a group (×3).
-	public var group: String?
 	/// Why it failed.
 	public var reason: String?
 	/// Nil until the sandbox starts being made: not known yet, not small.
@@ -250,7 +248,6 @@ public struct SandboxInfo: Decodable, Sendable, Hashable {
 		approvals = try c.decodeIfPresent(Approvals.self, forKey: .approvals) ?? .off
 		base = try c.decodeIfPresent(String.self, forKey: .base)
 		step = try c.decodeIfPresent(String.self, forKey: .step)
-		group = try c.decodeIfPresent(String.self, forKey: .group)
 		reason = try c.decodeIfPresent(String.self, forKey: .reason)
 		size = try c.decodeIfPresent(SandboxSize.self, forKey: .size)
 		if let stopped = try c.decodeIfPresent(StoppedShip.self, forKey: .shipStopped) {
@@ -273,7 +270,7 @@ public struct SandboxInfo: Decodable, Sendable, Hashable {
 		var reason: String?
 	}
 
-	private enum CodingKeys: String, CodingKey { case number, branch, state, approvals, base, step, group, reason, shipped, shipStopped, size }
+	private enum CodingKeys: String, CodingKey { case number, branch, state, approvals, base, step, reason, shipped, shipStopped, size }
 }
 
 // MARK: - Results
@@ -611,18 +608,5 @@ extension Commands {
 		public init(conversationId: ConversationID, name: String, description: String? = nil) {
 			params = Params(conversationId: conversationId, name: name, description: description)
 		}
-	}
-
-	/// Archives a group's other attempts, which removes their sandboxes and branches.
-	public struct KeepInGroup: Command {
-		public static let method = "group.keep"
-		public static let retriesOnReconnect = true
-		public struct Params: Encodable, Sendable {
-			public var group: String
-			public var conversationId: ConversationID
-		}
-		public struct Result: Decodable, Sendable, Hashable { public var archived: [ConversationID] }
-		public let params: Params
-		public init(group: String, conversationId: ConversationID) { params = Params(group: group, conversationId: conversationId) }
 	}
 }
