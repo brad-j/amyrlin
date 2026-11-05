@@ -256,6 +256,7 @@ struct ProjectPage: View {
 						.padding(.bottom, 14)
 					if let project, project.checkout?.takesSandboxes ?? true {
 						AskBox(model: model, composition: model.composition(for: .empty), fixedProject: (machine.id, project))
+						SetUpChecks(model: model, machine: machine, project: project, tasks: tasks + done)
 					} else if name.isEmpty {
 						AskBox(model: model, composition: model.composition(for: .empty))
 					} else if let refusal = project?.checkout?.sandboxRefusal {
@@ -336,5 +337,62 @@ private struct CheckoutStrip: View {
 			Spacer()
 		}
 		.font(Typography.uiSmall)
+	}
+}
+
+/// Offers a task that gives the project checks, a setup script and screenshots, so its tasks' results say whether
+/// they work. aludra doesn't yet say what a project declares, so it's offered until a task of this kind has run, and
+/// says it may already be set up.
+private struct SetUpChecks: View {
+	let model: AppModel
+	let machine: AppModel.Machine
+	let project: ProjectInfo
+	let tasks: [TaskEntry]
+
+	static let title = "Set up checks"
+
+	static let prompt = """
+	Set this project up so sandbox tasks can show whether their work is right.
+
+	1. Find how this project is tested, built and type-checked: its package scripts, Makefile, CI workflow or README. Run each to see that it works here.
+	2. Write `.agents/project.json` with `checks`: the commands that tell whether a change is good (tests, type check, build, lint), each with a short `name`, fast ones first. Leave out anything that needs secrets or the network beyond installing packages.
+	3. If it's a web app with a dev server, add `devServer: {command, port}` and `pages` (the few that matter, with labels), and have `.agents/setup` install Playwright's Chromium (`pnpm exec playwright install --with-deps chromium`), adding Playwright as a dev dependency if it isn't one.
+	4. Write or update `.agents/setup` (executable) so a fresh sandbox installs what the checks need, from the lockfile.
+	5. If `.agents/project.json` already exists, check its commands still work and fix what doesn't, rather than starting over.
+
+	Commit it with a short message. In your result, list each check and whether it passed now.
+	"""
+
+	/// A task with this title in the project already, so the offer goes quiet.
+	private var done: Bool {
+		// aludra titles a session from its first message, so this task is known by that message's first line.
+		tasks.contains { $0.summary.title == Self.title || $0.summary.title.hasPrefix("Set this project up so sandbox tasks") || $0.summary.title.localizedCaseInsensitiveContains("checks") && $0.summary.title.localizedCaseInsensitiveContains("set") }
+	}
+
+	var body: some View {
+		if !done {
+			HStack(spacing: 10) {
+				Image(systemName: "checklist").foregroundStyle(Palette.ink3)
+				VStack(alignment: .leading, spacing: 1) {
+					Text("Give \(project.name) checks").foregroundStyle(Palette.ink2)
+					Text("So results say whether tests and the build pass. Skip it if .agents/project.json already has them.")
+						.foregroundStyle(Palette.ink3)
+						.fixedSize(horizontal: false, vertical: true)
+				}
+				Spacer(minLength: 8)
+				Button(Self.title) { start() }
+					.buttonStyle(QuietButton())
+					.disabled(!machine.store.isConnected)
+			}
+			.font(Typography.uiSmall)
+			.padding(10)
+			.overlay(Rectangle().stroke(Palette.rule))
+			.padding(.top, 12)
+		}
+	}
+
+	private func start() {
+		model.choose(project, on: machine.id)
+		Task { _ = await model.startTask(text: Self.prompt, title: Self.title) }
 	}
 }

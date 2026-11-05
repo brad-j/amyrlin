@@ -111,6 +111,8 @@ struct MainView: View {
 			}
 			StatusLine(model: model)
 		}
+		// A restored or opened session that isn't a sandbox task goes once its machine's list says so.
+		.onChange(of: model.machines.map { $0.store.state.hasSnapshot && $0.store.info != nil }) { _, _ in model.dropNonTasks() }
 		.onAppear {
 			UndoKey.start(model)
 			#if DEBUG

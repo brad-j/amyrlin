@@ -104,14 +104,32 @@ struct WorkPanel: View {
 		let dir = summary?.dir ?? ""
 		var seen: [String: (new: Bool, editing: Bool)] = [:]
 		var order: [String] = []
-		for call in WorkTimeline.calls(rows) where call.name == "edit" || call.name == "write" {
-			guard var path = call.args["path"]?.stringValue ?? call.args["file_path"]?.stringValue else { continue }
-			if !dir.isEmpty, path.hasPrefix(dir + "/") { path = String(path.dropFirst(dir.count + 1)) }
+		for call in WorkTimeline.calls(rows) {
 			let editing = if case .running = call.status { true } else { false }
-			if seen[path] == nil { order.append(path) }
-			seen[path] = (new: (seen[path]?.new ?? false) || call.name == "write", editing: editing)
+			// Edit and write calls name their file; a shell command that writes one (`> f`, `sed -i`, `tee`) counts too.
+			let paths: [(String, Bool)] = switch call.name {
+			case "edit", "write": (call.args["path"]?.stringValue ?? call.args["file_path"]?.stringValue).map { [($0, call.name == "write")] } ?? []
+			case "bash": WorkTimeline.writtenFiles(call.args["command"]?.stringValue ?? "").map { ($0, true) }
+			default: []
+			}
+			for (raw, wrote) in paths {
+				var path = raw
+				if !dir.isEmpty, path.hasPrefix(dir + "/") { path = String(path.dropFirst(dir.count + 1)) }
+				if seen[path] == nil { order.append(path) }
+				seen[path] = (new: (seen[path]?.new ?? false) || wrote, editing: editing)
+			}
 		}
 		return order.map { (path: $0, new: seen[$0]!.new, editing: seen[$0]!.editing) }
+	}
+
+	/// When each call of the latest turn was made: its answer's time, so plan steps fall between calls in order.
+	private var callTimes: [String: Int64] {
+		var times: [String: Int64] = [:]
+		for item in store.state.items {
+			guard case .assistant(let answer) = item.body, let at = item.at else { continue }
+			for block in answer.content { if case .toolCall(let call) = block { times[call.id] = at } }
+		}
+		return times
 	}
 
 	private var rows: [TranscriptRow] {
@@ -146,19 +164,26 @@ struct WorkPanel: View {
 	// MARK: Timeline
 
 	@ViewBuilder private var timeline: some View {
-		let steps = WorkTimeline.steps(WorkTimeline.calls(rows))
+		let steps = WorkTimeline.steps(WorkTimeline.calls(rows), plans: WorkTimeline.plans(store.state.items), times: callTimes, dir: summary?.dir)
 		if !steps.isEmpty {
 			PanelSection("what it did", trailing: "latest turn") {
 				VStack(alignment: .leading, spacing: 3) {
 					ForEach(steps.indices, id: \.self) { index in
 						let step = steps[index]
 						HStack(alignment: .firstTextBaseline, spacing: 8) {
-							Circle()
-								.fill(step.running ? Palette.accent : step.failed ? Palette.wait : Palette.rule2)
-								.frame(width: 5, height: 5)
-								.frame(width: 10)
+							Group {
+								switch step.kind {
+								case .stepDone: Text("✓").foregroundStyle(Palette.add)
+								case .commit: Text("●").foregroundStyle(Palette.accent)
+								case .check: Text(step.running ? "…" : step.failed ? "✗" : "✓").foregroundStyle(step.running ? Palette.accent : step.failed ? Palette.wait : Palette.add)
+								default:
+									Circle().fill(step.running ? Palette.accent : Palette.rule2).frame(width: 5, height: 5)
+								}
+							}
+							.font(Typography.uiSmall)
+							.frame(width: 10)
 							Text(step.text)
-								.foregroundStyle(step.running ? Palette.ink : step.failed ? Palette.wait : Palette.ink2)
+								.foregroundStyle(step.running || step.kind == .stepDone ? Palette.ink : step.failed ? Palette.wait : step.kind == .other ? Palette.ink3 : Palette.ink2)
 								.lineLimit(2)
 								.fixedSize(horizontal: false, vertical: true)
 						}

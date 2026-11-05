@@ -130,6 +130,18 @@ final class AppModel {
 		panes.indices.contains(focus) && panes[focus].content == .newTask
 	}
 
+	/// Empties panes showing a session that isn't a sandbox task, such as one restored from before the app was
+	/// sandbox-only; run as each machine's list arrives.
+	func dropNonTasks() {
+		for index in panes.indices {
+			guard case .conversation(let key) = panes[index].content, let machine = machine(key.machine) else { continue }
+			guard machine.store.state.hasSnapshot else { continue }
+			if machine.store.sandboxes == nil || machine.store.state.conversations[key.conversation]?.sandbox == nil {
+				panes[index].content = .empty
+			}
+		}
+	}
+
 	/// Whether a conversation shows in any pane, focused or not.
 	func isOpen(_ key: ConversationKey) -> Bool {
 		panes.contains { $0.content == .conversation(key) }
@@ -616,14 +628,14 @@ final class AppModel {
 	}
 
 	/// Starts the new task with `text` as its first message, shows it where the box was, and clears the box.
-	func startTask(text: String, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = []) async -> Bool {
+	func startTask(text: String, title: String? = nil, images: [ImageUpload] = [], videos: [VideoUpload] = [], files: [FileUpload] = []) async -> Bool {
 		guard let machineID = newTask.machine, let machine = machine(machineID) else { return false }
 		if let refusal = sandboxRefusal(for: newTask.project, on: machineID) {
 			self.error = "This can't run in a sandbox: \(refusal)."
 			return false
 		}
 		do {
-			let summary = try await machine.store.createConversation(project: newTask.project?.dir, text: text, images: images, videos: videos, files: files, sandbox: true, size: newTask.size)
+			let summary = try await machine.store.createConversation(title: title, project: newTask.project?.dir, text: text, images: images, videos: videos, files: files, sandbox: true, size: newTask.size)
 			let key = ConversationKey(machine: machine.id, conversation: summary.id)
 			// A crossfade: the new conversation is blank for a moment while its first snapshot comes, which cut in as a flash.
 			withAnimation(.row) {
@@ -758,7 +770,8 @@ final class AppModel {
 	/// A toast for each alert, but none for a session open in a pane while the app is in front, which shows it already.
 	/// A session's newer toast replaces its older one.
 	private func receive(_ alerts: [SessionAlert], from machine: UUID) {
-		for alert in alerts {
+		// Only sandbox tasks: the app shows nothing else, so a toast for anything else would open what it hides.
+		for alert in alerts where alert.summary.sandbox != nil {
 			let key = ConversationKey(machine: machine, conversation: alert.summary.id)
 			if isOpen(key), NSApplication.shared.isActive { continue }
 			if alert.kind == .done { unread.insert(Self.storedKey(key)) }
