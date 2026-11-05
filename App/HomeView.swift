@@ -23,7 +23,7 @@ struct FocusHome: View {
 
 	var body: some View {
 		let all = model.allTasks()
-		let groups = Dictionary(grouping: all) { TaskGroups.group($0.summary, ship: $0.ship) }
+		let groups = Dictionary(grouping: all) { $0.group }
 		let needs = (groups[.needsYou] ?? []).sorted { $0.summary.updatedAt > $1.summary.updatedAt }
 		let ready = (groups[.ready] ?? []).sorted { $0.summary.updatedAt > $1.summary.updatedAt }
 		let running = (groups[.running] ?? []).sorted { $0.summary.createdAt > $1.summary.createdAt }
@@ -113,12 +113,12 @@ private struct QueueItem: View {
 
 	var body: some View {
 		let summary = item.summary
-		let group = TaskGroups.group(summary, ship: item.ship)
+		let group = item.group
 		let colors = host?.state.projectColors ?? [:]
 		let result = host.map { $0.task(item.id.conversation) }
 		VStack(alignment: .leading, spacing: 4) {
 			HStack(alignment: .firstTextBaseline, spacing: 10) {
-				TaskMark(summary: summary, ship: item.ship, unread: model.isUnread(item.id))
+				TaskMark(summary: summary, ship: item.ship, empty: item.empty, unread: model.isUnread(item.id))
 				Text(summary.title.isEmpty ? "New task" : summary.title)
 					.font(Typography.readingStrong)
 					.foregroundStyle(Palette.ink)
@@ -240,7 +240,7 @@ struct ProjectPage: View {
 	var body: some View {
 		let colors = machine.store.state.projectColors
 		let tasks = model.allTasks().filter { $0.id.machine == machine.id && ($0.summary.project ?? "") == name }
-		let groups = TaskGroups.grouped(tasks, summary: \.summary, ship: \.ship)
+		let groups = TaskGroups.grouped(tasks, summary: \.summary, ship: \.ship, empty: \.empty)
 		let open = groups.filter { $0.group != .done }
 		let done = (groups.first { $0.group == .done }?.items ?? []) + model.archivedTasks(in: (machine.id, name))
 		VStack(spacing: 0) {

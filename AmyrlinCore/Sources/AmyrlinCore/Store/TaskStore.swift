@@ -41,10 +41,13 @@ public final class TaskStore {
 			do {
 				let result = try await host.taskResult(id)
 				guard !Task.isCancelled else { return }
-				// A new answer's code may differ; read it again when asked.
+				// A new answer's code may differ; read it again when asked. So may code that hadn't come home yet.
 				if result?.at != self.result?.at { code = nil }
+				if case .success(.unavailable)? = code { code = nil }
 				self.result = result
 				problem = nil
+				// Counts of zero can mean the branch hasn't come home yet; the changes say which.
+				if let result, !result.isRunning, result.code.commits == 0, result.code.files == 0 { await loadCode() }
 			} catch let error as ProtocolError {
 				guard !Task.isCancelled else { return }
 				problem = error.code == "unknown_method" ? nil : error.message
@@ -91,12 +94,27 @@ public final class TaskStore {
 		}
 	}
 
+	/// The answered work changed nothing: no commits, no files left uncommitted in the sandbox, and its branch home and
+	/// the same as where it started. False whenever that isn't known yet, so Ship stays until it is.
+	public var nothingToShip: Bool {
+		guard let result, !result.isRunning, result.code.commits == 0, result.code.files == 0 else { return false }
+		guard !result.headsUp.contains(where: { $0.kind == "left" }) else { return false }
+		guard case .success(.available(_, _, _, let files))? = code else { return false }
+		return files.isEmpty
+	}
+
 	public func diff(_ path: String) async throws -> String {
 		try await host.taskCodeDiff(id, path: path)
 	}
 }
 
 extension HostStore {
+	/// Whether task `id`'s work, as last read, has nothing to ship. Tasks whose result hasn't been read count as having
+	/// something.
+	public func nothingToShip(_ id: ConversationID) -> Bool {
+		task(id).nothingToShip
+	}
+
 	/// The result page's store for a task, created on first use.
 	public func task(_ id: ConversationID) -> TaskStore {
 		if let store = taskStores[id] { return store }

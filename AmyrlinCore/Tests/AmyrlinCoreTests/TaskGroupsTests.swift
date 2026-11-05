@@ -31,8 +31,15 @@ struct TaskGroupsTests {
 		#expect(TaskGroups.group(try summary(1, sandbox: "paused")) == .ready)
 		#expect(TaskGroups.group(ready, ship: .shipped(to: .main, pushed: "origin/main", head: "a", commits: 1, pr: nil)) == .done)
 		#expect(TaskGroups.group(try summary(1, sandbox: "removed")) == .done)
+		#expect(TaskGroups.group(ready, empty: true) == .done)
 		// Nothing said yet: a sandbox made and waiting for its first message isn't ready work.
 		#expect(TaskGroups.group(try summary(1, sandbox: "ready", updated: 100)) == .done)
+	}
+
+	@Test func shippingRunsEvenWhileIdle() throws {
+		#expect(TaskGroups.group(try summary(1, line: "Shipping", sandbox: "ready")) == .running)
+		#expect(TaskGroups.group(try summary(1, status: "busy", line: "Shipping · getting it ready", sandbox: "ready")) == .running)
+		#expect(TaskGroups.isShipping(try summary(1, line: "Shipping")) == false)
 	}
 
 	@Test func preparingAndBusyRun() throws {

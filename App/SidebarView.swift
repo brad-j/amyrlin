@@ -156,7 +156,7 @@ struct SidebarView: View {
 				var entry = byProject[name] ?? ([:], 0)
 				entry.last = max(entry.last, summary.updatedAt)
 				if !summary.archived {
-					let group = TaskGroups.group(summary, ship: machine.store.state.ship(summary.id))
+					let group = TaskGroups.group(summary, ship: machine.store.state.ship(summary.id), empty: machine.store.nothingToShip(summary.id))
 					if group != .done {
 						entry.counts[group, default: 0] += 1
 						total[group, default: 0] += 1
@@ -399,7 +399,7 @@ struct TaskLine: View {
 			}
 		} label: {
 			HStack(alignment: .firstTextBaseline, spacing: 8) {
-				TaskMark(summary: summary, ship: item.ship, unread: model.isUnread(id)).frame(width: 10)
+				TaskMark(summary: summary, ship: item.ship, empty: item.empty, unread: model.isUnread(id)).frame(width: 10)
 				VStack(alignment: .leading, spacing: 1) {
 					Text(summary.title.isEmpty ? "New task" : summary.title)
 						.font(compact ? Typography.uiSansSmall : Typography.uiSans)
@@ -453,12 +453,13 @@ struct TaskLine: View {
 struct TaskMark: View {
 	let summary: ConversationSummary
 	let ship: ShipOutcome?
+	var empty = false
 	let unread: Bool
 
 	var body: some View {
 		let need = TaskGroups.need(summary, ship: ship)
 		Group {
-			switch (need, TaskGroups.group(summary, ship: ship)) {
+			switch (need, TaskGroups.group(summary, ship: ship, empty: empty)) {
 			case (.approval?, _), (.question?, _):
 				StateMark(.waiting, size: 10)
 			case (.checksFail?, _):

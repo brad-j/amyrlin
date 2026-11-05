@@ -7,6 +7,7 @@ import SwiftUI
 /// buttons, what it did in a sentence, checks, what changed for someone using the project, before and after
 /// screenshots, heads-ups in plain words, and the code folded into one line at the bottom.
 struct ResultView: View {
+	let store: ConversationStore
 	let task: TaskStore
 	let summary: ConversationSummary?
 	/// Sends a reply, as the composer would: a question's option.
@@ -34,11 +35,11 @@ struct ResultView: View {
 			Said(text: "The sandbox couldn't be made, so nothing ran. Start a new task to try again.", color: Palette.bad)
 			Detail(text: sandbox.reason ?? summary?.stuck?.detail ?? "No reason given.")
 		} else if let result = task.result, result.isRunning || summary?.status == .busy {
-			Running(plan: result.plan ?? [], line: summary?.line)
+			Running(store: store, plan: result.plan ?? [], line: summary?.line, dir: summary?.dir)
 		} else if let result = task.result {
 			Finished(task: task, result: result, summary: summary, reply: reply, pages: pages)
 		} else if summary?.status == .busy {
-			Running(plan: [], line: summary?.line)
+			Running(store: store, plan: [], line: summary?.line, dir: summary?.dir)
 		} else if task.hasRead {
 			Text(task.problem ?? "No result yet. It shows here once the agent answers.")
 				.font(Typography.reading)
@@ -117,15 +118,40 @@ private struct Preparing: View {
 	}
 }
 
-/// The plan while it works: done steps checked, the first open one current, the rest waiting.
+/// While it works: what was asked, "Working on it" with the run's time over a moving rule, the plan as a checklist (done
+/// steps checked, the first open one current, the rest waiting), then the turn's latest few steps as they happen.
 private struct Running: View {
+	let store: ConversationStore
 	let plan: [TaskResult.Step]
 	let line: String?
+	let dir: String?
+
+	/// The steps shown at most; the work panel has the whole turn.
+	static let recent = 6
 
 	var body: some View {
+		let rows = TranscriptLayout.rows(state: store.state)
+		let steps = store.workSteps(rows: rows, dir: dir)
 		VStack(alignment: .leading, spacing: 0) {
-			Said(text: plan.isEmpty ? "Working on it." : "Working on it. Here's the plan:", color: Palette.ink2)
-			if plan.isEmpty, let line, line != "Working" {
+			if let asked = Self.asked(rows), !asked.isEmpty {
+				Text(asked)
+					.font(Typography.reading)
+					.foregroundStyle(Palette.ink3)
+					.lineLimit(4)
+					.textSelection(.enabled)
+					.fixedSize(horizontal: false, vertical: true)
+					.padding(.leading, 12)
+					.overlay(alignment: .leading) { Rectangle().fill(Palette.rule2).frame(width: 2) }
+					.padding(.bottom, 16)
+			}
+			HStack(alignment: .firstTextBaseline, spacing: 10) {
+				Said(text: plan.isEmpty ? "Working on it." : "Working on it. Here's the plan:", color: Palette.ink2)
+				RunTime(turns: store.turns)
+			}
+			ProgressRule(color: Palette.accent)
+				.frame(height: 1)
+				.padding(.top, 10)
+			if plan.isEmpty, steps.isEmpty, let line, line != "Working" {
 				HStack(spacing: 10) {
 					StateMark(.running, size: 10)
 					Text(line).font(Typography.reading).foregroundStyle(Palette.ink)
@@ -158,6 +184,38 @@ private struct Running: View {
 				}
 			}
 			.padding(.top, 14)
+			if !steps.isEmpty {
+				SectionLabel(title: "latest", trailing: steps.count > Self.recent ? AnyView(Text("\(steps.count) steps this turn").font(Typography.uiSmall).foregroundStyle(Palette.ink3)) : nil)
+				VStack(alignment: .leading, spacing: 4) {
+					ForEach(Array(steps.suffix(Self.recent).enumerated()), id: \.offset) { _, step in
+						WorkStepRow(step: step, font: Typography.uiSans)
+					}
+				}
+			}
+		}
+	}
+
+	/// The text of the turn's message: the last user message in the transcript.
+	static func asked(_ rows: [TranscriptRow]) -> String? {
+		for row in rows.reversed() {
+			if case .user(let message, _, _) = row.kind { return message.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+		}
+		return nil
+	}
+}
+
+/// `· 1m 12s`, counting up once a second while the run goes.
+private struct RunTime: View {
+	let turns: TurnClock
+
+	var body: some View {
+		if let started = turns.started {
+			TimelineView(.periodic(from: started, by: 1)) { context in
+				Text(TurnClock.format(context.date.timeIntervalSince(started)))
+			}
+			.font(Typography.uiSmall)
+			.foregroundStyle(Palette.ink3)
+			.monospacedDigit()
 		}
 	}
 }
@@ -299,7 +357,7 @@ struct FlowLayout: Layout {
 		for row in rows(width: bounds.width, subviews: subviews) {
 			var x = bounds.minX
 			for index in row.indices {
-				let size = subviews[index].sizeThatFits(.unspecified)
+				let size = Self.size(subviews[index], width: bounds.width)
 				subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
 				x += size.width + spacing
 			}
@@ -313,7 +371,7 @@ struct FlowLayout: Layout {
 		var x: CGFloat = 0
 		var height: CGFloat = 0
 		for index in subviews.indices {
-			let size = subviews[index].sizeThatFits(.unspecified)
+			let size = Self.size(subviews[index], width: width)
 			if !current.isEmpty, x + spacing + size.width > width {
 				rows.append((current, x, height))
 				current = []
@@ -326,6 +384,13 @@ struct FlowLayout: Layout {
 		}
 		if !current.isEmpty { rows.append((current, x, height)) }
 		return rows
+	}
+
+	/// A child's natural size, or, when that's wider than the row, the row's width with its text wrapped to fit.
+	private static func size(_ subview: LayoutSubview, width: CGFloat) -> CGSize {
+		let natural = subview.sizeThatFits(.unspecified)
+		guard width.isFinite, natural.width > width else { return natural }
+		return subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
 	}
 }
 

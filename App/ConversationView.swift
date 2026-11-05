@@ -26,10 +26,17 @@ struct ConversationView: View {
 	private var summary: ConversationSummary? { host.state.conversations[store.id] }
 	private var hasResult: Bool { summary?.sandbox != nil }
 
+	/// Opens the page of the task's project, or scratch's.
+	private var openProject: (() -> Void)? {
+		guard let appModel, let machine = appModel.machines.first(where: { $0.store === host })?.id else { return nil }
+		let name = summary?.project ?? ""
+		return { appModel.openProject(machine: machine, name: name) }
+	}
+
 	var body: some View {
 		let task = host.task(store.id)
 		VStack(spacing: 0) {
-			ConversationHeader(title: summary?.title ?? store.conversation?.title ?? "Conversation", project: summary?.project, dir: summary?.sandbox != nil ? summary?.source : summary?.dir, colors: host.state.projectColors, busy: store.isBusy, rename: rename)
+			ConversationHeader(title: summary?.title ?? store.conversation?.title ?? "Conversation", project: summary?.project, dir: summary?.sandbox != nil ? summary?.source : summary?.dir, colors: host.state.projectColors, busy: store.isBusy, rename: rename, home: appModel.map { model in { model.goHome() } }, openProject: openProject)
 			if let summary, hasResult {
 				TaskHeader(summary: summary, host: host, tab: $tab) {
 					tab = .result
@@ -48,7 +55,7 @@ struct ConversationView: View {
 						if let summary {
 							ShipPanel(summary: summary, host: host, task: task, confirming: $confirmingShip) { store.send($0) }
 						}
-						ResultView(task: task, summary: summary, reply: { store.send($0) }, pages: host.info?.pages == true ? TranscriptPage.latestTurn(store.state.items) : [])
+						ResultView(store: store, task: task, summary: summary, reply: { store.send($0) }, pages: host.info?.pages == true ? TranscriptPage.latestTurn(store.state.items) : [])
 							// PageView fetches through the conversation's store, as in the transcript.
 							.environment(store)
 					}
@@ -110,7 +117,7 @@ struct ConversationView: View {
 	}
 }
 
-/// The session as a console path: `../` dim, the project in its colour, then the title.
+/// The session as breadcrumbs: `home / project`, each a link back, then the title.
 private struct ConversationHeader: View {
 	let title: String
 	let project: String?
@@ -118,10 +125,12 @@ private struct ConversationHeader: View {
 	let colors: [String: Int]
 	let busy: Bool
 	let rename: () -> Void
+	var home: (() -> Void)?
+	var openProject: (() -> Void)?
 
 	var body: some View {
 		HeaderBar {
-			PathLabel(project: project, dir: dir, colors: colors)
+			Crumbs(project: project, dir: dir, colors: colors, home: home, openProject: openProject)
 			if busy {
 				StateMark(.running, size: 10).padding(.trailing, 6)
 			}
@@ -133,6 +142,49 @@ private struct ConversationHeader: View {
 				PaneCloseButton()
 				InspectorToggle()
 			}
+		}
+	}
+}
+
+/// `home / project`: Home and the project's page, each a click away, the project in its colour. The project's folder
+/// shows in its tooltip. Scratch for a session in no project.
+private struct Crumbs: View {
+	let project: String?
+	let dir: String?
+	let colors: [String: Int]
+	let home: (() -> Void)?
+	let openProject: (() -> Void)?
+
+	var body: some View {
+		HStack(spacing: 0) {
+			Crumb(text: "home", color: Palette.ink3, action: home)
+			Text(" / ").foregroundStyle(Palette.rule2)
+			Crumb(text: project ?? "scratch", color: project.map { Palette.project($0, in: colors) } ?? Palette.ink3, action: openProject)
+				.help(dir.map(ConversationView.shortPath) ?? "")
+			Text(" / ").foregroundStyle(Palette.rule2)
+		}
+	}
+}
+
+/// One breadcrumb: underlined and brighter under the pointer.
+private struct Crumb: View {
+	let text: String
+	let color: Color
+	let action: (() -> Void)?
+	@State private var hovering = false
+
+	var body: some View {
+		if let action {
+			Button(action: action) {
+				Text(text)
+					.foregroundStyle(hovering ? color.mix(with: .white, by: 0.25) : color)
+					.underline(hovering, color: color.opacity(0.6))
+					.contentShape(Rectangle())
+			}
+			.buttonStyle(.plain)
+			.onHover { hovering = $0 }
+		} else {
+			Text(text).foregroundStyle(color)
 		}
 	}
 }
@@ -236,15 +288,53 @@ struct QuietButton: ButtonStyle {
 	var font: Font?
 
 	func makeBody(configuration: Configuration) -> some View {
-		configuration.label
-			.font(font ?? Typography.ui)
-			.foregroundStyle(ink)
-			.padding(.vertical, 5)
-			.padding(.horizontal, 12)
-			.background(fill ?? Palette.paper3)
-			.overlay(Rectangle().stroke(fill == nil ? Palette.rule2 : .clear))
-			.opacity(configuration.isPressed ? 0.75 : 1)
-			.contentShape(Rectangle())
+		Face(configuration: configuration, fill: fill, ink: ink, font: font)
+	}
+
+	/// A view so the button can keep its own hover state. Hover lifts a fill toward white, gives a clear button the
+	/// paper fill, and brightens the rule; a press dims it and sinks it a little.
+	private struct Face: View {
+		let configuration: ButtonStyleConfiguration
+		let fill: Color?
+		let ink: Color
+		let font: Font?
+		@State private var hovering = false
+		@Environment(\.isEnabled) private var enabled
+
+		private var lit: Bool { hovering && enabled }
+
+		var body: some View {
+			configuration.label
+				.font(font ?? Typography.ui)
+				.foregroundStyle(ink)
+				.padding(.vertical, 5)
+				.padding(.horizontal, 12)
+				.background(background)
+				.overlay(Rectangle().stroke(stroke))
+				.opacity(configuration.isPressed ? 0.75 : 1)
+				.scaleEffect(configuration.isPressed ? 0.97 : 1)
+				.contentShape(Rectangle())
+				.onHover { inside in withAnimation(.state) { hovering = inside } }
+				.animation(.state, value: configuration.isPressed)
+		}
+
+		private var background: some View {
+			ZStack {
+				switch fill {
+				case nil: Palette.paper3
+				case .clear?: Palette.paper3.opacity(lit ? 1 : 0)
+				case let fill?: fill
+				}
+				if fill != nil && fill != .clear { Color.white.opacity(lit ? 0.14 : 0) }
+				if fill == nil { Color.white.opacity(lit ? 0.04 : 0) }
+			}
+		}
+
+		private var stroke: Color {
+			if fill == nil { return lit ? Palette.ink3 : Palette.rule2 }
+			if fill == .clear { return lit ? Palette.rule2 : .clear }
+			return .clear
+		}
 	}
 }
 
@@ -505,10 +595,10 @@ struct TaskHeader: View {
 
 	/// Work that came home and hasn't landed, with the sandbox still there, the host connected and nothing running.
 	private var canShip: Bool {
-		guard let sandbox = summary.sandbox, host.isConnected, summary.status != .busy, summary.hasMessages else { return false }
+		guard let sandbox = summary.sandbox, host.isConnected, summary.status != .busy, summary.hasMessages, !TaskGroups.isShipping(summary) else { return false }
 		guard sandbox.state == .ready || sandbox.state == .paused else { return false }
 		if case .shipped = host.state.ship(summary.id) { return false }
-		return true
+		return !host.nothingToShip(summary.id)
 	}
 
 	private var state: (text: String, color: Color) {
@@ -524,8 +614,12 @@ struct TaskHeader: View {
 		if case .shipped(let to, let pushed, _, _, let pr) = ship {
 			return (pr != nil ? "PR open" : to == .main ? "live on \(pushed.replacingOccurrences(of: "origin/", with: ""))" : "pushed", Palette.ink3)
 		}
-		switch TaskGroups.group(summary, ship: ship) {
-		case .running: return (summary.sandbox?.state == .preparing ? "preparing" : "working", Palette.accent)
+		let empty = host.nothingToShip(summary.id)
+		if empty, summary.sandbox?.state == .ready || summary.sandbox?.state == .paused, summary.status != .busy, !TaskGroups.isShipping(summary) {
+			return ("nothing to ship", Palette.ink3)
+		}
+		switch TaskGroups.group(summary, ship: ship, empty: empty) {
+		case .running: return (summary.sandbox?.state == .preparing ? "preparing" : TaskGroups.isShipping(summary) ? "shipping" : "working", Palette.accent)
 		case .ready: return ("ready", Palette.add)
 		default: return (summary.sandbox?.state == .removed ? "sandbox removed" : "done", Palette.ink3)
 		}

@@ -5,9 +5,10 @@ import Foundation
 /// - needs you: asking to allow a call, asking a question, stuck (a failed sandbox too), a stopped ship, or a sandbox
 ///   task's failing checks. A local session's checks are only the commands its turn happened to run, so they don't
 ///   make it need you.
-/// - running: a run going on, or a sandbox being made.
+/// - running: a run going on, a sandbox being made, or a ship under way.
 /// - ready: sandbox work that came back and hasn't shipped.
-/// - done: everything else that isn't archived: finished local sessions, shipped work and removed sandboxes.
+/// - done: everything else that isn't archived: finished local sessions, shipped work, removed sandboxes, and sandbox
+///   work that changed nothing (`empty`, from TaskStore.nothingToShip).
 ///
 /// A question and failing checks are read from the summary's `line`, which the host words for exactly this ("Asks: …",
 /// "· 2 checks fail"); the host doesn't send them apart.
@@ -47,12 +48,18 @@ public enum TaskGroups {
 		return nil
 	}
 
-	public static func group(_ summary: ConversationSummary, ship: ShipOutcome? = nil) -> Group {
+	/// A ship is under way: the host words the line "Shipping" from the ship's request until it lands or stops, idle
+	/// in the moment before its run starts too.
+	public static func isShipping(_ summary: ConversationSummary) -> Bool {
+		summary.sandbox != nil && summary.line?.hasPrefix("Shipping") == true
+	}
+
+	public static func group(_ summary: ConversationSummary, ship: ShipOutcome? = nil, empty: Bool = false) -> Group {
 		if need(summary, ship: ship) != nil { return .needsYou }
-		if summary.status == .busy || summary.sandbox?.state == .preparing { return .running }
+		if summary.status == .busy || summary.sandbox?.state == .preparing || isShipping(summary) { return .running }
 		if let sandbox = summary.sandbox, sandbox.state != .removed, summary.hasMessages {
 			if case .shipped = ship { return .done }
-			return .ready
+			return empty ? .done : .ready
 		}
 		return .done
 	}
@@ -62,9 +69,10 @@ public enum TaskGroups {
 	public static func grouped<Item>(
 		_ items: [Item],
 		summary: (Item) -> ConversationSummary,
-		ship: (Item) -> ShipOutcome? = { _ in nil }
+		ship: (Item) -> ShipOutcome? = { _ in nil },
+		empty: (Item) -> Bool = { _ in false }
 	) -> [(group: Group, items: [Item])] {
-		let byGroup = Dictionary(grouping: items) { group(summary($0), ship: ship($0)) }
+		let byGroup = Dictionary(grouping: items) { group(summary($0), ship: ship($0), empty: empty($0)) }
 		return Group.allCases.compactMap { group in
 			guard let members = byGroup[group], !members.isEmpty else { return nil }
 			let sorted = members.sorted { x, y in

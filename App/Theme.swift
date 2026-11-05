@@ -406,6 +406,86 @@ final class SpinnerView: NSView {
 	}
 }
 
+/// A 1 px rule with a short band of colour sweeping along it, left to right, while something runs. Core Animation
+/// moves the band, as with Spinner, so a running task doesn't lay out the window every frame.
+struct ProgressRule: NSViewRepresentable {
+	let color: Color
+	var track: Color = Palette.rule
+
+	func makeNSView(context: Context) -> ProgressRuleView {
+		ProgressRuleView()
+	}
+
+	func updateNSView(_ view: ProgressRuleView, context: Context) {
+		view.colors = (NSColor(track), NSColor(color))
+	}
+}
+
+final class ProgressRuleView: NSView {
+	private let track = CALayer()
+	private let band = CAGradientLayer()
+	/// The band's width as a share of the rule's.
+	private static let share: CGFloat = 0.3
+
+	var colors: (track: NSColor, band: NSColor) = (.darkGray, .white) {
+		didSet { applyColors() }
+	}
+
+	override init(frame: NSRect) {
+		super.init(frame: frame)
+		wantsLayer = true
+		layer?.masksToBounds = true
+		layer?.addSublayer(track)
+		layer?.addSublayer(band)
+		band.startPoint = CGPoint(x: 0, y: 0.5)
+		band.endPoint = CGPoint(x: 1, y: 0.5)
+		applyColors()
+	}
+
+	required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+	override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: 1) }
+
+	override func layout() {
+		super.layout()
+		CATransaction.begin()
+		CATransaction.setDisableActions(true)
+		track.frame = bounds
+		band.bounds = CGRect(x: 0, y: 0, width: bounds.width * Self.share, height: bounds.height)
+		band.position = CGPoint(x: -band.bounds.width / 2, y: bounds.midY)
+		CATransaction.commit()
+		// The sweep's length depends on the width, so it starts again after a resize.
+		band.removeAnimation(forKey: "sweep")
+		sweep()
+	}
+
+	override func viewDidMoveToWindow() {
+		super.viewDidMoveToWindow()
+		sweep()
+	}
+
+	private func sweep() {
+		guard window != nil, bounds.width > 0, band.animation(forKey: "sweep") == nil else { return }
+		let move = CABasicAnimation(keyPath: "position.x")
+		move.fromValue = -band.bounds.width / 2
+		move.toValue = bounds.width + band.bounds.width / 2
+		move.duration = 1.6
+		move.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+		move.repeatCount = .infinity
+		move.isRemovedOnCompletion = false
+		band.add(move, forKey: "sweep")
+	}
+
+	private func applyColors() {
+		CATransaction.begin()
+		CATransaction.setDisableActions(true)
+		track.backgroundColor = colors.track.cgColor
+		let clear = colors.band.withAlphaComponent(0).cgColor
+		band.colors = [clear, colors.band.cgColor, clear]
+		CATransaction.commit()
+	}
+}
+
 /// Kept for the sidebar's machine header.
 struct StatusDot: View {
 	let color: Color

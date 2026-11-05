@@ -39,9 +39,10 @@ struct ProjectSheet: View {
 	private var machine: AppModel.Machine? { model.machine(purpose.machine) }
 	private var newProjects: NewProjects? { machine?.store.newProjects }
 	private var problem: String? { ProjectNames.problem(name) ?? taken }
-	/// A project of that name already listed on the machine; the host checks GitHub too.
+	/// A project of that name already listed on the machine; the host checks GitHub too. Not checked while creating: the
+	/// host lists the new project before it answers, and that's this one.
 	private var taken: String? {
-		guard !name.isEmpty, machine?.store.projects.contains(where: { $0.name == name }) == true else { return nil }
+		guard !name.isEmpty, !working, machine?.store.projects.contains(where: { $0.name == name }) == true else { return nil }
 		return "there's already a project called \(name)"
 	}
 	private var canCreate: Bool { !name.isEmpty && problem == nil && !working && newProjects != nil && machine?.store.isConnected == true }

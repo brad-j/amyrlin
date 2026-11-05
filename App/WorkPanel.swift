@@ -122,16 +122,6 @@ struct WorkPanel: View {
 		return order.map { (path: $0, new: seen[$0]!.new, editing: seen[$0]!.editing) }
 	}
 
-	/// When each call of the latest turn was made: its answer's time, so plan steps fall between calls in order.
-	private var callTimes: [String: Int64] {
-		var times: [String: Int64] = [:]
-		for item in store.state.items {
-			guard case .assistant(let answer) = item.body, let at = item.at else { continue }
-			for block in answer.content { if case .toolCall(let call) = block { times[call.id] = at } }
-		}
-		return times
-	}
-
 	private var rows: [TranscriptRow] {
 		TranscriptLayout.rows(state: store.state)
 	}
@@ -164,30 +154,12 @@ struct WorkPanel: View {
 	// MARK: Timeline
 
 	@ViewBuilder private var timeline: some View {
-		let steps = WorkTimeline.steps(WorkTimeline.calls(rows), plans: WorkTimeline.plans(store.state.items), times: callTimes, dir: summary?.dir)
+		let steps = store.workSteps(rows: rows, dir: summary?.dir)
 		if !steps.isEmpty {
 			PanelSection("what it did", trailing: "latest turn") {
 				VStack(alignment: .leading, spacing: 3) {
 					ForEach(steps.indices, id: \.self) { index in
-						let step = steps[index]
-						HStack(alignment: .firstTextBaseline, spacing: 8) {
-							Group {
-								switch step.kind {
-								case .stepDone: Text("✓").foregroundStyle(Palette.add)
-								case .commit: Text("●").foregroundStyle(Palette.accent)
-								case .check: Text(step.running ? "…" : step.failed ? "✗" : "✓").foregroundStyle(step.running ? Palette.accent : step.failed ? Palette.wait : Palette.add)
-								default:
-									Circle().fill(step.running ? Palette.accent : Palette.rule2).frame(width: 5, height: 5)
-								}
-							}
-							.font(Typography.uiSmall)
-							.frame(width: 10)
-							Text(step.text)
-								.foregroundStyle(step.running || step.kind == .stepDone ? Palette.ink : step.failed ? Palette.wait : step.kind == .other ? Palette.ink3 : Palette.ink2)
-								.lineLimit(2)
-								.fixedSize(horizontal: false, vertical: true)
-						}
-						.font(Typography.uiSansSmall)
+						WorkStepRow(step: steps[index], font: Typography.uiSansSmall)
 					}
 				}
 			}
@@ -236,5 +208,50 @@ struct WorkPanel: View {
 			Spacer()
 			Text(value).foregroundStyle(Palette.ink2).monospacedDigit().lineLimit(1)
 		}
+	}
+}
+
+extension ConversationStore {
+	/// The latest turn's steps, as the work panel's timeline and the result page's latest list show them.
+	func workSteps(rows: [TranscriptRow], dir: String?) -> [WorkTimeline.Step] {
+		WorkTimeline.steps(WorkTimeline.calls(rows), plans: WorkTimeline.plans(state.items), times: callTimes, dir: dir)
+	}
+
+	/// When each call of the latest turn was made: its answer's time, so plan steps fall between calls in order.
+	private var callTimes: [String: Int64] {
+		var times: [String: Int64] = [:]
+		for item in state.items {
+			guard case .assistant(let answer) = item.body, let at = item.at else { continue }
+			for block in answer.content { if case .toolCall(let call) = block { times[call.id] = at } }
+		}
+		return times
+	}
+}
+
+/// One step of a turn: a check for a plan step done, a dot for a commit, a check's result, or a quiet dot, lit while
+/// it runs.
+struct WorkStepRow: View {
+	let step: WorkTimeline.Step
+	let font: Font
+
+	var body: some View {
+		HStack(alignment: .firstTextBaseline, spacing: 8) {
+			Group {
+				switch step.kind {
+				case .stepDone: Text("✓").foregroundStyle(Palette.add)
+				case .commit: Text("●").foregroundStyle(Palette.accent)
+				case .check: Text(step.running ? "…" : step.failed ? "✗" : "✓").foregroundStyle(step.running ? Palette.accent : step.failed ? Palette.wait : Palette.add)
+				default:
+					Circle().fill(step.running ? Palette.accent : Palette.rule2).frame(width: 5, height: 5)
+				}
+			}
+			.font(Typography.uiSmall)
+			.frame(width: 10)
+			Text(step.text)
+				.foregroundStyle(step.running || step.kind == .stepDone ? Palette.ink : step.failed ? Palette.wait : step.kind == .other ? Palette.ink3 : Palette.ink2)
+				.lineLimit(2)
+				.fixedSize(horizontal: false, vertical: true)
+		}
+		.font(font)
 	}
 }

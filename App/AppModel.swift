@@ -31,7 +31,10 @@ struct TaskEntry: Identifiable {
 	let key: ConversationKey
 	let summary: ConversationSummary
 	let ship: ShipOutcome?
+	/// Its answered work changed nothing, as far as its result has been read; it goes to done instead of ready.
+	var empty = false
 	var id: ConversationKey { key }
+	var group: TaskGroups.Group { TaskGroups.group(summary, ship: ship, empty: empty) }
 }
 
 /// Where the task list looks: every project on every machine, or one project on one machine.
@@ -231,7 +234,7 @@ final class AppModel {
 	func tasks(on machine: Machine, matching words: [String] = []) -> [TaskEntry] {
 		machine.store.state.active
 			.filter { $0.sandbox != nil && inScope($0, on: machine.id) && SessionSearch.matches($0, words: words) }
-			.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ship($0.id)) }
+			.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ship($0.id), empty: machine.store.nothingToShip($0.id)) }
 	}
 
 	/// Every unarchived sandbox task on every machine, whatever the scope: the home's queue and the rail's counts.
@@ -239,7 +242,7 @@ final class AppModel {
 		sandboxMachines.flatMap { machine in
 			machine.store.state.active
 				.filter { $0.sandbox != nil }
-				.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ship($0.id)) }
+				.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ship($0.id), empty: machine.store.nothingToShip($0.id)) }
 		}
 	}
 
@@ -249,7 +252,7 @@ final class AppModel {
 			machine.store.state.archived
 				.filter { $0.sandbox != nil && SessionSearch.matches($0, words: words) }
 				.filter { project == nil || (machine.id == project!.machine && ($0.project ?? "") == project!.name) }
-				.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ship($0.id)) }
+				.map { TaskEntry(key: ConversationKey(machine: machine.id, conversation: $0.id), summary: $0, ship: machine.store.state.ship($0.id), empty: machine.store.nothingToShip($0.id)) }
 		}
 		.sorted { $0.summary.updatedAt > $1.summary.updatedAt }
 	}
@@ -719,6 +722,13 @@ final class AppModel {
 	func setArchived(_ target: ConversationKey, _ archived: Bool) {
 		guard let machine = machine(target.machine) else { return }
 		sendArchived(target.conversation, archived, on: machine)
+		// An archived task's page has nothing left to do: a pane showing it goes home.
+		if archived {
+			for index in panes.indices where panes[index].content == .conversation(target) {
+				panes[index].content = .empty
+				if index == focus { scope = .all }
+			}
+		}
 		offerUndo("\(archived ? "Archived" : "Brought back") \(title(of: target))") { [weak self] in
 			self?.sendArchived(target.conversation, !archived, on: machine)
 		}
