@@ -9,3 +9,6 @@ node_modules/
 
 # macOS
 .DS_Store
+
+# Claude Code per-user permissions can hold literal credentials
+.claude/settings.local.json
